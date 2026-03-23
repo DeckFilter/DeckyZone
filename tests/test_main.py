@@ -45,8 +45,9 @@ def _fake_settings_module():
             self.settings = dict(_FAKE_SETTINGS_STORE)
 
         def setSetting(self, name, value):
-            _FAKE_SETTINGS_STORE[name] = value
-            self.settings = dict(_FAKE_SETTINGS_STORE)
+            if not self.settings:
+                self.settings = dict(_FAKE_SETTINGS_STORE)
+            self.settings[name] = value
             return value
 
         def commit(self):
@@ -62,6 +63,7 @@ def _fake_decky_module():
     module.logger = _FakeLogger()
     module.DECKY_USER_HOME = "/tmp/decky-user"
     module.DECKY_HOME = "/tmp/decky-home"
+    module.DECKY_PLUGIN_DIR = str(Path(__file__).resolve().parents[1])
     module.emit = _async_noop
     module.migrate_logs = _noop
     module.migrate_settings = _noop
@@ -88,6 +90,7 @@ class _CompletedProcess:
 class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         _FAKE_SETTINGS_STORE.clear()
+        main.plugin_settings.setting_file.settings = {}
 
     async def test_initial_status_is_idle(self):
         service = main.DeckyZoneService(
@@ -272,12 +275,16 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             sleep=_async_noop,
             read_text=lambda path: "",
         )
+        service.probe_rumble_available = lambda: True
 
         self.assertEqual(
             service.get_settings(),
             {
                 "startupApplyEnabled": True,
                 "inputplumberAvailable": True,
+                "rumbleEnabled": True,
+                "rumbleIntensity": 75,
+                "rumbleAvailable": True,
             },
         )
 
@@ -290,14 +297,384 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             sleep=_async_noop,
             read_text=lambda path: "",
         )
+        service.probe_rumble_available = lambda: False
 
         self.assertEqual(
             service.get_settings(),
             {
                 "startupApplyEnabled": True,
                 "inputplumberAvailable": False,
+                "rumbleEnabled": True,
+                "rumbleIntensity": 75,
+                "rumbleAvailable": False,
             },
         )
+
+    async def test_set_rumble_enabled_starts_and_stops_background_loop(self):
+        calls = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._inputplumber_available = True
+        service.probe_rumble_available = lambda: True
+
+        async def start():
+            calls.append("start")
+            return True
+
+        async def stop():
+            calls.append("stop")
+            return True
+
+        service.start_rumble_fixer = start
+        service.stop_rumble_fixer = stop
+
+        result = await service.set_rumble_enabled(False)
+        self.assertEqual(
+            result,
+            {
+                "startupApplyEnabled": True,
+                "inputplumberAvailable": True,
+                "rumbleEnabled": False,
+                "rumbleIntensity": 75,
+                "rumbleAvailable": True,
+            },
+        )
+
+        result = await service.set_rumble_enabled(True)
+        self.assertEqual(
+            result,
+            {
+                "startupApplyEnabled": True,
+                "inputplumberAvailable": True,
+                "rumbleEnabled": True,
+                "rumbleIntensity": 75,
+                "rumbleAvailable": True,
+            },
+        )
+        self.assertEqual(calls, ["stop", "start"])
+
+    async def test_set_rumble_intensity_clamps_values(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._resolve_rumble_device_path = lambda: "/dev/input/event0"
+        service._validate_rumble_device_path = lambda path: True
+
+        result = await service.set_rumble_intensity(130)
+        self.assertEqual(result["rumbleIntensity"], 100)
+
+        result = await service.set_rumble_intensity(-15)
+        self.assertEqual(result["rumbleIntensity"], 0)
+
+    async def test_build_gain_event_uses_ev_ff_ff_gain_and_scaled_value(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+
+        event = service._build_gain_event(50)
+
+        self.assertEqual(event.type, main.EV_FF)
+        self.assertEqual(event.code, main.FF_GAIN)
+        self.assertEqual(event.value, int((50 / 100.0) * 0xFFFF))
+
+    async def test_set_rumble_intensity_applies_gain_and_preview_when_enabled(self):
+        calls = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._resolve_rumble_device_path = lambda: "/dev/input/event15"
+        service._validate_rumble_device_path = lambda path: True
+
+        async def apply_gain(device_path=None):
+            calls.append(("gain", device_path))
+            return True
+
+        async def preview(device_path=None):
+            calls.append(("preview", device_path))
+            return True
+
+        service._apply_rumble_gain_once = apply_gain
+        service._play_rumble_preview_once = preview
+
+        await service.set_rumble_intensity(80)
+
+        self.assertEqual(
+            calls,
+            [
+                ("gain", "/dev/input/event15"),
+                ("preview", "/dev/input/event15"),
+            ],
+        )
+
+    async def test_set_rumble_intensity_skips_preview_when_unavailable(self):
+        calls = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._resolve_rumble_device_path = lambda: None
+
+        async def apply_gain(device_path=None):
+            calls.append(("gain", device_path))
+            return True
+
+        async def preview(device_path=None):
+            calls.append(("preview", device_path))
+            return True
+
+        service._apply_rumble_gain_once = apply_gain
+        service._play_rumble_preview_once = preview
+
+        await service.set_rumble_intensity(80)
+
+        self.assertEqual(calls, [])
+
+    async def test_resolve_rumble_device_prefers_exact_zotac_name(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._get_rumble_candidate_paths = lambda: [
+            "/dev/input/by-id/usb-other-event-joystick",
+            "/dev/input/by-id/usb-zotac-event-joystick",
+        ]
+        service._resolve_rumble_candidate_path = lambda path: {
+            "/dev/input/by-id/usb-other-event-joystick": "/dev/input/event12",
+            "/dev/input/by-id/usb-zotac-event-joystick": "/dev/input/event15",
+        }[path]
+        service._read_rumble_candidate_device_name = lambda path: {
+            "/dev/input/event12": "Generic Gamepad",
+            "/dev/input/event15": "ZOTAC Gaming Zone",
+        }[path]
+
+        self.assertEqual(service._resolve_rumble_device_path(), "/dev/input/event15")
+
+    async def test_resolve_rumble_device_returns_none_for_multiple_non_zotac_candidates(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._get_rumble_candidate_paths = lambda: [
+            "/dev/input/by-id/usb-pad-a-event-joystick",
+            "/dev/input/by-id/usb-pad-b-event-joystick",
+        ]
+        service._resolve_rumble_candidate_path = lambda path: {
+            "/dev/input/by-id/usb-pad-a-event-joystick": "/dev/input/event12",
+            "/dev/input/by-id/usb-pad-b-event-joystick": "/dev/input/event13",
+        }[path]
+        service._read_rumble_candidate_device_name = lambda path: {
+            "/dev/input/event12": "Generic Gamepad A",
+            "/dev/input/event13": "Generic Gamepad B",
+        }[path]
+
+        self.assertIsNone(service._resolve_rumble_device_path())
+
+    async def test_resolve_zotac_hid_config_path_uses_save_config_marker(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._get_zotac_hid_config_paths = lambda: [
+            "/sys/class/hidraw/hidraw0/device",
+            "/sys/class/hidraw/hidraw1/device",
+        ]
+        service._is_zotac_hid_config_path = (
+            lambda path: path == "/sys/class/hidraw/hidraw1/device"
+        )
+
+        self.assertEqual(
+            service._resolve_zotac_hid_config_path(),
+            "/sys/class/hidraw/hidraw1/device",
+        )
+
+    async def test_probe_rumble_available_returns_false_off_linux(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._is_linux_platform = lambda: False
+
+        self.assertEqual(
+            service.probe_rumble_available(),
+            False,
+        )
+
+    async def test_apply_rumble_gain_once_logs_warning_on_device_error(self):
+        logger = _FakeLogger()
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            logger=logger,
+            read_text=lambda path: "",
+        )
+        service.probe_rumble_available = lambda: True
+        service._rumble_device_path = "/dev/input/event0"
+
+        def write_event(*args, **kwargs):
+            raise OSError("write failed")
+
+        service._write_event_to_device = write_event
+
+        result = await service._apply_rumble_gain_once()
+
+        self.assertFalse(result)
+        warning_messages = [args[0] for level, args, _ in logger.messages if level == "warning"]
+        self.assertTrue(any("write failed" in message for message in warning_messages))
+
+    async def test_set_rumble_intensity_does_not_probe_inputplumber(self):
+        calls = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._inputplumber_available = True
+        service.probe_inputplumber_available = lambda: calls.append("inputplumber") or True
+        service._resolve_rumble_device_path = lambda: "/dev/input/event15"
+        service._validate_rumble_device_path = lambda path: True
+
+        async def apply_gain(device_path=None):
+            calls.append(("gain", device_path))
+            return True
+
+        async def preview(device_path=None):
+            calls.append(("preview", device_path))
+            return True
+
+        service._apply_rumble_gain_once = apply_gain
+        service._play_rumble_preview_once = preview
+
+        await service.set_rumble_intensity(80)
+
+        self.assertEqual(
+            calls,
+            [
+                ("gain", "/dev/input/event15"),
+                ("preview", "/dev/input/event15"),
+            ],
+        )
+
+    async def test_test_rumble_writes_motor_test_using_saved_intensity(self):
+        calls = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._resolve_zotac_hid_config_path = (
+            lambda: "/sys/class/hidraw/hidraw0/device"
+        )
+        service._has_zotac_hid_attribute = lambda path, attr: True
+        service._write_zotac_hid_value = lambda path, value: calls.append((path, value))
+
+        main.plugin_settings.set_rumble_intensity(55)
+
+        result = await service.test_rumble()
+
+        self.assertTrue(result)
+        self.assertEqual(
+            calls,
+            [
+                ("/sys/class/hidraw/hidraw0/device/motor_test", "0 0 55 55"),
+            ],
+        )
+
+    async def test_test_rumble_returns_false_without_zotac_config_node(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._resolve_zotac_hid_config_path = lambda: None
+
+        self.assertFalse(await service.test_rumble())
+
+    async def test_test_rumble_returns_false_when_motor_test_attribute_is_missing(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._resolve_zotac_hid_config_path = (
+            lambda: "/sys/class/hidraw/hidraw0/device"
+        )
+        service._has_zotac_hid_attribute = lambda path, attr: False
+
+        self.assertFalse(await service.test_rumble())
+
+    async def test_test_rumble_returns_false_when_motor_test_write_fails(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._resolve_zotac_hid_config_path = (
+            lambda: "/sys/class/hidraw/hidraw0/device"
+        )
+        service._has_zotac_hid_attribute = lambda path, attr: True
+
+        def write_value(path, value):
+            raise OSError("boom")
+
+        service._write_zotac_hid_value = write_value
+
+        self.assertFalse(await service.test_rumble())
+
+    async def test_set_rumble_enabled_does_not_probe_inputplumber(self):
+        calls = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._inputplumber_available = True
+        service.probe_inputplumber_available = lambda: calls.append("inputplumber") or True
+        service.probe_rumble_available = lambda: True
+
+        async def start():
+            calls.append("start")
+            return True
+
+        async def stop():
+            calls.append("stop")
+            return True
+
+        service.start_rumble_fixer = start
+        service.stop_rumble_fixer = stop
+
+        await service.set_rumble_enabled(False)
+        await service.set_rumble_enabled(True)
+
+        self.assertEqual(calls, ["stop", "start"])
+
+    async def test_plugin_settings_persist_startup_apply_enabled(self):
+        self.assertTrue(main.plugin_settings.get_startup_apply_enabled())
+        self.assertFalse(main.plugin_settings.set_startup_apply_enabled(False))
+        self.assertFalse(main.plugin_settings.get_startup_apply_enabled())
+
+    async def test_plugin_settings_persist_rumble_values(self):
+        self.assertTrue(main.plugin_settings.get_rumble_enabled())
+        self.assertEqual(main.plugin_settings.get_rumble_intensity(), 75)
+
+        self.assertFalse(main.plugin_settings.set_rumble_enabled(False))
+        self.assertEqual(main.plugin_settings.set_rumble_intensity(55), 55)
+
+        self.assertFalse(main.plugin_settings.get_rumble_enabled())
+        self.assertEqual(main.plugin_settings.get_rumble_intensity(), 55)
 
     async def test_set_startup_apply_enabled_sets_plain_disabled_status_before_apply(self):
         service = main.DeckyZoneService(
@@ -305,6 +682,8 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             sleep=_async_noop,
             read_text=lambda path: "",
         )
+        service._inputplumber_available = True
+        service._rumble_available = False
 
         result = service.set_startup_apply_enabled(False)
 
@@ -313,6 +692,9 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             {
                 "startupApplyEnabled": False,
                 "inputplumberAvailable": True,
+                "rumbleEnabled": True,
+                "rumbleIntensity": 75,
+                "rumbleAvailable": False,
             },
         )
         self.assertEqual(
@@ -322,6 +704,22 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "message": "Startup mode apply is disabled.",
             },
         )
+
+    async def test_set_startup_apply_enabled_keeps_cached_inputplumber_availability(self):
+        def runner(*args, **kwargs):
+            raise RuntimeError("dbus unavailable")
+
+        service = main.DeckyZoneService(
+            command_runner=runner,
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._inputplumber_available = True
+        service._rumble_available = False
+
+        result = service.set_startup_apply_enabled(False)
+
+        self.assertTrue(result["inputplumberAvailable"])
 
     async def test_set_startup_apply_enabled_sets_reboot_message_after_successful_apply(self):
         service = main.DeckyZoneService(
@@ -347,6 +745,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
 class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         _FAKE_SETTINGS_STORE.clear()
+        main.plugin_settings.setting_file.settings = {}
 
     async def test_main_schedules_startup_apply_when_enabled(self):
         calls = []
@@ -356,10 +755,19 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 return {
                     "startupApplyEnabled": True,
                     "inputplumberAvailable": True,
+                    "rumbleEnabled": True,
+                    "rumbleIntensity": 75,
+                    "rumbleAvailable": True,
                 }
 
             async def apply_startup_mode(self):
                 calls.append("applied")
+
+            async def start_rumble_fixer(self):
+                calls.append("rumble-started")
+
+            async def stop_rumble_fixer(self):
+                calls.append("rumble-stopped")
 
         plugin = main.Plugin()
         plugin.service = _FakeService()
@@ -368,7 +776,7 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
 
         self.assertIsNotNone(plugin.startup_task)
-        self.assertEqual(calls, ["applied"])
+        self.assertEqual(calls, ["rumble-started", "applied"])
         await plugin._unload()
 
     async def test_main_skips_startup_apply_when_disabled(self):
@@ -379,6 +787,9 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 return {
                     "startupApplyEnabled": False,
                     "inputplumberAvailable": True,
+                    "rumbleEnabled": True,
+                    "rumbleIntensity": 75,
+                    "rumbleAvailable": True,
                 }
 
             def set_startup_apply_enabled(self, enabled):
@@ -386,10 +797,19 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 return {
                     "startupApplyEnabled": enabled,
                     "inputplumberAvailable": True,
+                    "rumbleEnabled": True,
+                    "rumbleIntensity": 75,
+                    "rumbleAvailable": True,
                 }
 
             async def apply_startup_mode(self):
                 calls.append("applied")
+
+            async def start_rumble_fixer(self):
+                calls.append("rumble-started")
+
+            async def stop_rumble_fixer(self):
+                calls.append("rumble-stopped")
 
         plugin = main.Plugin()
         plugin.service = _FakeService()
@@ -398,22 +818,70 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
 
         self.assertIsNone(plugin.startup_task)
-        self.assertEqual(calls, [("set", False)])
+        self.assertEqual(calls, ["rumble-started", ("set", False)])
+
+    async def test_plugin_test_rumble_delegates_to_service(self):
+        calls = []
+
+        class _FakeService:
+            async def test_rumble(self):
+                calls.append("tested")
+                return True
+
+        plugin = main.Plugin()
+        plugin.service = _FakeService()
+
+        result = await plugin.test_rumble()
+
+        self.assertTrue(result)
+        self.assertEqual(calls, ["tested"])
 
 
 class FrontendSourceTests(unittest.TestCase):
-    def test_index_uses_controller_fix_copy_without_state_panel(self):
+    def test_index_uses_controller_panel_with_rumble_controls(self):
         source = Path(__file__).resolve().parents[1].joinpath("src", "index.tsx").read_text()
 
-        self.assertIn('title="Controller Fix"', source)
-        self.assertIn('label="Apply controller fix on startup"', source)
+        self.assertIn('title="Controller"', source)
+        self.assertIn("ButtonItem", source)
+        self.assertIn('label="Controller Fix"', source)
+        self.assertIn('label="Vibration Intensity"', source)
+        self.assertIn('label="Vibration intensity"', source)
+        self.assertIn('testRumble = callable<[], boolean>("test_rumble")', source)
+        self.assertIn('"Test Rumble"', source)
+        self.assertIn("rumbleMessageKind", source)
+        self.assertIn('color: rumbleMessageKind === "error" ? "red" : undefined', source)
         self.assertIn(
             'Reapplies the Zotac controller target after boot.',
             source,
         )
+        self.assertIn(
+            "Keeps reapplying your preferred vibration intensity",
+            source,
+        )
+        self.assertIn("Rumble device is not available.", source)
+        self.assertIn("settings.rumbleEnabled &&", source)
+        self.assertIn("getRumbleDescription(settings)", source)
+        self.assertNotIn("getRumbleDescription(settings, rumbleMessage)", source)
+        self.assertIn("rumbleIntensityDraft", source)
+        self.assertIn("rumbleIntensitySaveTimeout", source)
+        self.assertIn("value={rumbleIntensityDraft}", source)
+        self.assertIn("setTimeout(() => {", source)
+        self.assertIn("disabled={savingStartup}", source)
+        self.assertIn("disabled={savingRumble}", source)
+        self.assertIn("!settings.rumbleEnabled", source)
+        self.assertIn("!settings.rumbleAvailable", source)
+        self.assertNotIn("savingIntensity", source)
+        self.assertNotIn("value={settings.rumbleIntensity}", source)
+        self.assertNotIn("disabled={savingStartup || !settings.inputplumberAvailable}", source)
+        self.assertNotIn("disabled={savingRumble || !settings.rumbleAvailable}", source)
         self.assertNotIn("<strong>State:</strong>", source)
         self.assertNotIn('title="Startup Mode"', source)
-        self.assertNotIn('label="Apply controller mode on startup"', source)
+        self.assertNotIn('title="Controller Fix"', source)
+        self.assertNotIn('label="Apply controller fix on startup"', source)
+        self.assertNotIn('label="Enable startup controller fix"', source)
+        self.assertNotIn('label="Enable vibration intensity fix"', source)
+        self.assertNotIn("Reapply Startup Mode", source)
+        self.assertNotIn("Rumble helper or joystick device is not available.", source)
 
 
 if __name__ == "__main__":
