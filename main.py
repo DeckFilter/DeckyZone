@@ -3,12 +3,17 @@ import os
 import subprocess
 
 import decky
+import plugin_settings
 
 
 SUPPORTED_BOARDS = {"G0A1W", "G1A1W"}
 INPUTPLUMBER_DBUS_PATH = "/org/shadowblip/InputPlumber/CompositeDevice0"
 DBUS_READY_MESSAGE = "Waiting to apply startup mode."
 UNSUPPORTED_MESSAGE = "Unsupported device: startup mode only applies on Zotac Zone."
+DISABLED_MESSAGE = "Startup mode apply is disabled."
+DISABLED_REBOOT_MESSAGE = (
+    "Startup mode apply is disabled. Reboot to restore unmodified InputPlumber startup behavior."
+)
 READY_TIMEOUT_SECONDS = 5.0
 READY_POLL_INTERVAL_SECONDS = 0.5
 STARTUP_MODE = "xbox-elite"
@@ -21,16 +26,26 @@ class DeckyZoneService:
         sleep=asyncio.sleep,
         logger=decky.logger,
         read_text=None,
+        settings_store=plugin_settings,
     ):
         self.command_runner = command_runner
         self.sleep = sleep
         self.logger = logger
         self.read_text = read_text or self._read_text
+        self.settings_store = settings_store
         self._status = {"state": "idle", "message": DBUS_READY_MESSAGE}
         self._privilege_context_logged = False
+        self._inputplumber_available = False
+        self._startup_applied_this_session = False
 
     def get_status(self):
         return dict(self._status)
+
+    def get_settings(self):
+        return {
+            "startupApplyEnabled": self.settings_store.get_startup_apply_enabled(),
+            "inputplumberAvailable": self.probe_inputplumber_available(),
+        }
 
     def _set_status(self, state, message):
         self._status = {"state": state, "message": message}
@@ -69,6 +84,49 @@ class DeckyZoneService:
             return False
         return vendor == "ZOTAC" and board in SUPPORTED_BOARDS
 
+    def _probe_inputplumber_profile_name(self):
+        result = self.command_runner(
+            self._busctl_args(
+                "get-property",
+                "org.shadowblip.InputPlumber",
+                INPUTPLUMBER_DBUS_PATH,
+                "org.shadowblip.Input.CompositeDevice",
+                "ProfileName",
+            ),
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.get_env(),
+        )
+        self._inputplumber_available = result.returncode == 0
+        return self._inputplumber_available
+
+    def probe_inputplumber_available(self):
+        try:
+            return self._probe_inputplumber_profile_name()
+        except Exception:
+            self._inputplumber_available = False
+            return False
+
+    def set_startup_apply_enabled(self, enabled):
+        enabled = self.settings_store.set_startup_apply_enabled(enabled)
+
+        if enabled:
+            if not self.is_supported_device():
+                self._set_status("unsupported", UNSUPPORTED_MESSAGE)
+            else:
+                self._set_status("idle", DBUS_READY_MESSAGE)
+        elif self._startup_applied_this_session:
+            self._set_status("disabled", DISABLED_REBOOT_MESSAGE)
+        else:
+            self._set_status("disabled", DISABLED_MESSAGE)
+
+        return {
+            "startupApplyEnabled": enabled,
+            "inputplumberAvailable": self.probe_inputplumber_available(),
+        }
+
     async def wait_for_inputplumber_dbus(
         self,
         timeout=READY_TIMEOUT_SECONDS,
@@ -79,28 +137,15 @@ class DeckyZoneService:
 
         while elapsed < timeout:
             try:
-                result = self.command_runner(
-                    self._busctl_args(
-                        "get-property",
-                        "org.shadowblip.InputPlumber",
-                        INPUTPLUMBER_DBUS_PATH,
-                        "org.shadowblip.Input.CompositeDevice",
-                        "ProfileName",
-                    ),
-                    check=True,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=self.get_env(),
-                )
-                if result.returncode == 0:
+                if self._probe_inputplumber_profile_name():
                     return True
             except Exception:
-                pass
+                self._inputplumber_available = False
 
             await self.sleep(interval)
             elapsed += interval
 
+        self._inputplumber_available = False
         self._set_status(
             "failed",
             f"InputPlumber D-Bus was not ready within {timeout:.1f}s.",
@@ -145,26 +190,42 @@ class DeckyZoneService:
             self._set_status("failed", f"Failed to apply startup mode: {error}")
             return self.get_status()
 
+        self._startup_applied_this_session = True
         self._set_status("applied", f"Startup mode re-applied: {STARTUP_MODE}.")
         return self.get_status()
 
 
 class Plugin:
-    def __init__(self):
+    def __init__(self, service=None):
         self.loop = None
         self.startup_task = None
-        self.service = DeckyZoneService()
+        self.service = service or DeckyZoneService()
 
     async def get_status(self):
         return self.service.get_status()
 
-    async def reapply_startup_mode(self):
-        return await self.service.apply_startup_mode()
+    async def get_settings(self):
+        return self.service.get_settings()
+
+    async def set_startup_apply_enabled(self, enabled):
+        if not enabled and self.startup_task and not self.startup_task.done():
+            self.startup_task.cancel()
+            try:
+                await self.startup_task
+            except asyncio.CancelledError:
+                pass
+            self.startup_task = None
+
+        return self.service.set_startup_apply_enabled(enabled)
 
     async def _main(self):
         self.loop = asyncio.get_event_loop()
         decky.logger.info("DeckyZone starting")
-        self.startup_task = self.loop.create_task(self.service.apply_startup_mode())
+        settings = self.service.get_settings()
+        if settings["startupApplyEnabled"]:
+            self.startup_task = self.loop.create_task(self.service.apply_startup_mode())
+        else:
+            self.service.set_startup_apply_enabled(False)
 
     async def _unload(self):
         decky.logger.info("DeckyZone stopping")
