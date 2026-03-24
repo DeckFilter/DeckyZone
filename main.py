@@ -20,7 +20,9 @@ DISABLED_REBOOT_MESSAGE = (
 )
 READY_TIMEOUT_SECONDS = 5.0
 READY_POLL_INTERVAL_SECONDS = 0.5
+DEFAULT_APP_ID = "0"
 STARTUP_MODE = "deck-uhid"
+MISSING_GLYPH_FIX_TARGET = "xbox-elite"
 DEFAULT_RUMBLE_REAPPLY_INTERVAL_SECONDS = 2
 RUMBLE_PREVIEW_DURATION_MS = 180
 EV_FF = 0x15
@@ -106,6 +108,7 @@ class DeckyZoneService:
         self._privilege_context_logged = False
         self._inputplumber_available = False
         self._startup_applied_this_session = False
+        self._temporary_target_mode = None
         self._rumble_available = False
         self._rumble_device_path = None
         self._rumble_task = None
@@ -134,6 +137,7 @@ class DeckyZoneService:
             "rumbleEnabled": self.settings_store.get_rumble_enabled(),
             "rumbleIntensity": self.settings_store.get_rumble_intensity(),
             "rumbleAvailable": self._rumble_available,
+            "missingGlyphFixGames": self.settings_store.get_missing_glyph_fix_games(),
         }
 
     def get_env(self):
@@ -143,6 +147,9 @@ class DeckyZoneService:
 
     def _busctl_args(self, *args):
         return ["busctl", *args]
+
+    def _systemctl_args(self, *args):
+        return ["systemctl", *args]
 
     def _get_ids(self):
         return os.getuid(), os.geteuid()
@@ -189,6 +196,87 @@ class DeckyZoneService:
             return self._probe_inputplumber_profile_name()
         except Exception:
             self._inputplumber_available = False
+            return False
+
+    def _apply_target_devices(self, target_mode):
+        self.command_runner(
+            self._busctl_args(
+                "call",
+                "org.shadowblip.InputPlumber",
+                INPUTPLUMBER_DBUS_PATH,
+                "org.shadowblip.Input.CompositeDevice",
+                "SetTargetDevices",
+                "as",
+                "3",
+                target_mode,
+                "keyboard",
+                "mouse",
+            ),
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.get_env(),
+        )
+        self._inputplumber_available = True
+
+    def _restart_inputplumber(self):
+        self.command_runner(
+            self._systemctl_args("restart", "inputplumber"),
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.get_env(),
+        )
+        self._inputplumber_available = True
+
+    def set_missing_glyph_fix_enabled(self, app_id, enabled):
+        if app_id in (None, "", DEFAULT_APP_ID):
+            return self._current_settings()
+
+        self.settings_store.set_missing_glyph_fix_enabled(app_id, enabled)
+        return self._current_settings()
+
+    async def sync_missing_glyph_fix_target(self, app_id):
+        app_id = str(app_id or DEFAULT_APP_ID)
+        glyph_fix_enabled = (
+            app_id != DEFAULT_APP_ID
+            and self.settings_store.get_missing_glyph_fix_enabled(app_id)
+        )
+
+        if glyph_fix_enabled:
+            if self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET:
+                return True
+
+            try:
+                self._apply_target_devices(MISSING_GLYPH_FIX_TARGET)
+                self._temporary_target_mode = MISSING_GLYPH_FIX_TARGET
+                return True
+            except subprocess.CalledProcessError as error:
+                detail = (error.stderr or error.stdout or str(error)).strip()
+                self.logger.warning(f"Failed to apply missing glyph fix: {detail}")
+                return False
+            except Exception as error:
+                self.logger.warning(f"Failed to apply missing glyph fix: {error}")
+                return False
+
+        if self._temporary_target_mode != MISSING_GLYPH_FIX_TARGET:
+            return False
+
+        try:
+            if self.settings_store.get_startup_apply_enabled():
+                self._apply_target_devices(STARTUP_MODE)
+            else:
+                self._restart_inputplumber()
+            self._temporary_target_mode = None
+            return True
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or error.stdout or str(error)).strip()
+            self.logger.warning(f"Failed to restore inherited controller target: {detail}")
+            return False
+        except Exception as error:
+            self.logger.warning(f"Failed to restore inherited controller target: {error}")
             return False
 
     def _is_linux_platform(self):
@@ -567,25 +655,7 @@ class DeckyZoneService:
         self.log_privilege_context()
 
         try:
-            self.command_runner(
-                self._busctl_args(
-                    "call",
-                    "org.shadowblip.InputPlumber",
-                    INPUTPLUMBER_DBUS_PATH,
-                    "org.shadowblip.Input.CompositeDevice",
-                    "SetTargetDevices",
-                    "as",
-                    "3",
-                    STARTUP_MODE,
-                    "keyboard",
-                    "mouse",
-                ),
-                check=True,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=self.get_env(),
-            )
+            self._apply_target_devices(STARTUP_MODE)
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
             self._set_status("failed", f"Failed to apply startup mode: {detail}")
@@ -627,6 +697,12 @@ class Plugin:
 
     async def set_rumble_intensity(self, intensity):
         return await self.service.set_rumble_intensity(intensity)
+
+    async def set_missing_glyph_fix_enabled(self, app_id, enabled):
+        return self.service.set_missing_glyph_fix_enabled(app_id, enabled)
+
+    async def sync_missing_glyph_fix_target(self, app_id):
+        return await self.service.sync_missing_glyph_fix_target(app_id)
 
     async def test_rumble(self):
         return await self.service.test_rumble()

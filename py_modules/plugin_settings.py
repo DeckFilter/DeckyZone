@@ -6,6 +6,7 @@ from settings import SettingsManager
 STARTUP_APPLY_KEY = "startupApplyEnabled"
 RUMBLE_ENABLED_KEY = "rumbleEnabled"
 RUMBLE_INTENSITY_KEY = "rumbleIntensity"
+MISSING_GLYPH_FIX_GAMES_KEY = "missingGlyphFixGames"
 DEFAULT_STARTUP_APPLY_ENABLED = True
 DEFAULT_RUMBLE_ENABLED = True
 DEFAULT_RUMBLE_INTENSITY = 75
@@ -55,3 +56,36 @@ def get_rumble_intensity():
 def set_rumble_intensity(intensity):
     _write_setting(RUMBLE_INTENSITY_KEY, int(intensity))
     return get_rumble_intensity()
+
+
+def get_missing_glyph_fix_games():
+    settings = _read_settings()
+    games = settings.get(MISSING_GLYPH_FIX_GAMES_KEY, {})
+    if not isinstance(games, dict):
+        return {}
+
+    return {
+        str(app_id): True
+        for app_id, enabled in games.items()
+        if enabled
+    }
+
+
+def get_missing_glyph_fix_enabled(app_id):
+    if app_id is None:
+        return False
+
+    return bool(get_missing_glyph_fix_games().get(str(app_id), False))
+
+
+def set_missing_glyph_fix_enabled(app_id, enabled):
+    games = get_missing_glyph_fix_games()
+    app_id = str(app_id)
+
+    if enabled:
+        games[app_id] = True
+    else:
+        games.pop(app_id, None)
+
+    _write_setting(MISSING_GLYPH_FIX_GAMES_KEY, games)
+    return get_missing_glyph_fix_games()

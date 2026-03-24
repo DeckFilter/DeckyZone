@@ -2,12 +2,14 @@ import {
   ButtonItem,
   PanelSection,
   PanelSectionRow,
+  Router,
   SliderField,
   staticClasses,
   ToggleField,
 } from "@decky/ui";
 import { callable, definePlugin } from "@decky/api";
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { FaSlidersH } from "react-icons/fa";
 
 type PluginStatus = {
@@ -21,6 +23,16 @@ type PluginSettings = {
   rumbleEnabled: boolean;
   rumbleIntensity: number;
   rumbleAvailable: boolean;
+  missingGlyphFixGames: Record<string, boolean>;
+};
+
+type ActiveGame = {
+  appid: string;
+  display_name: string;
+  icon_data?: string;
+  icon_data_format?: string;
+  icon_hash?: string;
+  local_cache_version?: number | string;
 };
 
 const getStatus = callable<[], PluginStatus>("get_status");
@@ -28,18 +40,25 @@ const getSettings = callable<[], PluginSettings>("get_settings");
 const setStartupApplyEnabled = callable<[boolean], PluginSettings>(
   "set_startup_apply_enabled"
 );
+const setMissingGlyphFixEnabled = callable<[string, boolean], PluginSettings>(
+  "set_missing_glyph_fix_enabled"
+);
+const syncMissingGlyphFixTarget = callable<[string], boolean>("sync_missing_glyph_fix_target");
 const setRumbleEnabled = callable<[boolean], PluginSettings>("set_rumble_enabled");
 const setRumbleIntensity = callable<[number], PluginSettings>(
   "set_rumble_intensity"
 );
 const testRumble = callable<[], boolean>("test_rumble");
 
+const DEFAULT_APP_ID = "0";
+const ACTIVE_GAME_POLL_INTERVAL_MS = 1000;
 const DEFAULT_STARTUP_DESCRIPTION =
   "Restores the Zotac Steam Deck-style controller targets after boot.";
 const DEFAULT_RUMBLE_DESCRIPTION =
   "Keeps reapplying your preferred vibration intensity to prevent other services from overriding it.";
-const RUMBLE_UNAVAILABLE_MESSAGE =
-  "Rumble device is not available.";
+const RUMBLE_UNAVAILABLE_MESSAGE = "Rumble device is not available.";
+const NO_ACTIVE_GAME_GLYPH_FIX_DESCRIPTION =
+  "Launch a game to enable this glyph fix.";
 
 function getStartupDescription(status: PluginStatus, settings: PluginSettings) {
   if (!settings.inputplumberAvailable) {
@@ -57,14 +76,97 @@ function getStartupDescription(status: PluginStatus, settings: PluginSettings) {
   return DEFAULT_STARTUP_DESCRIPTION;
 }
 
-function getRumbleDescription(
-  settings: PluginSettings
-) {
+function getRumbleDescription(settings: PluginSettings) {
   if (!settings.rumbleAvailable) {
     return RUMBLE_UNAVAILABLE_MESSAGE;
   }
 
   return DEFAULT_RUMBLE_DESCRIPTION;
+}
+
+function getActiveGame(): ActiveGame | null {
+  const activeApp = Router.MainRunningApp as Partial<ActiveGame> | undefined;
+  const appId = `${activeApp?.appid ?? DEFAULT_APP_ID}`;
+
+  if (appId === DEFAULT_APP_ID) {
+    return null;
+  }
+
+  return {
+    appid: appId,
+    display_name: activeApp?.display_name || "Current Game",
+    icon_data: activeApp?.icon_data,
+    icon_data_format: activeApp?.icon_data_format,
+    icon_hash: activeApp?.icon_hash,
+    local_cache_version: activeApp?.local_cache_version,
+  };
+}
+
+function areGamesEqual(left: ActiveGame | null, right: ActiveGame | null) {
+  if (!left && !right) {
+    return true;
+  }
+
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.appid === right.appid &&
+    left.display_name === right.display_name &&
+    left.icon_data === right.icon_data &&
+    left.icon_data_format === right.icon_data_format &&
+    left.icon_hash === right.icon_hash &&
+    left.local_cache_version === right.local_cache_version
+  );
+}
+
+function getActiveGameIconSource(activeGame: ActiveGame | null) {
+  if (!activeGame) {
+    return null;
+  }
+
+  if (activeGame.icon_data && activeGame.icon_data_format) {
+    return `data:image/${activeGame.icon_data_format};base64,${activeGame.icon_data}`;
+  }
+
+  if (activeGame.icon_hash) {
+    return `/assets/${activeGame.appid}/${activeGame.icon_hash}.jpg?c=${
+      activeGame.local_cache_version ?? ""
+    }`;
+  }
+
+  return null;
+}
+
+function getMissingGlyphFixDescription(activeGame: ActiveGame | null): ReactNode {
+  if (!activeGame) {
+    return NO_ACTIVE_GAME_GLYPH_FIX_DESCRIPTION;
+  }
+
+  const iconSource = getActiveGameIconSource(activeGame);
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+      {iconSource ? (
+        <img
+          src={iconSource}
+          width={20}
+          height={20}
+          style={{ borderRadius: "4px", flexShrink: 0 }}
+        />
+      ) : null}
+      <div
+        style={{
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {`Enable the glyph fix for ${activeGame.display_name}.`}
+      </div>
+    </div>
+  );
 }
 
 function Content() {
@@ -78,9 +180,12 @@ function Content() {
     rumbleEnabled: true,
     rumbleIntensity: 75,
     rumbleAvailable: true,
+    missingGlyphFixGames: {},
   });
+  const [activeGame, setActiveGame] = useState<ActiveGame | null>(null);
   const [rumbleIntensityDraft, setRumbleIntensityDraft] = useState(75);
   const [savingStartup, setSavingStartup] = useState(false);
+  const [savingMissingGlyphFix, setSavingMissingGlyphFix] = useState(false);
   const [savingRumble, setSavingRumble] = useState(false);
   const [testingRumble, setTestingRumble] = useState(false);
   const [rumbleMessage, setRumbleMessage] = useState<string | null>(null);
@@ -91,11 +196,24 @@ function Content() {
   const rumbleIntensitySaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
+  const lastActiveGameId = useRef<string | null>(null);
+
+  const isMissingGlyphFixEnabled = activeGame
+    ? Boolean(settings.missingGlyphFixGames[activeGame.appid])
+    : false;
 
   const clearPendingRumbleIntensitySave = () => {
     if (rumbleIntensitySaveTimeout.current !== null) {
       clearTimeout(rumbleIntensitySaveTimeout.current);
       rumbleIntensitySaveTimeout.current = null;
+    }
+  };
+
+  const syncActiveGameTarget = async (appId: string) => {
+    try {
+      await syncMissingGlyphFixTarget(appId);
+    } catch (error) {
+      console.error("Failed to sync missing glyph fix target", error);
     }
   };
 
@@ -132,6 +250,7 @@ function Content() {
       const nextSettings = await setStartupApplyEnabled(enabled);
       setSettings(nextSettings);
       await loadStatus();
+      await syncActiveGameTarget(activeGame?.appid ?? DEFAULT_APP_ID);
     } catch (error) {
       setStatus({
         state: "failed",
@@ -139,6 +258,26 @@ function Content() {
       });
     } finally {
       setSavingStartup(false);
+    }
+  };
+
+  const handleMissingGlyphFixToggleChange = async (enabled: boolean) => {
+    if (!activeGame) {
+      return;
+    }
+
+    setSavingMissingGlyphFix(true);
+    try {
+      const nextSettings = await setMissingGlyphFixEnabled(activeGame.appid, enabled);
+      setSettings(nextSettings);
+      await syncActiveGameTarget(activeGame.appid);
+    } catch (error) {
+      setStatus({
+        state: "failed",
+        message: `Failed to update missing glyph fix: ${String(error)}`,
+      });
+    } finally {
+      setSavingMissingGlyphFix(false);
     }
   };
 
@@ -215,8 +354,28 @@ function Content() {
 
   useEffect(() => {
     void loadAll();
+
+    const updateActiveGame = () => {
+      const nextActiveGame = getActiveGame();
+      setActiveGame((currentGame) =>
+        areGamesEqual(currentGame, nextActiveGame) ? currentGame : nextActiveGame
+      );
+
+      const nextActiveGameId = nextActiveGame?.appid ?? DEFAULT_APP_ID;
+      if (lastActiveGameId.current !== nextActiveGameId) {
+        lastActiveGameId.current = nextActiveGameId;
+        void syncActiveGameTarget(nextActiveGameId);
+      }
+    };
+
+    updateActiveGame();
+    const activeGamePollInterval = window.setInterval(() => {
+      updateActiveGame();
+    }, ACTIVE_GAME_POLL_INTERVAL_MS);
+
     return () => {
       clearPendingRumbleIntensitySave();
+      clearInterval(activeGamePollInterval);
     };
   }, []);
 
@@ -229,6 +388,15 @@ function Content() {
           onChange={(value: boolean) => void handleStartupToggleChange(value)}
           disabled={savingStartup}
           description={getStartupDescription(status, settings)}
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ToggleField
+          label="Missing Glyph Fix"
+          checked={isMissingGlyphFixEnabled}
+          onChange={(value: boolean) => void handleMissingGlyphFixToggleChange(value)}
+          disabled={!activeGame || savingMissingGlyphFix}
+          description={getMissingGlyphFixDescription(activeGame)}
         />
       </PanelSectionRow>
       <PanelSectionRow>

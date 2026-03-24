@@ -285,6 +285,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": True,
+                "missingGlyphFixGames": {},
             },
         )
 
@@ -307,6 +308,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": False,
+                "missingGlyphFixGames": {},
             },
         )
 
@@ -340,6 +342,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "rumbleEnabled": False,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": True,
+                "missingGlyphFixGames": {},
             },
         )
 
@@ -352,9 +355,110 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": True,
+                "missingGlyphFixGames": {},
             },
         )
         self.assertEqual(calls, ["stop", "start"])
+
+    async def test_sync_missing_glyph_fix_target_applies_xbox_elite_for_enabled_game(self):
+        commands = []
+        service = main.DeckyZoneService(
+            command_runner=lambda command, **kwargs: commands.append(command)
+            or _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        main.plugin_settings.set_missing_glyph_fix_enabled("123", True)
+
+        result = await service.sync_missing_glyph_fix_target("123")
+
+        self.assertTrue(result)
+        self.assertEqual(
+            commands,
+            [
+                [
+                    "busctl",
+                    "call",
+                    "org.shadowblip.InputPlumber",
+                    main.INPUTPLUMBER_DBUS_PATH,
+                    "org.shadowblip.Input.CompositeDevice",
+                    "SetTargetDevices",
+                    "as",
+                    "3",
+                    "xbox-elite",
+                    "keyboard",
+                    "mouse",
+                ]
+            ],
+        )
+
+    async def test_sync_missing_glyph_fix_target_restores_startup_mode_when_game_ends(self):
+        commands = []
+        service = main.DeckyZoneService(
+            command_runner=lambda command, **kwargs: commands.append(command)
+            or _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        main.plugin_settings.set_missing_glyph_fix_enabled("123", True)
+
+        await service.sync_missing_glyph_fix_target("123")
+        result = await service.sync_missing_glyph_fix_target("0")
+
+        self.assertTrue(result)
+        self.assertEqual(
+            commands[-1],
+            [
+                "busctl",
+                "call",
+                "org.shadowblip.InputPlumber",
+                main.INPUTPLUMBER_DBUS_PATH,
+                "org.shadowblip.Input.CompositeDevice",
+                "SetTargetDevices",
+                "as",
+                "3",
+                "deck-uhid",
+                "keyboard",
+                "mouse",
+            ],
+        )
+
+    async def test_sync_missing_glyph_fix_target_restarts_inputplumber_when_startup_apply_disabled(self):
+        commands = []
+        service = main.DeckyZoneService(
+            command_runner=lambda command, **kwargs: commands.append(command)
+            or _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        main.plugin_settings.set_startup_apply_enabled(False)
+        main.plugin_settings.set_missing_glyph_fix_enabled("123", True)
+
+        await service.sync_missing_glyph_fix_target("123")
+        result = await service.sync_missing_glyph_fix_target("0")
+
+        self.assertTrue(result)
+        self.assertEqual(commands[-1], ["systemctl", "restart", "inputplumber"])
+
+    async def test_sync_missing_glyph_fix_target_does_not_overwrite_startup_status(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda command, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._set_status("disabled", "Startup mode apply is disabled.")
+        main.plugin_settings.set_missing_glyph_fix_enabled("123", True)
+
+        await service.sync_missing_glyph_fix_target("123")
+        await service.sync_missing_glyph_fix_target("0")
+
+        self.assertEqual(
+            service.get_status(),
+            {
+                "state": "disabled",
+                "message": "Startup mode apply is disabled.",
+            },
+        )
 
     async def test_set_rumble_intensity_clamps_values(self):
         service = main.DeckyZoneService(
@@ -682,6 +786,21 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(main.plugin_settings.get_rumble_enabled())
         self.assertEqual(main.plugin_settings.get_rumble_intensity(), 55)
 
+    async def test_plugin_settings_persist_missing_glyph_fix_games_without_false_entries(self):
+        self.assertEqual(main.plugin_settings.get_missing_glyph_fix_games(), {})
+
+        self.assertEqual(
+            main.plugin_settings.set_missing_glyph_fix_enabled("123", True),
+            {"123": True},
+        )
+        self.assertTrue(main.plugin_settings.get_missing_glyph_fix_enabled("123"))
+
+        self.assertEqual(
+            main.plugin_settings.set_missing_glyph_fix_enabled("123", False),
+            {},
+        )
+        self.assertFalse(main.plugin_settings.get_missing_glyph_fix_enabled("123"))
+
     async def test_set_startup_apply_enabled_sets_plain_disabled_status_before_apply(self):
         service = main.DeckyZoneService(
             command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
@@ -701,6 +820,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": False,
+                "missingGlyphFixGames": {},
             },
         )
         self.assertEqual(
@@ -764,6 +884,7 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     "rumbleEnabled": True,
                     "rumbleIntensity": 75,
                     "rumbleAvailable": True,
+                    "missingGlyphFixGames": {},
                 }
 
             async def apply_startup_mode(self):
@@ -796,6 +917,7 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     "rumbleEnabled": True,
                     "rumbleIntensity": 75,
                     "rumbleAvailable": True,
+                    "missingGlyphFixGames": {},
                 }
 
             def set_startup_apply_enabled(self, enabled):
@@ -806,6 +928,7 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     "rumbleEnabled": True,
                     "rumbleIntensity": 75,
                     "rumbleAvailable": True,
+                    "missingGlyphFixGames": {},
                 }
 
             async def apply_startup_mode(self):
@@ -849,11 +972,33 @@ class FrontendSourceTests(unittest.TestCase):
 
         self.assertIn('title="Controller"', source)
         self.assertIn("ButtonItem", source)
+        self.assertIn("Router.MainRunningApp", source)
         self.assertIn('label="Startup Target"', source)
+        self.assertIn('label="Missing Glyph Fix"', source)
         self.assertIn('label="Vibration Intensity"', source)
         self.assertIn('label="Vibration intensity"', source)
+        self.assertIn(
+            'setMissingGlyphFixEnabled = callable<[string, boolean], PluginSettings>(',
+            source,
+        )
+        self.assertIn(
+            '"set_missing_glyph_fix_enabled"',
+            source,
+        )
+        self.assertIn(
+            'syncMissingGlyphFixTarget = callable<[string], boolean>("sync_missing_glyph_fix_target")',
+            source,
+        )
         self.assertIn('testRumble = callable<[], boolean>("test_rumble")', source)
         self.assertIn('"Test Rumble"', source)
+        self.assertIn("missingGlyphFixGames", source)
+        self.assertIn("icon_data_format", source)
+        self.assertIn("icon_hash", source)
+        self.assertIn("local_cache_version", source)
+        self.assertIn("Launch a game to enable this glyph fix.", source)
+        self.assertIn("getActiveGameIconSource", source)
+        self.assertIn("setInterval(() => {", source)
+        self.assertIn('clearInterval(activeGamePollInterval)', source)
         self.assertIn("rumbleMessageKind", source)
         self.assertIn('color: rumbleMessageKind === "error" ? "red" : undefined', source)
         self.assertIn(
@@ -887,6 +1032,7 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertNotIn('label="Apply controller fix on startup"', source)
         self.assertNotIn('label="Enable startup controller fix"', source)
         self.assertNotIn('label="Enable vibration intensity fix"', source)
+        self.assertNotIn('label="Per-Game Overrides"', source)
         self.assertNotIn("Reapply Startup Mode", source)
         self.assertNotIn("Rumble helper or joystick device is not available.", source)
 
