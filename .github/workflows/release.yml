@@ -1,0 +1,88 @@
+name: Release
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build_plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build plugin
+        run: pnpm run build
+
+      - name: Package release artifacts
+        run: |
+          rm -f DeckyZone.tar.gz DeckyZone.zip
+          stage_dir="$(mktemp -d)"
+          mkdir -p "${stage_dir}/DeckyZone"
+
+          cp -R dist py_modules "${stage_dir}/DeckyZone/"
+          cp main.py package.json plugin.json README.md LICENSE "${stage_dir}/DeckyZone/"
+
+          tar -czf DeckyZone.tar.gz -C "${stage_dir}" DeckyZone
+          (
+            cd "${stage_dir}"
+            zip -rq "${OLDPWD}/DeckyZone.zip" DeckyZone
+          )
+
+      - name: Show packaged files
+        run: |
+          echo "=== tar.gz contents ==="
+          tar -tzf DeckyZone.tar.gz
+          echo ""
+          echo "=== zip contents ==="
+          unzip -l DeckyZone.zip
+
+      - name: Publish Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeckyZone-release
+          path: |
+            DeckyZone.tar.gz
+            DeckyZone.zip
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: build_plugin
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: DeckyZone-release
+          path: /tmp/DeckyZone-release
+
+      - name: Publish to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            /tmp/DeckyZone-release/DeckyZone.tar.gz
+            /tmp/DeckyZone-release/DeckyZone.zip
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'pre') || contains(github.ref_name, '.rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
