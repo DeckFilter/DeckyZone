@@ -1,6 +1,7 @@
 import asyncio
 import ctypes
 import ctypes.util
+import errno
 import os
 import subprocess
 import sys
@@ -26,10 +27,16 @@ STARTUP_MODE = "deck-uhid"
 MISSING_GLYPH_FIX_TARGET = "xbox-elite"
 ZOTAC_MOUSE_DEVICE_NAME = "ZOTAC Gaming Zone Mouse"
 DEFAULT_RUMBLE_REAPPLY_INTERVAL_SECONDS = 2
+DEFAULT_BRIGHTNESS_DIAL_RETRY_INTERVAL_SECONDS = 1
+DEFAULT_BRIGHTNESS_DIAL_POLL_INTERVAL_SECONDS = 0.1
 RUMBLE_PREVIEW_DURATION_MS = 180
+INPUTPLUMBER_KEYBOARD_DEVICE_NAME = "InputPlumber Keyboard"
+EV_KEY = 0x01
 EV_FF = 0x15
 FF_RUMBLE = 0x50
 FF_GAIN = 0x60
+KEY_BRIGHTNESSDOWN = 224
+KEY_BRIGHTNESSUP = 225
 
 
 class _TimeVal(ctypes.Structure):
@@ -114,6 +121,9 @@ class DeckyZoneService:
         self._temporary_target_mode = None
         self._zotac_mouse_device_fd = None
         self._zotac_mouse_device_path = None
+        self._brightness_dial_device_path = None
+        self._brightness_dial_task = None
+        self._brightness_dial_running = False
         self._rumble_available = False
         self._rumble_device_path = None
         self._rumble_task = None
@@ -138,6 +148,7 @@ class DeckyZoneService:
     def _current_settings(self):
         return {
             "startupApplyEnabled": self.settings_store.get_startup_apply_enabled(),
+            "brightnessDialFixEnabled": self.settings_store.get_brightness_dial_fix_enabled(),
             "inputplumberAvailable": self._inputplumber_available,
             "rumbleEnabled": self.settings_store.get_rumble_enabled(),
             "rumbleIntensity": self.settings_store.get_rumble_intensity(),
@@ -254,8 +265,51 @@ class DeckyZoneService:
     def _open_event_device(self, device_path):
         return os.open(device_path, os.O_RDONLY)
 
+    def _open_nonblocking_event_device(self, device_path):
+        return os.open(device_path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+
     def _close_event_device(self, fd):
         os.close(fd)
+
+    def _resolve_inputplumber_keyboard_device_path(self):
+        for candidate_path in self._get_zotac_mouse_candidate_paths():
+            try:
+                device_name = self._read_input_device_name(candidate_path)
+            except Exception:
+                continue
+
+            if device_name == INPUTPLUMBER_KEYBOARD_DEVICE_NAME:
+                return candidate_path
+
+        return None
+
+    def _read_input_event_from_fd(self, fd):
+        raw_event = os.read(fd, ctypes.sizeof(_InputEvent))
+        if len(raw_event) != ctypes.sizeof(_InputEvent):
+            raise OSError("Incomplete input event read.")
+        return _InputEvent.from_buffer_copy(raw_event)
+
+    def _get_brightness_dial_direction(self, event):
+        if event.type != EV_KEY or event.value != 1:
+            return None
+
+        if event.code == KEY_BRIGHTNESSUP:
+            return "up"
+        if event.code == KEY_BRIGHTNESSDOWN:
+            return "down"
+        return None
+
+    async def _handle_brightness_dial_input_event(self, event):
+        direction = self._get_brightness_dial_direction(event)
+        if not direction:
+            return False
+
+        try:
+            await decky.emit("brightness_dial_input", direction)
+            return True
+        except Exception as error:
+            self.logger.warning(f"Failed to emit brightness dial input: {error}")
+            return False
 
     def _set_event_device_grab(self, fd, grabbed):
         self._ioctl(fd, EVIOCGRAB, ctypes.c_int(1 if grabbed else 0))
@@ -568,6 +622,80 @@ class DeckyZoneService:
 
         return self._current_settings()
 
+    async def _brightness_dial_loop(self):
+        while self._brightness_dial_running:
+            device_path = self._resolve_inputplumber_keyboard_device_path()
+            self._brightness_dial_device_path = device_path
+
+            if not device_path:
+                await self.sleep(DEFAULT_BRIGHTNESS_DIAL_RETRY_INTERVAL_SECONDS)
+                continue
+
+            fd = None
+            try:
+                fd = self._open_nonblocking_event_device(device_path)
+                while self._brightness_dial_running:
+                    try:
+                        event = self._read_input_event_from_fd(fd)
+                    except BlockingIOError:
+                        await self.sleep(DEFAULT_BRIGHTNESS_DIAL_POLL_INTERVAL_SECONDS)
+                        continue
+                    except OSError as error:
+                        if error.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                            await self.sleep(DEFAULT_BRIGHTNESS_DIAL_POLL_INTERVAL_SECONDS)
+                            continue
+                        raise
+
+                    await self._handle_brightness_dial_input_event(event)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                self.logger.warning(
+                    f"Brightness dial listener lost InputPlumber Keyboard device: {error}"
+                )
+            finally:
+                if fd is not None:
+                    try:
+                        self._close_event_device(fd)
+                    except Exception:
+                        pass
+                self._brightness_dial_device_path = None
+
+            if self._brightness_dial_running:
+                await self.sleep(DEFAULT_BRIGHTNESS_DIAL_RETRY_INTERVAL_SECONDS)
+
+    async def start_brightness_dial_fixer(self):
+        if self._brightness_dial_task and not self._brightness_dial_task.done():
+            return True
+
+        self._brightness_dial_running = True
+        self._brightness_dial_task = asyncio.create_task(self._brightness_dial_loop())
+        return True
+
+    async def stop_brightness_dial_fixer(self):
+        self._brightness_dial_running = False
+
+        if self._brightness_dial_task and not self._brightness_dial_task.done():
+            self._brightness_dial_task.cancel()
+            try:
+                await self._brightness_dial_task
+            except asyncio.CancelledError:
+                pass
+
+        self._brightness_dial_task = None
+        self._brightness_dial_device_path = None
+        return True
+
+    async def set_brightness_dial_fix_enabled(self, enabled):
+        self.settings_store.set_brightness_dial_fix_enabled(enabled)
+
+        if enabled:
+            await self.start_brightness_dial_fixer()
+        else:
+            await self.stop_brightness_dial_fixer()
+
+        return self._current_settings()
+
     # TODO: Keep using the current FF_GAIN path for now. Zotac may also support
     # a native HID/sysfs method via save_config, vibration_intensity, and
     # motor_test; a future change could evaluate that path or add a
@@ -772,6 +900,7 @@ class DeckyZoneService:
         return self.get_status()
 
     async def cleanup(self):
+        await self.stop_brightness_dial_fixer()
         self._release_zotac_mouse_device()
         await self.stop_rumble_fixer()
 
@@ -805,6 +934,9 @@ class Plugin:
     async def set_rumble_intensity(self, intensity):
         return await self.service.set_rumble_intensity(intensity)
 
+    async def set_brightness_dial_fix_enabled(self, enabled):
+        return await self.service.set_brightness_dial_fix_enabled(enabled)
+
     async def set_missing_glyph_fix_enabled(self, app_id, enabled):
         return self.service.set_missing_glyph_fix_enabled(app_id, enabled)
 
@@ -821,6 +953,8 @@ class Plugin:
         self.loop = asyncio.get_event_loop()
         decky.logger.info("DeckyZone starting")
         settings = self.service.get_settings()
+        if settings["brightnessDialFixEnabled"]:
+            await self.service.start_brightness_dial_fixer()
         if settings["rumbleEnabled"]:
             await self.service.start_rumble_fixer()
         if settings["startupApplyEnabled"]:
@@ -839,6 +973,8 @@ class Plugin:
         if hasattr(self.service, "cleanup"):
             await self.service.cleanup()
         else:
+            if hasattr(self.service, "stop_brightness_dial_fixer"):
+                await self.service.stop_brightness_dial_fixer()
             await self.service.stop_rumble_fixer()
 
     async def _uninstall(self):
@@ -846,6 +982,8 @@ class Plugin:
         if hasattr(self.service, "cleanup"):
             await self.service.cleanup()
         else:
+            if hasattr(self.service, "stop_brightness_dial_fixer"):
+                await self.service.stop_brightness_dial_fixer()
             await self.service.stop_rumble_fixer()
 
     async def _migration(self):

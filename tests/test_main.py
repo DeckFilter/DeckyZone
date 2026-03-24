@@ -281,6 +281,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             service.get_settings(),
             {
                 "startupApplyEnabled": True,
+                "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": True,
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
@@ -304,6 +305,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             service.get_settings(),
             {
                 "startupApplyEnabled": True,
+                "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": False,
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
@@ -338,6 +340,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             result,
             {
                 "startupApplyEnabled": True,
+                "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": True,
                 "rumbleEnabled": False,
                 "rumbleIntensity": 75,
@@ -351,6 +354,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             result,
             {
                 "startupApplyEnabled": True,
+                "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": True,
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
@@ -519,6 +523,25 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
         ]
 
         self.assertEqual(service._resolve_zotac_mouse_device_path(), "/dev/input/event15")
+
+    async def test_resolve_inputplumber_keyboard_device_path_prefers_named_event_device(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: {
+                "/sys/class/input/event12/device/name": "Generic Keyboard",
+                "/sys/class/input/event15/device/name": "InputPlumber Keyboard",
+            }[path],
+        )
+        service._get_zotac_mouse_candidate_paths = lambda: [
+            "/dev/input/event12",
+            "/dev/input/event15",
+        ]
+
+        self.assertEqual(
+            service._resolve_inputplumber_keyboard_device_path(),
+            "/dev/input/event15",
+        )
 
     async def test_set_rumble_intensity_clamps_values(self):
         service = main.DeckyZoneService(
@@ -846,6 +869,134 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(main.plugin_settings.get_rumble_enabled())
         self.assertEqual(main.plugin_settings.get_rumble_intensity(), 55)
 
+    async def test_plugin_settings_persist_brightness_dial_fix_enabled(self):
+        self.assertTrue(main.plugin_settings.get_brightness_dial_fix_enabled())
+        self.assertFalse(main.plugin_settings.set_brightness_dial_fix_enabled(False))
+        self.assertFalse(main.plugin_settings.get_brightness_dial_fix_enabled())
+
+    async def test_set_brightness_dial_fix_enabled_updates_settings(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._inputplumber_available = True
+        service._rumble_available = False
+
+        result = await service.set_brightness_dial_fix_enabled(False)
+
+        self.assertEqual(
+            result,
+            {
+                "startupApplyEnabled": True,
+                "brightnessDialFixEnabled": False,
+                "inputplumberAvailable": True,
+                "rumbleEnabled": True,
+                "rumbleIntensity": 75,
+                "rumbleAvailable": False,
+                "missingGlyphFixGames": {},
+            },
+        )
+
+    async def test_set_brightness_dial_fix_enabled_starts_and_stops_listener(self):
+        calls = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        service._inputplumber_available = True
+        service._rumble_available = False
+
+        async def start():
+            calls.append("start")
+            return True
+
+        async def stop():
+            calls.append("stop")
+            return True
+
+        service.start_brightness_dial_fixer = start
+        service.stop_brightness_dial_fixer = stop
+
+        await service.set_brightness_dial_fix_enabled(False)
+        await service.set_brightness_dial_fix_enabled(True)
+
+        self.assertEqual(calls, ["stop", "start"])
+
+    async def test_handle_brightness_dial_input_event_emits_up(self):
+        emitted = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        original_emit = main.decky.emit
+
+        async def fake_emit(event_name, payload):
+            emitted.append((event_name, payload))
+
+        main.decky.emit = fake_emit
+        try:
+            result = await service._handle_brightness_dial_input_event(
+                service._build_input_event(main.EV_KEY, main.KEY_BRIGHTNESSUP, 1)
+            )
+        finally:
+            main.decky.emit = original_emit
+
+        self.assertTrue(result)
+        self.assertEqual(emitted, [("brightness_dial_input", "up")])
+
+    async def test_handle_brightness_dial_input_event_emits_down(self):
+        emitted = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        original_emit = main.decky.emit
+
+        async def fake_emit(event_name, payload):
+            emitted.append((event_name, payload))
+
+        main.decky.emit = fake_emit
+        try:
+            result = await service._handle_brightness_dial_input_event(
+                service._build_input_event(main.EV_KEY, main.KEY_BRIGHTNESSDOWN, 1)
+            )
+        finally:
+            main.decky.emit = original_emit
+
+        self.assertTrue(result)
+        self.assertEqual(emitted, [("brightness_dial_input", "down")])
+
+    async def test_handle_brightness_dial_input_event_ignores_release_and_repeat(self):
+        emitted = []
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+        original_emit = main.decky.emit
+
+        async def fake_emit(event_name, payload):
+            emitted.append((event_name, payload))
+
+        main.decky.emit = fake_emit
+        try:
+            release_result = await service._handle_brightness_dial_input_event(
+                service._build_input_event(main.EV_KEY, main.KEY_BRIGHTNESSUP, 0)
+            )
+            repeat_result = await service._handle_brightness_dial_input_event(
+                service._build_input_event(main.EV_KEY, main.KEY_BRIGHTNESSDOWN, 2)
+            )
+        finally:
+            main.decky.emit = original_emit
+
+        self.assertFalse(release_result)
+        self.assertFalse(repeat_result)
+        self.assertEqual(emitted, [])
+
     async def test_plugin_settings_persist_missing_glyph_fix_games_without_false_entries(self):
         self.assertEqual(main.plugin_settings.get_missing_glyph_fix_games(), {})
 
@@ -902,6 +1053,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             result,
             {
                 "startupApplyEnabled": False,
+                "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": True,
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
@@ -966,6 +1118,7 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
             def get_settings(self):
                 return {
                     "startupApplyEnabled": True,
+                    "brightnessDialFixEnabled": True,
                     "inputplumberAvailable": True,
                     "rumbleEnabled": True,
                     "rumbleIntensity": 75,
@@ -982,6 +1135,12 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
             async def stop_rumble_fixer(self):
                 calls.append("rumble-stopped")
 
+            async def start_brightness_dial_fixer(self):
+                calls.append("brightness-started")
+
+            async def stop_brightness_dial_fixer(self):
+                calls.append("brightness-stopped")
+
         plugin = main.Plugin()
         plugin.service = _FakeService()
 
@@ -989,7 +1148,7 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
 
         self.assertIsNotNone(plugin.startup_task)
-        self.assertEqual(calls, ["rumble-started", "applied"])
+        self.assertEqual(calls, ["brightness-started", "rumble-started", "applied"])
         await plugin._unload()
 
     async def test_main_skips_startup_apply_when_disabled(self):
@@ -999,6 +1158,7 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
             def get_settings(self):
                 return {
                     "startupApplyEnabled": False,
+                    "brightnessDialFixEnabled": True,
                     "inputplumberAvailable": True,
                     "rumbleEnabled": True,
                     "rumbleIntensity": 75,
@@ -1010,6 +1170,7 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 calls.append(("set", enabled))
                 return {
                     "startupApplyEnabled": enabled,
+                    "brightnessDialFixEnabled": True,
                     "inputplumberAvailable": True,
                     "rumbleEnabled": True,
                     "rumbleIntensity": 75,
@@ -1026,6 +1187,12 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
             async def stop_rumble_fixer(self):
                 calls.append("rumble-stopped")
 
+            async def start_brightness_dial_fixer(self):
+                calls.append("brightness-started")
+
+            async def stop_brightness_dial_fixer(self):
+                calls.append("brightness-stopped")
+
         plugin = main.Plugin()
         plugin.service = _FakeService()
 
@@ -1033,6 +1200,48 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
 
         self.assertIsNone(plugin.startup_task)
+        self.assertEqual(calls, ["brightness-started", "rumble-started", ("set", False)])
+
+    async def test_main_skips_brightness_dial_listener_when_disabled(self):
+        calls = []
+
+        class _FakeService:
+            def get_settings(self):
+                return {
+                    "startupApplyEnabled": False,
+                    "brightnessDialFixEnabled": False,
+                    "inputplumberAvailable": True,
+                    "rumbleEnabled": True,
+                    "rumbleIntensity": 75,
+                    "rumbleAvailable": True,
+                    "missingGlyphFixGames": {},
+                }
+
+            def set_startup_apply_enabled(self, enabled):
+                calls.append(("set", enabled))
+                return self.get_settings()
+
+            async def apply_startup_mode(self):
+                calls.append("applied")
+
+            async def start_rumble_fixer(self):
+                calls.append("rumble-started")
+
+            async def stop_rumble_fixer(self):
+                calls.append("rumble-stopped")
+
+            async def start_brightness_dial_fixer(self):
+                calls.append("brightness-started")
+
+            async def stop_brightness_dial_fixer(self):
+                calls.append("brightness-stopped")
+
+        plugin = main.Plugin()
+        plugin.service = _FakeService()
+
+        await plugin._main()
+        await asyncio.sleep(0)
+
         self.assertEqual(calls, ["rumble-started", ("set", False)])
 
     async def test_plugin_test_rumble_delegates_to_service(self):
@@ -1061,15 +1270,18 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertIn("Router.MainRunningApp", source)
         self.assertIn('Startup Target', source)
         self.assertIn('Missing Glyph Fix', source)
+        self.assertIn('Brightness Dial Fix', source)
         self.assertIn('Vibration Intensity', source)
-        self.assertIn('Vibration intensity', source)
+        self.assertIn('brightnessDialFixEnabled', source)
+        self.assertIn('setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>', source)
+        self.assertIn('set_brightness_dial_fix_enabled', source)
         self.assertIn('setMissingGlyphFixEnabled = callable<[string, boolean], PluginSettings>', source)
         self.assertIn('set_missing_glyph_fix_enabled', source)
         self.assertIn('syncMissingGlyphFixTarget = callable<[string], boolean>', source)
         self.assertIn('set_missing_glyph_fix_trackpads_disabled', source)
         self.assertIn('setMissingGlyphFixTrackpadsDisabled = callable<[string, boolean], PluginSettings>', source)
         self.assertIn('testRumble = callable<[], boolean>', source)
-        self.assertIn('Test Rumble', source)
+        self.assertIn('handleTestRumble', source)
         self.assertIn("missingGlyphFixGames", source)
         self.assertIn("disableTrackpads", source)
         self.assertIn("icon_data_format", source)
@@ -1079,12 +1291,18 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertIn("getActiveGameIconSource", source)
         self.assertIn("setInterval(() => {", source)
         self.assertIn('clearInterval(activeGamePollInterval)', source)
+        self.assertIn('SteamClient.System.Display.RegisterForBrightnessChanges', source)
+        self.assertIn('SteamClient.System.Display.SetBrightness(', source)
+        self.assertIn('addEventListener', source)
+        self.assertIn('removeEventListener', source)
+        self.assertIn("'brightness_dial_input'", source)
         self.assertIn('Disable Trackpads', source)
         self.assertIn("isTrackpadsDisabled", source)
         self.assertIn("isMissingGlyphFixEnabled &&", source)
         self.assertIn("rumbleMessageKind", source)
         self.assertIn("rumbleMessageKind === 'error' ? 'red' : undefined", source)
         self.assertIn("Restores the Zotac controller after boot.", source)
+        self.assertIn("Turns the right dial brightness keys into SteamOS brightness changes.", source)
         self.assertIn("Change and test vibration intensity.", source)
         self.assertIn("Rumble device is not available.", source)
         self.assertIn("settings.rumbleEnabled &&", source)
@@ -1102,6 +1320,7 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertNotIn("value={settings.rumbleIntensity}", source)
         self.assertNotIn("disabled={savingStartup || !settings.inputplumberAvailable}", source)
         self.assertNotIn("disabled={savingRumble || !settings.rumbleAvailable}", source)
+        self.assertNotIn("window.addEventListener(", source)
         self.assertNotIn("<strong>State:</strong>", source)
         self.assertNotIn('title="Startup Mode"', source)
         self.assertNotIn('title="Controller Fix"', source)

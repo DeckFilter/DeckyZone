@@ -1,5 +1,5 @@
 import { ButtonItem, PanelSection, PanelSectionRow, Router, SliderField, staticClasses, ToggleField } from '@decky/ui'
-import { callable, definePlugin } from '@decky/api'
+import { addEventListener, callable, definePlugin, removeEventListener } from '@decky/api'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { FaSlidersH } from 'react-icons/fa'
@@ -15,6 +15,7 @@ type MissingGlyphFixGameSettings = {
 
 type PluginSettings = {
   startupApplyEnabled: boolean
+  brightnessDialFixEnabled: boolean
   inputplumberAvailable: boolean
   rumbleEnabled: boolean
   rumbleIntensity: number
@@ -31,9 +32,12 @@ type ActiveGame = {
   local_cache_version?: number | string
 }
 
+type BrightnessDialDirection = 'up' | 'down'
+
 const getStatus = callable<[], PluginStatus>('get_status')
 const getSettings = callable<[], PluginSettings>('get_settings')
 const setStartupApplyEnabled = callable<[boolean], PluginSettings>('set_startup_apply_enabled')
+const setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>('set_brightness_dial_fix_enabled')
 const setMissingGlyphFixEnabled = callable<[string, boolean], PluginSettings>('set_missing_glyph_fix_enabled')
 const setMissingGlyphFixTrackpadsDisabled = callable<[string, boolean], PluginSettings>('set_missing_glyph_fix_trackpads_disabled')
 const syncMissingGlyphFixTarget = callable<[string], boolean>('sync_missing_glyph_fix_target')
@@ -44,10 +48,17 @@ const testRumble = callable<[], boolean>('test_rumble')
 const DEFAULT_APP_ID = '0'
 const ACTIVE_GAME_POLL_INTERVAL_MS = 1000
 const DEFAULT_STARTUP_DESCRIPTION = 'Restores the Zotac controller after boot.'
+const DEFAULT_BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Enable the right dial brightness.'
 const DEFAULT_RUMBLE_DESCRIPTION = 'Change and test vibration intensity.'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available.'
 const NO_ACTIVE_GAME_GLYPH_FIX_DESCRIPTION = 'Launch a game to enable this glyph fix.'
 const DISABLE_TRACKPADS_DESCRIPTION = 'Turns off the trackpads while this glyph fix is active for the current game.'
+const BRIGHTNESS_DIAL_FIX_STEP = 5
+
+let brightnessDialFixEnabled = false
+let currentBrightnessPercent = 50
+let brightnessChangeRegistration: { unregister?: () => void } | null = null
+let brightnessDialFixEventListener: ((direction: BrightnessDialDirection) => void) | null = null
 
 function getStartupDescription(status: PluginStatus, settings: PluginSettings) {
   if (!settings.inputplumberAvailable) {
@@ -67,6 +78,72 @@ function getRumbleDescription(settings: PluginSettings) {
   }
 
   return DEFAULT_RUMBLE_DESCRIPTION
+}
+
+function getBrightnessDialFixDescription(settings: PluginSettings) {
+  if (!settings.inputplumberAvailable) {
+    return 'InputPlumber is not available.'
+  }
+
+  return DEFAULT_BRIGHTNESS_DIAL_FIX_DESCRIPTION
+}
+
+function clampBrightnessPercent(value: number) {
+  return Math.min(100, Math.max(0, value))
+}
+
+function setBrightnessDialFixRuntimeEnabled(enabled: boolean) {
+  brightnessDialFixEnabled = enabled
+}
+
+function applyBrightnessDialDelta(delta: number) {
+  if (!delta) {
+    return
+  }
+
+  if (!window.SteamClient?.System?.Display?.SetBrightness) {
+    return
+  }
+
+  const nextBrightness = clampBrightnessPercent(currentBrightnessPercent + delta)
+  if (nextBrightness === currentBrightnessPercent) {
+    return
+  }
+
+  currentBrightnessPercent = nextBrightness
+  // Prefer SteamClient for the SteamOS path. If this ever proves insufficient,
+  // a future fallback could use /sys/class/backlight or a gamescope-level path.
+  window.SteamClient.System.Display.SetBrightness(nextBrightness / 100)
+}
+
+function registerBrightnessDialFixListeners() {
+  if (!brightnessChangeRegistration && window.SteamClient?.System?.Display?.RegisterForBrightnessChanges) {
+    brightnessChangeRegistration = window.SteamClient.System.Display.RegisterForBrightnessChanges((data: { flBrightness: number }) => {
+      currentBrightnessPercent = clampBrightnessPercent(data.flBrightness * 100)
+    })
+  }
+
+  if (!brightnessDialFixEventListener) {
+    brightnessDialFixEventListener = (direction: BrightnessDialDirection) => {
+      if (!brightnessDialFixEnabled) {
+        return
+      }
+
+      applyBrightnessDialDelta(direction === 'up' ? BRIGHTNESS_DIAL_FIX_STEP : -BRIGHTNESS_DIAL_FIX_STEP)
+    }
+
+    addEventListener<[BrightnessDialDirection]>('brightness_dial_input', brightnessDialFixEventListener)
+  }
+}
+
+function cleanupBrightnessDialFixListeners() {
+  if (brightnessDialFixEventListener) {
+    removeEventListener<[BrightnessDialDirection]>('brightness_dial_input', brightnessDialFixEventListener)
+    brightnessDialFixEventListener = null
+  }
+
+  brightnessChangeRegistration?.unregister?.()
+  brightnessChangeRegistration = null
 }
 
 function getActiveGame(): ActiveGame | null {
@@ -152,6 +229,7 @@ function Content() {
   })
   const [settings, setSettings] = useState<PluginSettings>({
     startupApplyEnabled: true,
+    brightnessDialFixEnabled: true,
     inputplumberAvailable: true,
     rumbleEnabled: true,
     rumbleIntensity: 75,
@@ -161,6 +239,7 @@ function Content() {
   const [activeGame, setActiveGame] = useState<ActiveGame | null>(null)
   const [rumbleIntensityDraft, setRumbleIntensityDraft] = useState(75)
   const [savingStartup, setSavingStartup] = useState(false)
+  const [savingBrightnessDialFix, setSavingBrightnessDialFix] = useState(false)
   const [savingMissingGlyphFix, setSavingMissingGlyphFix] = useState(false)
   const [savingMissingGlyphFixTrackpads, setSavingMissingGlyphFixTrackpads] = useState(false)
   const [savingRumble, setSavingRumble] = useState(false)
@@ -200,6 +279,7 @@ function Content() {
       const [nextStatus, nextSettings] = await Promise.all([getStatus(), getSettings()])
       setStatus(nextStatus)
       setSettings(nextSettings)
+      setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
       setRumbleIntensityDraft(nextSettings.rumbleIntensity)
       rumbleIntensityLatestValue.current = nextSettings.rumbleIntensity
       if (!nextSettings.rumbleAvailable) {
@@ -228,6 +308,22 @@ function Content() {
       })
     } finally {
       setSavingStartup(false)
+    }
+  }
+
+  const handleBrightnessDialFixToggleChange = async (enabled: boolean) => {
+    setSavingBrightnessDialFix(true)
+    try {
+      const nextSettings = await setBrightnessDialFixEnabled(enabled)
+      setSettings(nextSettings)
+      setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
+    } catch (error) {
+      setStatus({
+        state: 'failed',
+        message: `Failed to update brightness dial fix: ${String(error)}`,
+      })
+    } finally {
+      setSavingBrightnessDialFix(false)
     }
   }
 
@@ -398,6 +494,15 @@ function Content() {
       )}
       <PanelSectionRow>
         <ToggleField
+          label="Brightness Dial Fix"
+          checked={settings.brightnessDialFixEnabled}
+          onChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
+          disabled={savingBrightnessDialFix}
+          description={getBrightnessDialFixDescription(settings)}
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ToggleField
           label="Vibration Intensity"
           checked={settings.rumbleEnabled}
           onChange={(value: boolean) => void handleRumbleToggleChange(value)}
@@ -424,7 +529,7 @@ function Content() {
               onClick={() => void handleTestRumble()}
               disabled={savingRumble || testingRumble || !settings.rumbleEnabled || !settings.rumbleAvailable}
             >
-              {testingRumble ? 'Testing Rumble...' : `Test ${rumbleIntensityDraft} Rumble`}
+              {testingRumble ? 'Testing Rumble...' : `Test  ${rumbleIntensityDraft}% Rumble`}
             </ButtonItem>
           </PanelSectionRow>
           {rumbleMessage && rumbleMessageKind === 'error' && (
@@ -445,12 +550,22 @@ function Content() {
 }
 
 export default definePlugin(() => {
+  registerBrightnessDialFixListeners()
+  void getSettings()
+    .then((settings) => {
+      setBrightnessDialFixRuntimeEnabled(settings.brightnessDialFixEnabled)
+    })
+    .catch((error) => {
+      console.error('Failed to load brightness dial fix settings', error)
+    })
+
   return {
     name: 'DeckyZone',
     titleView: <div className={staticClasses.Title}>DeckyZone</div>,
     content: <Content />,
     icon: <FaSlidersH />,
     onDismount() {
+      cleanupBrightnessDialFixListeners()
       console.log('DeckyZone unloaded')
     },
   }

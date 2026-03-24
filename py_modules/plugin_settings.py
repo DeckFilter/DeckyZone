@@ -4,11 +4,13 @@ from settings import SettingsManager
 
 
 STARTUP_APPLY_KEY = "startupApplyEnabled"
+BRIGHTNESS_DIAL_FIX_ENABLED_KEY = "brightnessDialFixEnabled"
 RUMBLE_ENABLED_KEY = "rumbleEnabled"
 RUMBLE_INTENSITY_KEY = "rumbleIntensity"
 MISSING_GLYPH_FIX_GAMES_KEY = "missingGlyphFixGames"
 DISABLE_TRACKPADS_KEY = "disableTrackpads"
 DEFAULT_STARTUP_APPLY_ENABLED = True
+DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED = True
 DEFAULT_RUMBLE_ENABLED = True
 DEFAULT_RUMBLE_INTENSITY = 75
 
@@ -49,6 +51,18 @@ def get_startup_apply_enabled():
 def set_startup_apply_enabled(enabled):
     _write_setting(STARTUP_APPLY_KEY, bool(enabled))
     return get_startup_apply_enabled()
+
+
+def get_brightness_dial_fix_enabled():
+    settings = _read_settings()
+    return bool(
+        settings.get(BRIGHTNESS_DIAL_FIX_ENABLED_KEY, DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED)
+    )
+
+
+def set_brightness_dial_fix_enabled(enabled):
+    _write_setting(BRIGHTNESS_DIAL_FIX_ENABLED_KEY, bool(enabled))
+    return get_brightness_dial_fix_enabled()
 
 
 def get_rumble_enabled():
