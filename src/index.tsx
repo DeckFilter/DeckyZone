@@ -1,4 +1,4 @@
-import { ButtonItem, PanelSection, PanelSectionRow, Router, SliderField, staticClasses, ToggleField } from '@decky/ui'
+import { ButtonItem, PanelSection, PanelSectionRow, Router, SliderField, staticClasses, SteamSpinner, ToggleField } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener } from '@decky/api'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -33,6 +33,16 @@ type ActiveGame = {
 }
 
 type BrightnessDialDirection = 'up' | 'down'
+type ActiveGameChangedHandler = (newGame: ActiveGame | null, oldGame: ActiveGame | null) => void
+type UnregisterFn = () => void
+type BootstrapSnapshot = {
+  status: PluginStatus
+  settings: PluginSettings
+}
+type BootstrapState =
+  | { state: 'loading' }
+  | { state: 'ready'; snapshot: BootstrapSnapshot }
+  | { state: 'error'; message: string }
 
 const getStatus = callable<[], PluginStatus>('get_status')
 const getSettings = callable<[], PluginSettings>('get_settings')
@@ -59,6 +69,8 @@ let brightnessDialFixEnabled = false
 let currentBrightnessPercent = 50
 let brightnessChangeRegistration: { unregister?: () => void } | null = null
 let brightnessDialFixEventListener: ((direction: BrightnessDialDirection) => void) | null = null
+let bootstrapState: BootstrapState = { state: 'loading' }
+let bootstrapPromise: Promise<void> | null = null
 
 function getStartupDescription(status: PluginStatus, settings: PluginSettings) {
   if (!settings.inputplumberAvailable) {
@@ -146,6 +158,79 @@ function cleanupBrightnessDialFixListeners() {
   brightnessChangeRegistration = null
 }
 
+function getBootstrapState() {
+  return bootstrapState
+}
+
+function getBootstrapStatus() {
+  return bootstrapState.state === 'ready' ? bootstrapState.snapshot.status : null
+}
+
+function getBootstrapSettings() {
+  return bootstrapState.state === 'ready' ? bootstrapState.snapshot.settings : null
+}
+
+function setBootstrapSnapshot(nextStatus: PluginStatus, nextSettings: PluginSettings) {
+  setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
+  bootstrapState = {
+    state: 'ready',
+    snapshot: {
+      status: nextStatus,
+      settings: nextSettings,
+    },
+  }
+}
+
+function cacheBootstrapStatus(nextStatus: PluginStatus) {
+  if (bootstrapState.state !== 'ready') {
+    return
+  }
+
+  bootstrapState = {
+    state: 'ready',
+    snapshot: {
+      ...bootstrapState.snapshot,
+      status: nextStatus,
+    },
+  }
+}
+
+function cacheBootstrapSettings(nextSettings: PluginSettings) {
+  setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
+
+  if (bootstrapState.state !== 'ready') {
+    return
+  }
+
+  bootstrapState = {
+    state: 'ready',
+    snapshot: {
+      ...bootstrapState.snapshot,
+      settings: nextSettings,
+    },
+  }
+}
+
+function startBootstrap() {
+  if (bootstrapPromise !== null) {
+    return bootstrapPromise
+  }
+
+  bootstrapState = { state: 'loading' }
+  bootstrapPromise = Promise.all([getStatus(), getSettings()])
+    .then(([nextStatus, nextSettings]) => {
+      setBootstrapSnapshot(nextStatus, nextSettings)
+    })
+    .catch((error) => {
+      bootstrapState = {
+        state: 'error',
+        message: `Failed to load plugin state: ${String(error)}`,
+      }
+    })
+
+  return bootstrapPromise
+}
+
 function getActiveGame(): ActiveGame | null {
   const activeApp = Router.MainRunningApp as Partial<ActiveGame> | undefined
   const appId = `${activeApp?.appid ?? DEFAULT_APP_ID}`
@@ -161,6 +246,65 @@ function getActiveGame(): ActiveGame | null {
     icon_data_format: activeApp?.icon_data_format,
     icon_hash: activeApp?.icon_hash,
     local_cache_version: activeApp?.local_cache_version,
+  }
+}
+
+class RunningApps {
+  private static listeners: ActiveGameChangedHandler[] = []
+  private static intervalId: ReturnType<typeof setInterval> | null = null
+  private static lastActiveGame: ActiveGame | null = getActiveGame()
+  private static lastAppId = RunningApps.lastActiveGame?.appid ?? DEFAULT_APP_ID
+
+  private static pollActive() {
+    const nextActiveGame = getActiveGame()
+    const nextAppId = nextActiveGame?.appid ?? DEFAULT_APP_ID
+
+    if (this.lastAppId !== nextAppId) {
+      const previousActiveGame = this.lastActiveGame
+      this.lastActiveGame = nextActiveGame
+      this.lastAppId = nextAppId
+      this.listeners.forEach((listener) => listener(nextActiveGame, previousActiveGame))
+      return
+    }
+
+    this.lastActiveGame = nextActiveGame
+  }
+
+  static register() {
+    this.lastActiveGame = getActiveGame()
+    this.lastAppId = this.lastActiveGame?.appid ?? DEFAULT_APP_ID
+
+    if (this.intervalId === null) {
+      this.intervalId = setInterval(() => {
+        this.pollActive()
+      }, ACTIVE_GAME_POLL_INTERVAL_MS)
+    }
+  }
+
+  static unregister() {
+    if (this.intervalId !== null) {
+      clearInterval(this.intervalId)
+      this.intervalId = null
+    }
+
+    this.listeners = []
+    this.lastActiveGame = null
+    this.lastAppId = DEFAULT_APP_ID
+  }
+
+  static listenActiveChange(fn: ActiveGameChangedHandler): UnregisterFn {
+    this.listeners.push(fn)
+    return () => {
+      this.listeners = this.listeners.filter((listener) => listener !== fn)
+    }
+  }
+
+  static active() {
+    return this.lastActiveGame?.appid ?? DEFAULT_APP_ID
+  }
+
+  static activeAppInfo() {
+    return this.lastActiveGame
   }
 }
 
@@ -222,21 +366,19 @@ function getMissingGlyphFixDescription(activeGame: ActiveGame | null): ReactNode
   )
 }
 
+async function syncActiveGameTarget(appId: string) {
+  try {
+    await syncMissingGlyphFixTarget(appId)
+  } catch (error) {
+    console.error('Failed to sync missing glyph fix target', error)
+  }
+}
+
 function Content() {
-  const [status, setStatus] = useState<PluginStatus>({
-    state: 'loading',
-    message: 'Loading DeckyZone status.',
-  })
-  const [settings, setSettings] = useState<PluginSettings>({
-    startupApplyEnabled: true,
-    brightnessDialFixEnabled: true,
-    inputplumberAvailable: true,
-    rumbleEnabled: true,
-    rumbleIntensity: 75,
-    rumbleAvailable: true,
-    missingGlyphFixGames: {},
-  })
-  const [activeGame, setActiveGame] = useState<ActiveGame | null>(null)
+  const [bootstrap, setBootstrap] = useState<BootstrapState>(getBootstrapState())
+  const [status, setStatus] = useState<PluginStatus | null>(() => getBootstrapStatus())
+  const [settings, setSettings] = useState<PluginSettings | null>(() => getBootstrapSettings())
+  const [activeGame, setActiveGame] = useState<ActiveGame | null>(getActiveGame())
   const [rumbleIntensityDraft, setRumbleIntensityDraft] = useState(75)
   const [savingStartup, setSavingStartup] = useState(false)
   const [savingBrightnessDialFix, setSavingBrightnessDialFix] = useState(false)
@@ -248,11 +390,6 @@ function Content() {
   const [rumbleMessageKind, setRumbleMessageKind] = useState<'success' | 'error' | null>(null)
   const rumbleIntensityLatestValue = useRef(75)
   const rumbleIntensitySaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastActiveGameId = useRef<string | null>(null)
-
-  const activeGameGlyphFixSettings = activeGame ? settings.missingGlyphFixGames[activeGame.appid] : undefined
-  const isMissingGlyphFixEnabled = Boolean(activeGameGlyphFixSettings)
-  const isTrackpadsDisabled = activeGameGlyphFixSettings?.disableTrackpads ?? true
 
   const clearPendingRumbleIntensitySave = () => {
     if (rumbleIntensitySaveTimeout.current !== null) {
@@ -261,43 +398,19 @@ function Content() {
     }
   }
 
-  const syncActiveGameTarget = async (appId: string) => {
-    try {
-      await syncMissingGlyphFixTarget(appId)
-    } catch (error) {
-      console.error('Failed to sync missing glyph fix target', error)
-    }
-  }
-
   const loadStatus = async () => {
     const nextStatus = await getStatus()
+    cacheBootstrapStatus(nextStatus)
+    setBootstrap(getBootstrapState())
     setStatus(nextStatus)
-  }
-
-  const loadAll = async () => {
-    try {
-      const [nextStatus, nextSettings] = await Promise.all([getStatus(), getSettings()])
-      setStatus(nextStatus)
-      setSettings(nextSettings)
-      setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
-      setRumbleIntensityDraft(nextSettings.rumbleIntensity)
-      rumbleIntensityLatestValue.current = nextSettings.rumbleIntensity
-      if (!nextSettings.rumbleAvailable) {
-        setRumbleMessage(null)
-        setRumbleMessageKind(null)
-      }
-    } catch (error) {
-      setStatus({
-        state: 'failed',
-        message: `Failed to load plugin state: ${String(error)}`,
-      })
-    }
   }
 
   const handleStartupToggleChange = async (enabled: boolean) => {
     setSavingStartup(true)
     try {
       const nextSettings = await setStartupApplyEnabled(enabled)
+      cacheBootstrapSettings(nextSettings)
+      setBootstrap(getBootstrapState())
       setSettings(nextSettings)
       await loadStatus()
       await syncActiveGameTarget(activeGame?.appid ?? DEFAULT_APP_ID)
@@ -315,6 +428,8 @@ function Content() {
     setSavingBrightnessDialFix(true)
     try {
       const nextSettings = await setBrightnessDialFixEnabled(enabled)
+      cacheBootstrapSettings(nextSettings)
+      setBootstrap(getBootstrapState())
       setSettings(nextSettings)
       setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
     } catch (error) {
@@ -335,6 +450,8 @@ function Content() {
     setSavingMissingGlyphFix(true)
     try {
       const nextSettings = await setMissingGlyphFixEnabled(activeGame.appid, enabled)
+      cacheBootstrapSettings(nextSettings)
+      setBootstrap(getBootstrapState())
       setSettings(nextSettings)
       await syncActiveGameTarget(activeGame.appid)
     } catch (error) {
@@ -355,6 +472,8 @@ function Content() {
     setSavingRumble(true)
     try {
       const nextSettings = await setRumbleEnabled(enabled)
+      cacheBootstrapSettings(nextSettings)
+      setBootstrap(getBootstrapState())
       setSettings(nextSettings)
       setRumbleIntensityDraft(nextSettings.rumbleIntensity)
       rumbleIntensityLatestValue.current = nextSettings.rumbleIntensity
@@ -374,11 +493,16 @@ function Content() {
   const saveRumbleIntensity = async (value: number) => {
     try {
       const nextSettings = await setRumbleIntensity(value)
-      setSettings((currentSettings) => ({
-        ...currentSettings,
-        rumbleIntensity: nextSettings.rumbleIntensity,
-        rumbleAvailable: nextSettings.rumbleAvailable,
-      }))
+      const mergedSettings = settings
+        ? {
+            ...settings,
+            rumbleIntensity: nextSettings.rumbleIntensity,
+            rumbleAvailable: nextSettings.rumbleAvailable,
+          }
+        : nextSettings
+      cacheBootstrapSettings(mergedSettings)
+      setBootstrap(getBootstrapState())
+      setSettings(mergedSettings)
       setRumbleMessage(null)
       setRumbleMessageKind(null)
     } catch (error) {
@@ -424,6 +548,8 @@ function Content() {
     setSavingMissingGlyphFixTrackpads(true)
     try {
       const nextSettings = await setMissingGlyphFixTrackpadsDisabled(activeGame.appid, disabled)
+      cacheBootstrapSettings(nextSettings)
+      setBootstrap(getBootstrapState())
       setSettings(nextSettings)
       await syncActiveGameTarget(activeGame.appid)
     } catch (error) {
@@ -437,29 +563,76 @@ function Content() {
   }
 
   useEffect(() => {
-    void loadAll()
+    const syncBootstrapIntoLocalState = () => {
+      const nextBootstrap = getBootstrapState()
+      setBootstrap(nextBootstrap)
+      if (nextBootstrap.state !== 'ready') {
+        return
+      }
 
-    const updateActiveGame = () => {
-      const nextActiveGame = getActiveGame()
-      setActiveGame((currentGame) => (areGamesEqual(currentGame, nextActiveGame) ? currentGame : nextActiveGame))
-
-      const nextActiveGameId = nextActiveGame?.appid ?? DEFAULT_APP_ID
-      if (lastActiveGameId.current !== nextActiveGameId) {
-        lastActiveGameId.current = nextActiveGameId
-        void syncActiveGameTarget(nextActiveGameId)
+      setStatus(nextBootstrap.snapshot.status)
+      setSettings(nextBootstrap.snapshot.settings)
+      setRumbleIntensityDraft(nextBootstrap.snapshot.settings.rumbleIntensity)
+      rumbleIntensityLatestValue.current = nextBootstrap.snapshot.settings.rumbleIntensity
+      if (!nextBootstrap.snapshot.settings.rumbleAvailable) {
+        setRumbleMessage(null)
+        setRumbleMessageKind(null)
       }
     }
 
-    updateActiveGame()
-    const activeGamePollInterval = window.setInterval(() => {
-      updateActiveGame()
-    }, ACTIVE_GAME_POLL_INTERVAL_MS)
+    syncBootstrapIntoLocalState()
+    void startBootstrap().then(() => {
+      syncBootstrapIntoLocalState()
+    })
+    setActiveGame((currentGame) => {
+      const nextActiveGame = RunningApps.activeAppInfo() ?? getActiveGame()
+      return areGamesEqual(currentGame, nextActiveGame) ? currentGame : nextActiveGame
+    })
+    const unregisterActiveGameListener = RunningApps.listenActiveChange((nextActiveGame) => {
+      setActiveGame((currentGame) => (areGamesEqual(currentGame, nextActiveGame) ? currentGame : nextActiveGame))
+    })
 
     return () => {
       clearPendingRumbleIntensitySave()
-      clearInterval(activeGamePollInterval)
+      unregisterActiveGameListener()
     }
   }, [])
+
+  if (bootstrap.state === 'loading') {
+    return (
+      <PanelSection title="Controller">
+        <PanelSectionRow>
+          <SteamSpinner />
+        </PanelSectionRow>
+      </PanelSection>
+    )
+  }
+
+  if (bootstrap.state === 'error') {
+    return (
+      <PanelSection title="Controller">
+        <PanelSectionRow>
+          <div style={{ color: 'red' }}>
+            {bootstrap.message}
+          </div>
+        </PanelSectionRow>
+      </PanelSection>
+    )
+  }
+
+  if (!status || !settings) {
+    return (
+      <PanelSection title="Controller">
+        <PanelSectionRow>
+          <SteamSpinner />
+        </PanelSectionRow>
+      </PanelSection>
+    )
+  }
+
+  const activeGameGlyphFixSettings = activeGame ? settings.missingGlyphFixGames[activeGame.appid] : undefined
+  const isMissingGlyphFixEnabled = Boolean(activeGameGlyphFixSettings)
+  const isTrackpadsDisabled = activeGameGlyphFixSettings?.disableTrackpads ?? true
 
   return (
     <PanelSection title="Controller">
@@ -551,13 +724,12 @@ function Content() {
 
 export default definePlugin(() => {
   registerBrightnessDialFixListeners()
-  void getSettings()
-    .then((settings) => {
-      setBrightnessDialFixRuntimeEnabled(settings.brightnessDialFixEnabled)
-    })
-    .catch((error) => {
-      console.error('Failed to load brightness dial fix settings', error)
-    })
+  RunningApps.register()
+  void startBootstrap()
+  const unregisterActiveGameSync = RunningApps.listenActiveChange((nextActiveGame) => {
+    void syncActiveGameTarget(nextActiveGame?.appid ?? DEFAULT_APP_ID)
+  })
+  void syncActiveGameTarget(RunningApps.active())
 
   return {
     name: 'DeckyZone',
@@ -565,6 +737,8 @@ export default definePlugin(() => {
     content: <Content />,
     icon: <FaSlidersH />,
     onDismount() {
+      unregisterActiveGameSync()
+      RunningApps.unregister()
       cleanupBrightnessDialFixListeners()
       console.log('DeckyZone unloaded')
     },

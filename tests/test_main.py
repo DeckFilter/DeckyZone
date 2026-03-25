@@ -385,6 +385,14 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
             [
                 [
                     "busctl",
+                    "get-property",
+                    "org.shadowblip.InputPlumber",
+                    main.INPUTPLUMBER_DBUS_PATH,
+                    "org.shadowblip.Input.CompositeDevice",
+                    "ProfileName",
+                ],
+                [
+                    "busctl",
                     "call",
                     "org.shadowblip.InputPlumber",
                     main.INPUTPLUMBER_DBUS_PATH,
@@ -420,7 +428,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
         self.assertEqual(released, ["release"])
         self.assertEqual(
-            commands[0],
+            commands[1],
             [
                 "busctl",
                 "call",
@@ -500,6 +508,47 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
         await service.sync_missing_glyph_fix_target("123")
         await service.sync_missing_glyph_fix_target("0")
 
+        self.assertEqual(
+            service.get_status(),
+            {
+                "state": "disabled",
+                "message": "Startup mode apply is disabled.",
+            },
+        )
+
+    async def test_sync_missing_glyph_fix_target_waits_for_inputplumber_before_apply(self):
+        commands = []
+        inputplumber_ready = False
+        service = main.DeckyZoneService(
+            command_runner=None,
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+
+        def runner(command, **kwargs):
+            nonlocal inputplumber_ready
+            commands.append(command)
+            if command[:2] == ["busctl", "get-property"]:
+                inputplumber_ready = True
+                return _CompletedProcess(returncode=0)
+            if command[:2] == ["busctl", "call"] and not inputplumber_ready:
+                raise subprocess.CalledProcessError(
+                    1,
+                    command,
+                    stderr="InputPlumber D-Bus is not ready.",
+                )
+            return _CompletedProcess(returncode=0)
+
+        service.command_runner = runner
+        service._grab_zotac_mouse_device = lambda: True
+        service._set_status("disabled", "Startup mode apply is disabled.")
+        main.plugin_settings.set_missing_glyph_fix_enabled("123", True)
+
+        result = await service.sync_missing_glyph_fix_target("123")
+
+        self.assertTrue(result)
+        self.assertEqual(commands[0][:2], ["busctl", "get-property"])
+        self.assertEqual(commands[1][:2], ["busctl", "call"])
         self.assertEqual(
             service.get_status(),
             {
@@ -1260,6 +1309,56 @@ class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
         self.assertEqual(calls, ["tested"])
 
+    async def test_plugin_sync_missing_glyph_fix_target_waits_for_startup_task(self):
+        calls = []
+        startup_started = asyncio.Event()
+        startup_release = asyncio.Event()
+
+        class _FakeService:
+            def get_settings(self):
+                return {
+                    "startupApplyEnabled": True,
+                    "brightnessDialFixEnabled": False,
+                    "inputplumberAvailable": True,
+                    "rumbleEnabled": False,
+                    "rumbleIntensity": 75,
+                    "rumbleAvailable": True,
+                    "missingGlyphFixGames": {},
+                }
+
+            async def apply_startup_mode(self):
+                calls.append("applied-start")
+                startup_started.set()
+                await startup_release.wait()
+                calls.append("applied-end")
+
+            async def sync_missing_glyph_fix_target(self, app_id):
+                calls.append(("synced", app_id))
+                return True
+
+            async def cleanup(self):
+                calls.append("cleanup")
+
+        plugin = main.Plugin()
+        plugin.service = _FakeService()
+
+        await plugin._main()
+        await startup_started.wait()
+
+        sync_task = asyncio.create_task(plugin.sync_missing_glyph_fix_target("123"))
+        await asyncio.sleep(0)
+        self.assertEqual(calls, ["applied-start"])
+
+        startup_release.set()
+        result = await sync_task
+
+        self.assertTrue(result)
+        self.assertEqual(
+            calls,
+            ["applied-start", "applied-end", ("synced", "123")],
+        )
+        await plugin._unload()
+
 
 class FrontendSourceTests(unittest.TestCase):
     def test_index_uses_controller_panel_with_rumble_controls(self):
@@ -1289,8 +1388,26 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertIn("local_cache_version", source)
         self.assertIn("Launch a game to enable this glyph fix.", source)
         self.assertIn("getActiveGameIconSource", source)
+        self.assertIn("class RunningApps", source)
+        self.assertIn("RunningApps.register()", source)
+        self.assertIn("RunningApps.unregister()", source)
+        self.assertIn("RunningApps.listenActiveChange", source)
+        self.assertIn("void syncActiveGameTarget(RunningApps.active())", source)
+        self.assertIn("type BootstrapState =", source)
+        self.assertIn("let bootstrapState: BootstrapState = { state: 'loading' }", source)
+        self.assertIn("let bootstrapPromise: Promise<void> | null = null", source)
+        self.assertIn("Promise.all([getStatus(), getSettings()])", source)
+        self.assertIn("function startBootstrap()", source)
+        self.assertIn("void startBootstrap()", source)
+        self.assertIn("SteamSpinner", source)
+        self.assertIn("if (bootstrap.state === 'loading')", source)
+        self.assertIn("if (bootstrap.state === 'error')", source)
+        self.assertIn("const [bootstrap, setBootstrap] = useState<BootstrapState>(getBootstrapState())", source)
+        self.assertIn(
+            "const [activeGame, setActiveGame] = useState<ActiveGame | null>(getActiveGame())",
+            source,
+        )
         self.assertIn("setInterval(() => {", source)
-        self.assertIn('clearInterval(activeGamePollInterval)', source)
         self.assertIn('SteamClient.System.Display.RegisterForBrightnessChanges', source)
         self.assertIn('SteamClient.System.Display.SetBrightness(', source)
         self.assertIn('addEventListener', source)
@@ -1302,7 +1419,7 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertIn("rumbleMessageKind", source)
         self.assertIn("rumbleMessageKind === 'error' ? 'red' : undefined", source)
         self.assertIn("Restores the Zotac controller after boot.", source)
-        self.assertIn("Turns the right dial brightness keys into SteamOS brightness changes.", source)
+        self.assertIn("Enable the right dial brightness.", source)
         self.assertIn("Change and test vibration intensity.", source)
         self.assertIn("Rumble device is not available.", source)
         self.assertIn("settings.rumbleEnabled &&", source)
@@ -1318,8 +1435,11 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertIn("!settings.rumbleAvailable", source)
         self.assertNotIn("savingIntensity", source)
         self.assertNotIn("value={settings.rumbleIntensity}", source)
+        self.assertNotIn("const [settings, setSettings] = useState<PluginSettings>({", source)
         self.assertNotIn("disabled={savingStartup || !settings.inputplumberAvailable}", source)
         self.assertNotIn("disabled={savingRumble || !settings.rumbleAvailable}", source)
+        self.assertNotIn("const activeGamePollInterval = window.setInterval(", source)
+        self.assertNotIn("clearInterval(activeGamePollInterval)", source)
         self.assertNotIn("window.addEventListener(", source)
         self.assertNotIn("<strong>State:</strong>", source)
         self.assertNotIn('title="Startup Mode"', source)

@@ -406,6 +406,8 @@ class DeckyZoneService:
                 return trackpad_result
 
             try:
+                if not await self.wait_for_inputplumber_dbus_silently():
+                    return False
                 self._apply_target_devices(MISSING_GLYPH_FIX_TARGET)
                 self._temporary_target_mode = MISSING_GLYPH_FIX_TARGET
                 return trackpad_result
@@ -423,6 +425,8 @@ class DeckyZoneService:
 
         try:
             if self.settings_store.get_startup_apply_enabled():
+                if not await self.wait_for_inputplumber_dbus_silently():
+                    return False
                 self._apply_target_devices(STARTUP_MODE)
             else:
                 self._restart_inputplumber()
@@ -855,7 +859,31 @@ class DeckyZoneService:
         timeout=READY_TIMEOUT_SECONDS,
         interval=READY_POLL_INTERVAL_SECONDS,
     ):
-        self._set_status("waiting", "Waiting for InputPlumber D-Bus.")
+        return await self._wait_for_inputplumber_dbus(
+            timeout=timeout,
+            interval=interval,
+            update_status=True,
+        )
+
+    async def wait_for_inputplumber_dbus_silently(
+        self,
+        timeout=READY_TIMEOUT_SECONDS,
+        interval=READY_POLL_INTERVAL_SECONDS,
+    ):
+        return await self._wait_for_inputplumber_dbus(
+            timeout=timeout,
+            interval=interval,
+            update_status=False,
+        )
+
+    async def _wait_for_inputplumber_dbus(
+        self,
+        timeout=READY_TIMEOUT_SECONDS,
+        interval=READY_POLL_INTERVAL_SECONDS,
+        update_status=True,
+    ):
+        if update_status:
+            self._set_status("waiting", "Waiting for InputPlumber D-Bus.")
         elapsed = 0.0
 
         while elapsed < timeout:
@@ -869,10 +897,11 @@ class DeckyZoneService:
             elapsed += interval
 
         self._inputplumber_available = False
-        self._set_status(
-            "failed",
-            f"InputPlumber D-Bus was not ready within {timeout:.1f}s.",
-        )
+        if update_status:
+            self._set_status(
+                "failed",
+                f"InputPlumber D-Bus was not ready within {timeout:.1f}s.",
+            )
         return False
 
     async def apply_startup_mode(self):
@@ -944,6 +973,14 @@ class Plugin:
         return self.service.set_missing_glyph_fix_trackpads_disabled(app_id, disabled)
 
     async def sync_missing_glyph_fix_target(self, app_id):
+        if self.startup_task is not None:
+            try:
+                await self.startup_task
+            except asyncio.CancelledError:
+                pass
+            finally:
+                if self.startup_task.done():
+                    self.startup_task = None
         return await self.service.sync_missing_glyph_fix_target(app_id)
 
     async def test_rumble(self):
