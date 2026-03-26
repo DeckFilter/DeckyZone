@@ -81,9 +81,8 @@ const testRumble = callable<[], boolean>('test_rumble')
 
 const DEFAULT_APP_ID = '0'
 const ACTIVE_GAME_POLL_INTERVAL_MS = 1000
-const DEFAULT_STARTUP_DESCRIPTION = 'Restores the Zotac controller after boot and enables the right brightness dial.'
-const HOME_BUTTON_TOGGLE_DESCRIPTION =
-  'When enabled, Zotac Home short opens SteamUI Home while Startup Target or Xbox Elite Mode is active.'
+const DEFAULT_STARTUP_DESCRIPTION = 'Restores the Zotac controller after boot and enables the dials.'
+const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Zotac Home button opens Home.'
 const DEFAULT_BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Enable the right dial brightness.'
 const DEFAULT_RUMBLE_DESCRIPTION = 'Change and test vibration intensity.'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available.'
@@ -107,10 +106,6 @@ function getStartupDescription(status: PluginStatus, settings: PluginSettings) {
 
   if (status.state === 'failed' || status.state === 'disabled' || status.state === 'unsupported') {
     return status.message
-  }
-
-  if (settings.homeButtonEnabled) {
-    return `${DEFAULT_STARTUP_DESCRIPTION} ${getHomeButtonManagedDescription('startup')}`
   }
 
   return DEFAULT_STARTUP_DESCRIPTION
@@ -142,12 +137,6 @@ function setBrightnessDialFixRuntimeEnabled(enabled: boolean) {
 
 function setHomeButtonRuntimeEnabled(enabled: boolean) {
   homeButtonEnabled = enabled
-}
-
-function getHomeButtonManagedDescription(scope: 'startup' | 'glyph') {
-  return scope === 'startup'
-    ? 'Home short opens SteamUI Home while this startup target is active.'
-    : 'Home short opens SteamUI Home while this Xbox Elite Mode is active.'
 }
 
 function applyBrightnessDialDelta(delta: number) {
@@ -387,19 +376,13 @@ function getActiveGameIconSource(activeGame: ActiveGame | null) {
   return null
 }
 
-function getMissingGlyphFixDescription(activeGame: ActiveGame | null, settings: PluginSettings): ReactNode {
+function getMissingGlyphFixDescription(activeGame: ActiveGame | null): ReactNode {
   if (!activeGame) {
-    if (settings.homeButtonEnabled) {
-      return `${NO_ACTIVE_GAME_GLYPH_FIX_DESCRIPTION} ${getHomeButtonManagedDescription('glyph')}`
-    }
-
     return NO_ACTIVE_GAME_GLYPH_FIX_DESCRIPTION
   }
 
   const iconSource = getActiveGameIconSource(activeGame)
-  const description = settings.homeButtonEnabled
-    ? `Fixes missing glyphs for ${activeGame.display_name}. This setting is per-game. ${getHomeButtonManagedDescription('glyph')}`
-    : `Fixes missing glyphs for ${activeGame.display_name}. This setting is per-game.`
+  const description = `Fixes missing glyphs for ${activeGame.display_name}. This setting is per-game.`
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -829,7 +812,7 @@ function Content() {
     <PanelSection title="Controller">
       <PanelSectionRow>
         <ToggleField
-          label="Startup Target"
+          label="Enable Controller"
           checked={settings.startupApplyEnabled}
           onChange={(value: boolean) => void handleStartupToggleChange(value)}
           disabled={savingStartup}
@@ -847,7 +830,7 @@ function Content() {
       </PanelSectionRow>
       <PanelSectionRow>
         <ToggleField
-          label="Brightness Dial"
+          label="Enable Brightness Dial"
           checked={settings.brightnessDialFixEnabled}
           onChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
           disabled={savingBrightnessDialFix}
@@ -904,7 +887,7 @@ function Content() {
           checked={isMissingGlyphFixEnabled}
           onChange={(value: boolean) => void handleMissingGlyphFixToggleChange(value)}
           disabled={!activeGame || savingMissingGlyphFix}
-          description={getMissingGlyphFixDescription(activeGame, settings)}
+          description={getMissingGlyphFixDescription(activeGame)}
         />
       </PanelSectionRow>
       {activeGame && isMissingGlyphFixEnabled && shouldShowSteamInputDisabledWarning && (
