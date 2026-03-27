@@ -85,7 +85,9 @@ const DEFAULT_APP_ID = '0'
 const ACTIVE_GAME_POLL_INTERVAL_MS = 1000
 const DEFAULT_STARTUP_DESCRIPTION = 'Sets the Zotac controller now and after boot. Makes the dials work.'
 const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Opens Home.'
+const HOME_BUTTON_TOGGLE_DISABLED_DESCRIPTION = 'Opens Home. Enable Controller first.'
 const DEFAULT_BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Uses the right dial for screen brightness.'
+const BRIGHTNESS_DIAL_FIX_DISABLED_DESCRIPTION = 'Uses the right dial for screen brightness. Enable Controller first.'
 const DEFAULT_RUMBLE_DESCRIPTION = 'Change and test vibration intensity.'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available.'
 const NO_ACTIVE_GAME_GLYPH_FIX_DESCRIPTION = 'Launch a game to enable this fix.'
@@ -124,6 +126,10 @@ function getRumbleDescription(settings: PluginSettings) {
 function getBrightnessDialFixDescription(settings: PluginSettings) {
   if (!settings.inputplumberAvailable) {
     return 'InputPlumber is not available.'
+  }
+
+  if (!settings.startupApplyEnabled) {
+    return BRIGHTNESS_DIAL_FIX_DISABLED_DESCRIPTION
   }
 
   return DEFAULT_BRIGHTNESS_DIAL_FIX_DESCRIPTION
@@ -809,6 +815,7 @@ function Content() {
 
   const shouldShowSteamInputDisabledWarning =
     steamInputDiagnostic.state === 'ready' && getSteamInputDiagnosticStatus(steamInputDiagnostic.details) === 'Steam Input disabled'
+  const controllerDependentToggleDisabled = !settings.startupApplyEnabled
 
   return (
     <>
@@ -827,8 +834,8 @@ function Content() {
             label="Enable Home Button"
             checked={settings.homeButtonEnabled}
             onChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
-            disabled={savingHomeButton}
-            description={HOME_BUTTON_TOGGLE_DESCRIPTION}
+            disabled={savingHomeButton || !settings.startupApplyEnabled}
+            description={controllerDependentToggleDisabled ? HOME_BUTTON_TOGGLE_DISABLED_DESCRIPTION : HOME_BUTTON_TOGGLE_DESCRIPTION}
           />
         </PanelSectionRow>
         <PanelSectionRow>
@@ -836,7 +843,7 @@ function Content() {
             label="Enable Brightness Dial"
             checked={settings.brightnessDialFixEnabled}
             onChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
-            disabled={savingBrightnessDialFix}
+            disabled={savingBrightnessDialFix || !settings.startupApplyEnabled}
             description={getBrightnessDialFixDescription(settings)}
           />
         </PanelSectionRow>

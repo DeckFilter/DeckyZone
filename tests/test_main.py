@@ -2068,7 +2068,9 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertIn("rumbleMessageKind === 'error' ? 'red' : undefined", source)
         self.assertIn("Sets the Zotac controller now and after boot. Makes the dials work.", source)
         self.assertIn("Opens Home.", source)
+        self.assertIn("Opens Home. Enable Controller first.", source)
         self.assertIn("Uses the right dial for screen brightness.", source)
+        self.assertIn("Uses the right dial for screen brightness. Enable Controller first.", source)
         self.assertIn("Change and test vibration intensity.", source)
         self.assertIn("Rumble device is not available.", source)
         self.assertIn("settings.rumbleEnabled &&", source)
@@ -2079,6 +2081,13 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertIn("value={rumbleIntensityDraft}", source)
         self.assertIn("setTimeout(() => {", source)
         self.assertIn("disabled={savingStartup}", source)
+        self.assertIn("const controllerDependentToggleDisabled = !settings.startupApplyEnabled", source)
+        self.assertIn("disabled={savingHomeButton || !settings.startupApplyEnabled}", source)
+        self.assertIn("disabled={savingBrightnessDialFix || !settings.startupApplyEnabled}", source)
+        self.assertIn(
+            "description={controllerDependentToggleDisabled ? HOME_BUTTON_TOGGLE_DISABLED_DESCRIPTION : HOME_BUTTON_TOGGLE_DESCRIPTION}",
+            source,
+        )
         self.assertIn("disabled={savingRumble}", source)
         self.assertIn("!settings.rumbleEnabled", source)
         self.assertIn("!settings.rumbleAvailable", source)
