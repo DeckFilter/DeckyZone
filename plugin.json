@@ -5,7 +5,7 @@
   "api_version": 1,
   "publish": {
     "tags": ["zotac", "inputplumber", "root"],
-    "description": "TBD",
+    "description": "Zotac Gaming Zone plugin for Decky Loader.",
     "image": "https://opengraph.githubassets.com/1/felixhirschfeld/DeckyZone"
   }
 }

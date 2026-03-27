@@ -1,7 +1,7 @@
 {
   "name": "deckyzone",
   "version": "0.0.2",
-  "description": "TBD",
+  "description": "Zotac Gaming Zone plugin for Decky Loader.",
   "type": "module",
   "scripts": {
     "build": "rollup -c",
