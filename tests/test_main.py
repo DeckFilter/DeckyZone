@@ -2150,6 +2150,13 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertIn("Reinstall Plugin", component_source)
         self.assertIn("Updating...", component_source)
         self.assertIn("Failed to fetch the latest version.", component_source)
+        self.assertIn("Failed to update DeckyZone.", component_source)
+        self.assertIn("Retry", component_source)
+        self.assertIn("const [isLoadingLatestVersion, setIsLoadingLatestVersion] = useState(false)", component_source)
+        self.assertIn("const loadLatestVersion = async () => {", component_source)
+        self.assertIn("void loadLatestVersion()", component_source)
+        self.assertIn('onClick={() => void loadLatestVersion()}', component_source)
+        self.assertIn('onClick={() => void handleUpdate()}', component_source)
         self.assertNotIn("deviceName", component_source)
         self.assertNotIn("Navigate(`${DECKY_PLUMBER_ROUTE}/about`)", component_source)
 

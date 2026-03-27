@@ -1,6 +1,6 @@
 import { callable } from "@decky/api"
 import { ButtonItem, Field, PanelSection, PanelSectionRow } from "@decky/ui"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 const getLatestVersionNum = callable<[], string>("get_latest_version_num")
 const otaUpdate = callable<[], boolean>("ota_update")
@@ -13,34 +13,39 @@ const OtaUpdates = ({ installedVersionNum }: Props) => {
   const [latestVersionNum, setLatestVersionNum] = useState("")
   const [latestVersionError, setLatestVersionError] = useState<string | null>(null)
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const [isLoadingLatestVersion, setIsLoadingLatestVersion] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
+  const isMountedRef = useRef(true)
 
-  useEffect(() => {
-    let cancelled = false
+  const loadLatestVersion = async () => {
+    setIsLoadingLatestVersion(true)
+    setLatestVersionError(null)
+    try {
+      const fetchedVersionNum = await getLatestVersionNum()
+      if (!isMountedRef.current) {
+        return
+      }
 
-    const loadLatestVersion = async () => {
-      setLatestVersionError(null)
-      try {
-        const fetchedVersionNum = await getLatestVersionNum()
-        if (cancelled) {
-          return
-        }
+      setLatestVersionNum(fetchedVersionNum)
+    } catch {
+      if (!isMountedRef.current) {
+        return
+      }
 
-        setLatestVersionNum(fetchedVersionNum)
-      } catch {
-        if (cancelled) {
-          return
-        }
-
-        setLatestVersionNum("")
-        setLatestVersionError("Failed to fetch the latest version.")
+      setLatestVersionNum("")
+      setLatestVersionError("Failed to fetch the latest version.")
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoadingLatestVersion(false)
       }
     }
+  }
 
+  useEffect(() => {
     void loadLatestVersion()
 
     return () => {
-      cancelled = true
+      isMountedRef.current = false
     }
   }, [])
 
@@ -76,14 +81,28 @@ const OtaUpdates = ({ installedVersionNum }: Props) => {
         </PanelSectionRow>
       )}
       {latestVersionError && (
-        <PanelSectionRow>
-          <div style={{ color: "red" }}>{latestVersionError}</div>
-        </PanelSectionRow>
+        <>
+          <PanelSectionRow>
+            <div style={{ color: "red" }}>{latestVersionError}</div>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={() => void loadLatestVersion()} disabled={isLoadingLatestVersion}>
+              Retry
+            </ButtonItem>
+          </PanelSectionRow>
+        </>
       )}
       {updateError && (
-        <PanelSectionRow>
-          <div style={{ color: "red" }}>{updateError}</div>
-        </PanelSectionRow>
+        <>
+          <PanelSectionRow>
+            <div style={{ color: "red" }}>{updateError}</div>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem layout="below" onClick={() => void handleUpdate()} disabled={isUpdating}>
+              Retry
+            </ButtonItem>
+          </PanelSectionRow>
+        </>
       )}
       {Boolean(latestVersionNum) && (
         <PanelSectionRow>
