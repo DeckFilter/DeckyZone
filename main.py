@@ -9,6 +9,7 @@ from pathlib import Path
 
 import decky
 import controller_targets
+import plugin_update
 import plugin_settings
 
 
@@ -153,6 +154,20 @@ class DeckyZoneService:
         self._rumble_available = bool(self.probe_rumble_available())
         return self._current_settings()
 
+    async def get_latest_version_num(self):
+        try:
+            return plugin_update.get_latest_version()
+        except Exception as error:
+            self.logger.error(f"Failed to fetch latest DeckyZone version: {error}")
+            raise RuntimeError("Failed to fetch latest DeckyZone version.")
+
+    async def ota_update(self):
+        try:
+            return bool(plugin_update.ota_update())
+        except Exception as error:
+            self.logger.error(f"Failed to update DeckyZone: {error}")
+            return False
+
     def _set_status(self, state, message):
         self._status = {"state": state, "message": message}
 
@@ -166,6 +181,7 @@ class DeckyZoneService:
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
             "brightnessDialFixEnabled": self.settings_store.get_brightness_dial_fix_enabled(),
             "inputplumberAvailable": self._inputplumber_available,
+            "pluginVersionNum": decky.DECKY_PLUGIN_VERSION,
             "rumbleEnabled": self.settings_store.get_rumble_enabled(),
             "rumbleIntensity": self.settings_store.get_rumble_intensity(),
             "rumbleAvailable": self._rumble_available,
@@ -1369,6 +1385,12 @@ class Plugin:
 
     async def test_rumble(self):
         return await self.service.test_rumble()
+
+    async def get_latest_version_num(self):
+        return await self.service.get_latest_version_num()
+
+    async def ota_update(self):
+        return await self.service.ota_update()
 
     async def _main(self):
         self.loop = asyncio.get_event_loop()

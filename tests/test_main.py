@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import os
 import asyncio
+import tarfile
+import tempfile
 
 
 class _FakeLogger:
@@ -64,6 +66,7 @@ def _fake_decky_module():
     module.DECKY_USER_HOME = "/tmp/decky-user"
     module.DECKY_HOME = "/tmp/decky-home"
     module.DECKY_PLUGIN_DIR = str(Path(__file__).resolve().parents[1])
+    module.DECKY_PLUGIN_VERSION = "0.0.1-test"
     module.emit = _async_noop
     module.migrate_logs = _noop
     module.migrate_settings = _noop
@@ -78,6 +81,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "py_modules"))
 
 import main  # noqa: E402
+import plugin_update  # noqa: E402
 
 
 class _CompletedProcess:
@@ -304,6 +308,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "homeButtonEnabled": True,
                 "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": True,
+                "pluginVersionNum": "0.0.1-test",
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": True,
@@ -329,12 +334,124 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "homeButtonEnabled": True,
                 "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": False,
+                "pluginVersionNum": "0.0.1-test",
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": False,
                 "missingGlyphFixGames": {},
             },
         )
+
+    async def test_get_latest_version_num_delegates_to_plugin_update_helper(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+
+        original_plugin_update = getattr(main, "plugin_update", None)
+
+        class _FakePluginUpdate:
+            @staticmethod
+            def get_latest_version():
+                return "1.2.3"
+
+        main.plugin_update = _FakePluginUpdate
+        try:
+            result = await service.get_latest_version_num()
+        finally:
+            if original_plugin_update is None:
+                delattr(main, "plugin_update")
+            else:
+                main.plugin_update = original_plugin_update
+
+        self.assertEqual(result, "1.2.3")
+
+    async def test_get_latest_version_num_raises_clean_error_when_helper_fails(self):
+        logger = _FakeLogger()
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            logger=logger,
+            read_text=lambda path: "",
+        )
+
+        original_plugin_update = getattr(main, "plugin_update", None)
+
+        class _FakePluginUpdate:
+            @staticmethod
+            def get_latest_version():
+                raise RuntimeError("network down")
+
+        main.plugin_update = _FakePluginUpdate
+        try:
+            with self.assertRaisesRegex(RuntimeError, "Failed to fetch latest DeckyZone version."):
+                await service.get_latest_version_num()
+        finally:
+            if original_plugin_update is None:
+                delattr(main, "plugin_update")
+            else:
+                main.plugin_update = original_plugin_update
+
+        error_messages = [args[0] for level, args, _ in logger.messages if level == "error"]
+        self.assertIn("Failed to fetch latest DeckyZone version: network down", error_messages)
+
+    async def test_ota_update_delegates_to_plugin_update_helper(self):
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            read_text=lambda path: "",
+        )
+
+        original_plugin_update = getattr(main, "plugin_update", None)
+        calls = []
+
+        class _FakePluginUpdate:
+            @staticmethod
+            def ota_update():
+                calls.append("update")
+                return True
+
+        main.plugin_update = _FakePluginUpdate
+        try:
+            result = await service.ota_update()
+        finally:
+            if original_plugin_update is None:
+                delattr(main, "plugin_update")
+            else:
+                main.plugin_update = original_plugin_update
+
+        self.assertTrue(result)
+        self.assertEqual(calls, ["update"])
+
+    async def test_ota_update_returns_false_when_helper_fails(self):
+        logger = _FakeLogger()
+        service = main.DeckyZoneService(
+            command_runner=lambda *args, **kwargs: _CompletedProcess(returncode=0),
+            sleep=_async_noop,
+            logger=logger,
+            read_text=lambda path: "",
+        )
+
+        original_plugin_update = getattr(main, "plugin_update", None)
+
+        class _FakePluginUpdate:
+            @staticmethod
+            def ota_update():
+                raise RuntimeError("download failed")
+
+        main.plugin_update = _FakePluginUpdate
+        try:
+            result = await service.ota_update()
+        finally:
+            if original_plugin_update is None:
+                delattr(main, "plugin_update")
+            else:
+                main.plugin_update = original_plugin_update
+
+        self.assertFalse(result)
+        error_messages = [args[0] for level, args, _ in logger.messages if level == "error"]
+        self.assertIn("Failed to update DeckyZone: download failed", error_messages)
 
     async def test_set_rumble_enabled_starts_and_stops_background_loop(self):
         calls = []
@@ -365,6 +482,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "homeButtonEnabled": True,
                 "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": True,
+                "pluginVersionNum": "0.0.1-test",
                 "rumbleEnabled": False,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": True,
@@ -380,6 +498,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "homeButtonEnabled": True,
                 "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": True,
+                "pluginVersionNum": "0.0.1-test",
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": True,
@@ -572,6 +691,7 @@ class DeckyZoneServiceTests(unittest.IsolatedAsyncioTestCase):
                 "homeButtonEnabled": False,
                 "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": True,
+                "pluginVersionNum": "0.0.1-test",
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": False,
@@ -1264,6 +1384,7 @@ mapping:
                 "homeButtonEnabled": True,
                 "brightnessDialFixEnabled": False,
                 "inputplumberAvailable": True,
+                "pluginVersionNum": "0.0.1-test",
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": False,
@@ -1429,6 +1550,7 @@ mapping:
                 "homeButtonEnabled": True,
                 "brightnessDialFixEnabled": True,
                 "inputplumberAvailable": True,
+                "pluginVersionNum": "0.0.1-test",
                 "rumbleEnabled": True,
                 "rumbleIntensity": 75,
                 "rumbleAvailable": False,
@@ -1516,6 +1638,62 @@ mapping:
         self.assertFalse(result)
         self.assertEqual(commands, [])
         self.assertFalse(service._startup_target_active)
+
+
+class PluginUpdateHelperTests(unittest.TestCase):
+    def test_get_tarball_download_url_selects_deckyzone_tarball(self):
+        release_metadata = {
+            "assets": [
+                {"name": "DeckyZone.zip", "browser_download_url": "https://example.com/DeckyZone.zip"},
+                {"name": "OtherPlugin.tar.gz", "browser_download_url": "https://example.com/OtherPlugin.tar.gz"},
+                {"name": "DeckyZone.tar.gz", "browser_download_url": "https://example.com/DeckyZone.tar.gz"},
+            ]
+        }
+
+        self.assertEqual(
+            plugin_update._get_tarball_download_url(release_metadata),
+            "https://example.com/DeckyZone.tar.gz",
+        )
+
+    def test_ota_update_replaces_existing_plugin_and_restarts_loader(self):
+        with tempfile.TemporaryDirectory() as temp_home:
+            plugin_root = Path(temp_home) / "homebrew" / "plugins"
+            plugin_dir = plugin_root / "DeckyZone"
+            plugin_dir.mkdir(parents=True)
+            plugin_dir.joinpath("old.txt").write_text("old", encoding="utf-8")
+
+            stage_root = Path(temp_home) / "stage"
+            staged_plugin_dir = stage_root / "DeckyZone"
+            staged_plugin_dir.mkdir(parents=True)
+            staged_plugin_dir.joinpath("new.txt").write_text("new", encoding="utf-8")
+
+            archive_path = Path(temp_home) / "DeckyZone.tar.gz"
+            with tarfile.open(archive_path, "w:gz") as archive:
+                archive.add(staged_plugin_dir, arcname="DeckyZone")
+
+            original_home = plugin_update.decky.DECKY_USER_HOME
+            original_download_latest_build = plugin_update._download_latest_build
+            original_subprocess_run = plugin_update.subprocess.run
+            commands = []
+
+            def fake_run(command, **kwargs):
+                commands.append((command, kwargs))
+                return _CompletedProcess(returncode=0)
+
+            plugin_update.decky.DECKY_USER_HOME = temp_home
+            plugin_update._download_latest_build = lambda: str(archive_path)
+            plugin_update.subprocess.run = fake_run
+            try:
+                result = plugin_update.ota_update()
+            finally:
+                plugin_update.decky.DECKY_USER_HOME = original_home
+                plugin_update._download_latest_build = original_download_latest_build
+                plugin_update.subprocess.run = original_subprocess_run
+
+            self.assertTrue(result)
+            self.assertFalse(plugin_dir.joinpath("old.txt").exists())
+            self.assertEqual(plugin_dir.joinpath("new.txt").read_text(encoding="utf-8"), "new")
+            self.assertEqual(commands[0][0], ["systemctl", "restart", "plugin_loader.service"])
 
 
 class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
@@ -1932,6 +2110,30 @@ class FrontendSourceTests(unittest.TestCase):
         self.assertNotIn('label="Per-Game Overrides"', source)
         self.assertNotIn("Reapply Startup Mode", source)
         self.assertNotIn("Rumble helper or joystick device is not available.", source)
+
+    def test_ota_updates_component_is_integrated(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        index_source = repo_root.joinpath("src", "index.tsx").read_text()
+        component_path = repo_root.joinpath("src", "components", "OtaUpdates.tsx")
+
+        self.assertTrue(component_path.exists())
+        component_source = component_path.read_text() if component_path.exists() else ""
+
+        self.assertIn('import OtaUpdates from "./components/OtaUpdates"', index_source)
+        self.assertIn("<OtaUpdates", index_source)
+        self.assertIn("pluginVersionNum?: string", index_source)
+        self.assertIn("installedVersionNum", component_source)
+        self.assertIn("getLatestVersionNum", component_source)
+        self.assertIn("otaUpdate", component_source)
+        self.assertIn('title="Updates"', component_source)
+        self.assertIn("Installed Version", component_source)
+        self.assertIn("Latest Version", component_source)
+        self.assertIn("Update to", component_source)
+        self.assertIn("Reinstall Plugin", component_source)
+        self.assertIn("Updating...", component_source)
+        self.assertIn("Failed to fetch the latest version.", component_source)
+        self.assertNotIn("deviceName", component_source)
+        self.assertNotIn("Navigate(`${DECKY_PLUMBER_ROUTE}/about`)", component_source)
 
 
 if __name__ == "__main__":

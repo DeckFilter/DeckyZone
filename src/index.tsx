@@ -14,6 +14,7 @@ import { addEventListener, callable, definePlugin, removeEventListener } from '@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { FaSlidersH } from 'react-icons/fa'
+import OtaUpdates from "./components/OtaUpdates"
 
 type PluginStatus = {
   state: string
@@ -29,6 +30,7 @@ type PluginSettings = {
   homeButtonEnabled: boolean
   brightnessDialFixEnabled: boolean
   inputplumberAvailable: boolean
+  pluginVersionNum?: string
   rumbleEnabled: boolean
   rumbleIntensity: number
   rumbleAvailable: boolean
@@ -809,104 +811,107 @@ function Content() {
     steamInputDiagnostic.state === 'ready' && getSteamInputDiagnosticStatus(steamInputDiagnostic.details) === 'Steam Input disabled'
 
   return (
-    <PanelSection title="Controller">
-      <PanelSectionRow>
-        <ToggleField
-          label="Enable Controller"
-          checked={settings.startupApplyEnabled}
-          onChange={(value: boolean) => void handleStartupToggleChange(value)}
-          disabled={savingStartup}
-          description={getStartupDescription(status, settings)}
-        />
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <ToggleField
-          label="Enable Home Button"
-          checked={settings.homeButtonEnabled}
-          onChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
-          disabled={savingHomeButton}
-          description={HOME_BUTTON_TOGGLE_DESCRIPTION}
-        />
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <ToggleField
-          label="Enable Brightness Dial"
-          checked={settings.brightnessDialFixEnabled}
-          onChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
-          disabled={savingBrightnessDialFix}
-          description={getBrightnessDialFixDescription(settings)}
-        />
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <ToggleField
-          label="Vibration Intensity"
-          checked={settings.rumbleEnabled}
-          onChange={(value: boolean) => void handleRumbleToggleChange(value)}
-          disabled={savingRumble}
-          description={getRumbleDescription(settings)}
-        />
-      </PanelSectionRow>
-      {settings.rumbleEnabled && (
-        <>
-          <PanelSectionRow>
-            <SliderField
-              value={rumbleIntensityDraft}
-              min={0}
-              max={100}
-              step={5}
-              notchTicksVisible
-              onChange={handleRumbleIntensityChange}
-              disabled={savingRumble || !settings.rumbleEnabled || !settings.rumbleAvailable}
-            />
-          </PanelSectionRow>
-          <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              onClick={() => void handleTestRumble()}
-              disabled={savingRumble || testingRumble || !settings.rumbleEnabled || !settings.rumbleAvailable}
-            >
-              {testingRumble ? 'Testing Rumble...' : `Test  ${rumbleIntensityDraft}% Rumble`}
-            </ButtonItem>
-          </PanelSectionRow>
-          {rumbleMessage && rumbleMessageKind === 'error' && (
-            <PanelSectionRow>
-              <div
-                style={{
-                  color: rumbleMessageKind === 'error' ? 'red' : undefined,
-                }}
-              >
-                {rumbleMessage}
-              </div>
-            </PanelSectionRow>
-          )}
-        </>
-      )}
-      <PanelSectionRow>
-        <ToggleField
-          label="Xbox Elite Mode"
-          checked={isMissingGlyphFixEnabled}
-          onChange={(value: boolean) => void handleMissingGlyphFixToggleChange(value)}
-          disabled={!activeGame || savingMissingGlyphFix}
-          description={getMissingGlyphFixDescription(activeGame)}
-        />
-      </PanelSectionRow>
-      {activeGame && isMissingGlyphFixEnabled && shouldShowSteamInputDisabledWarning && (
-        <PanelSectionRow>
-          <div className={gamepadDialogClasses.FieldDescription}>Steam Input disabled</div>
-        </PanelSectionRow>
-      )}
-      {activeGame && isMissingGlyphFixEnabled && (
+    <>
+      <PanelSection title="Controller">
         <PanelSectionRow>
           <ToggleField
-            label="Disable Trackpads"
-            checked={isTrackpadsDisabled}
-            onChange={(value: boolean) => void handleMissingGlyphFixTrackpadsChange(value)}
-            disabled={savingMissingGlyphFix || savingMissingGlyphFixTrackpads}
-            description={DISABLE_TRACKPADS_DESCRIPTION}
+            label="Enable Controller"
+            checked={settings.startupApplyEnabled}
+            onChange={(value: boolean) => void handleStartupToggleChange(value)}
+            disabled={savingStartup}
+            description={getStartupDescription(status, settings)}
           />
         </PanelSectionRow>
-      )}
-    </PanelSection>
+        <PanelSectionRow>
+          <ToggleField
+            label="Enable Home Button"
+            checked={settings.homeButtonEnabled}
+            onChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
+            disabled={savingHomeButton}
+            description={HOME_BUTTON_TOGGLE_DESCRIPTION}
+          />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ToggleField
+            label="Enable Brightness Dial"
+            checked={settings.brightnessDialFixEnabled}
+            onChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
+            disabled={savingBrightnessDialFix}
+            description={getBrightnessDialFixDescription(settings)}
+          />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ToggleField
+            label="Vibration Intensity"
+            checked={settings.rumbleEnabled}
+            onChange={(value: boolean) => void handleRumbleToggleChange(value)}
+            disabled={savingRumble}
+            description={getRumbleDescription(settings)}
+          />
+        </PanelSectionRow>
+        {settings.rumbleEnabled && (
+          <>
+            <PanelSectionRow>
+              <SliderField
+                value={rumbleIntensityDraft}
+                min={0}
+                max={100}
+                step={5}
+                notchTicksVisible
+                onChange={handleRumbleIntensityChange}
+                disabled={savingRumble || !settings.rumbleEnabled || !settings.rumbleAvailable}
+              />
+            </PanelSectionRow>
+            <PanelSectionRow>
+              <ButtonItem
+                layout="below"
+                onClick={() => void handleTestRumble()}
+                disabled={savingRumble || testingRumble || !settings.rumbleEnabled || !settings.rumbleAvailable}
+              >
+                {testingRumble ? 'Testing Rumble...' : `Test  ${rumbleIntensityDraft}% Rumble`}
+              </ButtonItem>
+            </PanelSectionRow>
+            {rumbleMessage && rumbleMessageKind === 'error' && (
+              <PanelSectionRow>
+                <div
+                  style={{
+                    color: rumbleMessageKind === 'error' ? 'red' : undefined,
+                  }}
+                >
+                  {rumbleMessage}
+                </div>
+              </PanelSectionRow>
+            )}
+          </>
+        )}
+        <PanelSectionRow>
+          <ToggleField
+            label="Xbox Elite Mode"
+            checked={isMissingGlyphFixEnabled}
+            onChange={(value: boolean) => void handleMissingGlyphFixToggleChange(value)}
+            disabled={!activeGame || savingMissingGlyphFix}
+            description={getMissingGlyphFixDescription(activeGame)}
+          />
+        </PanelSectionRow>
+        {activeGame && isMissingGlyphFixEnabled && shouldShowSteamInputDisabledWarning && (
+          <PanelSectionRow>
+            <div className={gamepadDialogClasses.FieldDescription}>Steam Input disabled</div>
+          </PanelSectionRow>
+        )}
+        {activeGame && isMissingGlyphFixEnabled && (
+          <PanelSectionRow>
+            <ToggleField
+              label="Disable Trackpads"
+              checked={isTrackpadsDisabled}
+              onChange={(value: boolean) => void handleMissingGlyphFixTrackpadsChange(value)}
+              disabled={savingMissingGlyphFix || savingMissingGlyphFixTrackpads}
+              description={DISABLE_TRACKPADS_DESCRIPTION}
+            />
+          </PanelSectionRow>
+        )}
+      </PanelSection>
+      <OtaUpdates installedVersionNum={settings.pluginVersionNum ?? ''} />
+    </>
   )
 }
 
