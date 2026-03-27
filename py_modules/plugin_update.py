@@ -80,13 +80,41 @@ def ota_update():
     archive_path = _download_latest_build()
     plugins_dir = f"{decky.DECKY_USER_HOME}/homebrew/plugins"
     plugin_dir = f"{plugins_dir}/{PACKAGE_NAME}"
+    backup_dir = f"{plugins_dir}/.{PACKAGE_NAME}.backup"
 
     try:
-        _recursive_chmod(plugin_dir, stat.S_IWUSR)
-        if os.path.exists(plugin_dir):
-            shutil.rmtree(plugin_dir)
+        os.makedirs(plugins_dir, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=f"{PACKAGE_NAME}-staging-") as staging_dir:
+            shutil.unpack_archive(archive_path, staging_dir)
+            staged_plugin_dir = os.path.join(staging_dir, PACKAGE_NAME)
 
-        shutil.unpack_archive(archive_path, plugins_dir)
+            if not os.path.isdir(staged_plugin_dir):
+                raise RuntimeError(
+                    "Downloaded DeckyZone release did not contain a top-level plugin directory."
+                )
+
+            if os.path.exists(backup_dir):
+                _recursive_chmod(backup_dir, stat.S_IWUSR)
+                shutil.rmtree(backup_dir)
+
+            if os.path.exists(plugin_dir):
+                _recursive_chmod(plugin_dir, stat.S_IWUSR)
+                os.replace(plugin_dir, backup_dir)
+
+            try:
+                shutil.copytree(staged_plugin_dir, plugin_dir)
+            except Exception:
+                if os.path.exists(plugin_dir):
+                    _recursive_chmod(plugin_dir, stat.S_IWUSR)
+                    shutil.rmtree(plugin_dir)
+                if os.path.exists(backup_dir):
+                    os.replace(backup_dir, plugin_dir)
+                raise
+
+            if os.path.exists(backup_dir):
+                _recursive_chmod(backup_dir, stat.S_IWUSR)
+                shutil.rmtree(backup_dir)
+
         subprocess.run(
             ["systemctl", "restart", "plugin_loader.service"],
             check=True,
