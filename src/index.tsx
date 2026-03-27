@@ -83,13 +83,13 @@ const testRumble = callable<[], boolean>('test_rumble')
 
 const DEFAULT_APP_ID = '0'
 const ACTIVE_GAME_POLL_INTERVAL_MS = 1000
-const DEFAULT_STARTUP_DESCRIPTION = 'Restores the Zotac controller after boot and enables the dials.'
-const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Zotac Home button opens Home.'
-const DEFAULT_BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Enable the right dial brightness.'
+const DEFAULT_STARTUP_DESCRIPTION = 'Sets the Zotac controller now and after boot. Makes the dials work.'
+const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Opens Home.'
+const DEFAULT_BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Uses the right dial for screen brightness.'
 const DEFAULT_RUMBLE_DESCRIPTION = 'Change and test vibration intensity.'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available.'
-const NO_ACTIVE_GAME_GLYPH_FIX_DESCRIPTION = 'Launch a game to enable this per-game Xbox Elite Mode.'
-const DISABLE_TRACKPADS_DESCRIPTION = 'Turns off the trackpads while this glyph fix is active for the current game.'
+const NO_ACTIVE_GAME_GLYPH_FIX_DESCRIPTION = 'Launch a game to enable this fix.'
+const DISABLE_TRACKPADS_DESCRIPTION = 'Turns off the trackpads while this fix is on.'
 const STEAM_INPUT_DIAGNOSTIC_UNAVAILABLE_MESSAGE = 'Steam Input state unavailable.'
 const BRIGHTNESS_DIAL_FIX_STEP = 5
 
@@ -384,7 +384,7 @@ function getMissingGlyphFixDescription(activeGame: ActiveGame | null): ReactNode
   }
 
   const iconSource = getActiveGameIconSource(activeGame)
-  const description = `Fixes missing glyphs for ${activeGame.display_name}. This setting is per-game.`
+  const description = `Fixes button prompts and glyphs for ${activeGame.display_name}.`
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -842,7 +842,7 @@ function Content() {
         </PanelSectionRow>
         <PanelSectionRow>
           <ToggleField
-            label="Vibration Intensity"
+            label="Vibration / Rumble"
             checked={settings.rumbleEnabled}
             onChange={(value: boolean) => void handleRumbleToggleChange(value)}
             disabled={savingRumble}
@@ -886,7 +886,7 @@ function Content() {
         )}
         <PanelSectionRow>
           <ToggleField
-            label="Xbox Elite Mode"
+            label="Button Prompt Fix"
             checked={isMissingGlyphFixEnabled}
             onChange={(value: boolean) => void handleMissingGlyphFixToggleChange(value)}
             disabled={!activeGame || savingMissingGlyphFix}
