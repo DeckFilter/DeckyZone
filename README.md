@@ -27,7 +27,11 @@ curl -L https://raw.githubusercontent.com/felixhirschfeld/DeckyZone/main/install
 
 ## Status
 
-Feedback is really appreciated.
+Feedback is really appreciated. Please open an issue if you have feedback, bugs, or feature requests.
+
+If you would like to talk directly, you can also join the Discord server:
+
+- https://discord.gg/dyMMQNKdMH
 
 ## Future Ideas
 
