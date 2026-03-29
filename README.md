@@ -21,7 +21,7 @@ DeckyZone is a Decky plugin for the Zotac Gaming Zone that aims to bridge the mo
 Run the following in terminal:
 
 ```bash
-curl -L https://raw.githubusercontent.com/felixhirschfeld/DeckyZone/main/install.sh | sh
+curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh | sh
 ```
 
 ## Compatibility

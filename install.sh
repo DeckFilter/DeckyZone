@@ -7,7 +7,7 @@ if [ "$EUID" -eq 0 ]; then
   exit
 fi
 
-github_api_url="https://api.github.com/repos/felixhirschfeld/DeckyZone/releases/latest"
+github_api_url="https://api.github.com/repos/DeckFilter/DeckyZone/releases/latest"
 package="DeckyZone"
 
 echo "installing $package"
@@ -22,7 +22,7 @@ if [ -x "$(command -v jq)" ]; then
   use_jq=true
 fi
 
-RELEASE=$(curl -s "$github_api_url")
+RELEASE=$(curl -s -L "$github_api_url")
 
 if [[ $use_jq == true ]]; then
   echo "Using jq"
