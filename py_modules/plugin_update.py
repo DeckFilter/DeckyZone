@@ -29,7 +29,7 @@ def _fetch_latest_release():
 
 
 def _get_tarball_download_url(release_metadata):
-    for asset in release_metadata.get("assets", []):
+    for asset in release_metadata.get("assets") or []:
         if asset.get("name") == TARBALL_ASSET_NAME:
             return asset.get("browser_download_url")
 

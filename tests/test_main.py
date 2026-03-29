@@ -64,6 +64,11 @@ def _write_gamescope_display_assets(plugin_dir: Path):
     )
 
 
+def _write_executable(path: Path, content: str):
+    path.write_text(content, encoding="utf-8")
+    path.chmod(path.stat().st_mode | 0o111)
+
+
 def _fake_settings_module():
     module = types.ModuleType("settings")
 
@@ -2156,6 +2161,13 @@ class PluginUpdateHelperTests(unittest.TestCase):
             "https://example.com/DeckyZone.tar.gz",
         )
 
+    def test_get_tarball_download_url_raises_when_assets_is_null(self):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Latest DeckyZone release tarball was not found.",
+        ):
+            plugin_update._get_tarball_download_url({"assets": None})
+
     def test_ota_update_replaces_existing_plugin_and_restarts_loader(self):
         with tempfile.TemporaryDirectory() as temp_home:
             plugin_root = Path(temp_home) / "homebrew" / "plugins"
@@ -2268,6 +2280,91 @@ class PluginUpdateHelperTests(unittest.TestCase):
 
             self.assertEqual(plugin_dir.joinpath("old.txt").read_text(encoding="utf-8"), "old")
             self.assertFalse(plugin_dir.joinpath("new.txt").exists())
+
+
+class InstallScriptTests(unittest.TestCase):
+    def test_install_script_handles_null_assets_when_jq_is_present(self):
+        with tempfile.TemporaryDirectory() as temp_home:
+            temp_home_path = Path(temp_home)
+            temp_home_path.joinpath("homebrew", "plugins").mkdir(parents=True)
+            bin_dir = temp_home_path / "bin"
+            bin_dir.mkdir()
+
+            _write_executable(
+                bin_dir / "curl",
+                """#!/usr/bin/env bash
+if [ "$1" = "-s" ]; then
+  printf '%s' '{"tag_name":"v1.2.3","assets":null}'
+  exit 0
+fi
+
+echo "unexpected curl invocation: $*" >&2
+exit 2
+""",
+            )
+            _write_executable(
+                bin_dir / "sudo",
+                """#!/usr/bin/env bash
+exec "$@"
+""",
+            )
+            _write_executable(
+                bin_dir / "jq",
+                """#!/usr/bin/env python3
+import json
+import sys
+
+query = sys.argv[-1]
+payload = json.load(sys.stdin)
+
+if query == ".message":
+    value = payload.get("message")
+    print("null" if value is None else value)
+    sys.exit(0)
+
+if query == ".tag_name":
+    value = payload.get("tag_name")
+    print("null" if value is None else value)
+    sys.exit(0)
+
+def print_matching_urls(assets):
+    for asset in assets:
+        if asset.get("name", "").endswith(".tar.gz"):
+            print(asset.get("browser_download_url", ""))
+
+if query == '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url':
+    assets = payload.get("assets")
+    if assets is None:
+        sys.stderr.write("jq: error (at <stdin>:0): Cannot iterate over null (null)\\n")
+        sys.exit(5)
+    print_matching_urls(assets)
+    sys.exit(0)
+
+if query == '(.assets // [])[] | select(.name | endswith(".tar.gz")) | .browser_download_url':
+    print_matching_urls(payload.get("assets") or [])
+    sys.exit(0)
+
+sys.stderr.write(f"unsupported jq query: {query}\\n")
+sys.exit(2)
+""",
+            )
+
+            install_script = Path(__file__).resolve().parents[1] / "install.sh"
+            env = os.environ.copy()
+            env["HOME"] = temp_home
+            env["PATH"] = f"{bin_dir}:{env['PATH']}"
+
+            result = subprocess.run(
+                ["bash", str(install_script)],
+                cwd=temp_home,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Failed to get latest release tarball", result.stderr)
+            self.assertNotIn("Cannot iterate over null", result.stderr)
 
 
 class PluginLifecycleTests(unittest.IsolatedAsyncioTestCase):
