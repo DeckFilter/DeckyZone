@@ -9,9 +9,12 @@ from pathlib import Path
 
 import decky
 import controller_targets
+import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_target_sync
 import plugin_update
 import plugin_settings
+
+gamescope_display_profiles = gamescope_display_profiles_module
 
 
 SUPPORTED_BOARDS = {"G0A1W", "G1A1W"}
@@ -118,12 +121,20 @@ class DeckyZoneService:
         logger=decky.logger,
         read_text=None,
         settings_store=plugin_settings,
+        gamescope_display_profiles=None,
     ):
         self.command_runner = command_runner
         self.sleep = sleep
         self.logger = logger
         self.read_text = read_text or self._read_text
         self.settings_store = settings_store
+        self.gamescope_display_profiles = (
+            gamescope_display_profiles
+            or gamescope_display_profiles_module.GamescopeDisplayProfiles(
+                user_home=decky.DECKY_USER_HOME,
+                plugin_dir=decky.DECKY_PLUGIN_DIR,
+            )
+        )
         self._status = {"state": "idle", "message": DBUS_READY_MESSAGE}
         self._privilege_context_logged = False
         self._inputplumber_available = False
@@ -177,10 +188,14 @@ class DeckyZoneService:
             return handle.read().strip()
 
     def _current_settings(self):
+        display_profile_settings = self.gamescope_display_profiles.get_state()
         return {
             "startupApplyEnabled": self.settings_store.get_startup_apply_enabled(),
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
             "brightnessDialFixEnabled": self.settings_store.get_brightness_dial_fix_enabled(),
+            "gamescopeZotacProfileBuiltIn": display_profile_settings["gamescopeZotacProfileBuiltIn"],
+            "gamescopeZotacProfileInstalled": display_profile_settings["gamescopeZotacProfileInstalled"],
+            "gamescopeGreenTintFixEnabled": display_profile_settings["gamescopeGreenTintFixEnabled"],
             "inputplumberAvailable": self._inputplumber_available,
             "pluginVersionNum": decky.DECKY_PLUGIN_VERSION,
             "rumbleEnabled": self.settings_store.get_rumble_enabled(),
@@ -1148,6 +1163,18 @@ class DeckyZoneService:
 
         return self._current_settings()
 
+    async def set_gamescope_zotac_profile_enabled(self, enabled):
+        self.gamescope_display_profiles.set_zotac_profile_enabled(enabled)
+        return self._current_settings()
+
+    async def set_gamescope_green_tint_fix_enabled(self, enabled):
+        self.gamescope_display_profiles.set_green_tint_fix_enabled(enabled)
+        return self._current_settings()
+
+    def remove_gamescope_display_profiles(self):
+        self.gamescope_display_profiles.cleanup_managed_files()
+        return self._current_settings()
+
     # TODO: Keep using the current FF_GAIN path for now. Zotac may also support
     # a native HID/sysfs method via save_config, vibration_intensity, and
     # motor_test; a future change could evaluate that path or add a
@@ -1442,6 +1469,12 @@ class Plugin:
     async def set_brightness_dial_fix_enabled(self, enabled):
         return await self.service.set_brightness_dial_fix_enabled(enabled)
 
+    async def set_gamescope_zotac_profile_enabled(self, enabled):
+        return await self.service.set_gamescope_zotac_profile_enabled(enabled)
+
+    async def set_gamescope_green_tint_fix_enabled(self, enabled):
+        return await self.service.set_gamescope_green_tint_fix_enabled(enabled)
+
     async def set_missing_glyph_fix_enabled(self, app_id, enabled):
         return self.service.set_missing_glyph_fix_enabled(app_id, enabled)
 
@@ -1502,6 +1535,8 @@ class Plugin:
             if hasattr(self.service, "stop_brightness_dial_fixer"):
                 await self.service.stop_brightness_dial_fixer()
             await self.service.stop_rumble_fixer()
+        if hasattr(self.service, "remove_gamescope_display_profiles"):
+            self.service.remove_gamescope_display_profiles()
         plugin_settings.reset_settings()
 
     async def _migration(self):

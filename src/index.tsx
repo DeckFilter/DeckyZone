@@ -14,28 +14,9 @@ import { addEventListener, callable, definePlugin, removeEventListener } from '@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { FaSlidersH } from 'react-icons/fa'
+import DisplayFixes from "./components/DisplayFixes"
 import OtaUpdates from "./components/OtaUpdates"
-
-type PluginStatus = {
-  state: string
-  message: string
-}
-
-type MissingGlyphFixGameSettings = {
-  disableTrackpads: boolean
-}
-
-type PluginSettings = {
-  startupApplyEnabled: boolean
-  homeButtonEnabled: boolean
-  brightnessDialFixEnabled: boolean
-  inputplumberAvailable: boolean
-  pluginVersionNum?: string
-  rumbleEnabled: boolean
-  rumbleIntensity: number
-  rumbleAvailable: boolean
-  missingGlyphFixGames: Record<string, MissingGlyphFixGameSettings>
-}
+import type { PluginSettings, PluginStatus } from "./pluginTypes"
 
 type ActiveGame = {
   appid: string
@@ -498,13 +479,17 @@ function Content() {
     setStatus(nextStatus)
   }
 
+  const applySettingsUpdate = (nextSettings: PluginSettings) => {
+    cacheBootstrapSettings(nextSettings)
+    setBootstrap(getBootstrapState())
+    setSettings(nextSettings)
+  }
+
   const handleStartupToggleChange = async (enabled: boolean) => {
     setSavingStartup(true)
     try {
       const nextSettings = await setStartupApplyEnabled(enabled)
-      cacheBootstrapSettings(nextSettings)
-      setBootstrap(getBootstrapState())
-      setSettings(nextSettings)
+      applySettingsUpdate(nextSettings)
       await loadStatus()
       await syncActiveGameTarget(activeGame?.appid ?? DEFAULT_APP_ID)
     } catch (error) {
@@ -521,9 +506,7 @@ function Content() {
     setSavingHomeButton(true)
     try {
       const nextSettings = await setHomeButtonEnabled(enabled)
-      cacheBootstrapSettings(nextSettings)
-      setBootstrap(getBootstrapState())
-      setSettings(nextSettings)
+      applySettingsUpdate(nextSettings)
       setHomeButtonRuntimeEnabled(nextSettings.homeButtonEnabled)
     } catch (error) {
       setStatus({
@@ -539,9 +522,7 @@ function Content() {
     setSavingBrightnessDialFix(true)
     try {
       const nextSettings = await setBrightnessDialFixEnabled(enabled)
-      cacheBootstrapSettings(nextSettings)
-      setBootstrap(getBootstrapState())
-      setSettings(nextSettings)
+      applySettingsUpdate(nextSettings)
       setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
     } catch (error) {
       setStatus({
@@ -561,9 +542,7 @@ function Content() {
     setSavingMissingGlyphFix(true)
     try {
       const nextSettings = await setMissingGlyphFixEnabled(activeGame.appid, enabled)
-      cacheBootstrapSettings(nextSettings)
-      setBootstrap(getBootstrapState())
-      setSettings(nextSettings)
+      applySettingsUpdate(nextSettings)
       await syncActiveGameTarget(activeGame.appid)
     } catch (error) {
       setStatus({
@@ -583,9 +562,7 @@ function Content() {
     setSavingRumble(true)
     try {
       const nextSettings = await setRumbleEnabled(enabled)
-      cacheBootstrapSettings(nextSettings)
-      setBootstrap(getBootstrapState())
-      setSettings(nextSettings)
+      applySettingsUpdate(nextSettings)
       setRumbleIntensityDraft(nextSettings.rumbleIntensity)
       rumbleIntensityLatestValue.current = nextSettings.rumbleIntensity
       setRumbleMessage(null)
@@ -611,9 +588,7 @@ function Content() {
             rumbleAvailable: nextSettings.rumbleAvailable,
           }
         : nextSettings
-      cacheBootstrapSettings(mergedSettings)
-      setBootstrap(getBootstrapState())
-      setSettings(mergedSettings)
+      applySettingsUpdate(mergedSettings)
       setRumbleMessage(null)
       setRumbleMessageKind(null)
     } catch (error) {
@@ -659,9 +634,7 @@ function Content() {
     setSavingMissingGlyphFixTrackpads(true)
     try {
       const nextSettings = await setMissingGlyphFixTrackpadsDisabled(activeGame.appid, disabled)
-      cacheBootstrapSettings(nextSettings)
-      setBootstrap(getBootstrapState())
-      setSettings(nextSettings)
+      applySettingsUpdate(nextSettings)
       await syncActiveGameTarget(activeGame.appid)
     } catch (error) {
       setStatus({
@@ -925,6 +898,11 @@ function Content() {
           </PanelSectionRow>
         )}
       </PanelSection>
+      <DisplayFixes
+        settings={settings}
+        onSettingsChange={applySettingsUpdate}
+        onStatusChange={setStatus}
+      />
       <OtaUpdates installedVersionNum={settings.pluginVersionNum ?? ''} />
     </>
   )
