@@ -7,12 +7,12 @@ import {
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener } from '@decky/api'
 import { useEffect, useState } from 'react'
-import { FaSlidersH } from 'react-icons/fa'
 import ControllerPanel from "./components/ControllerPanel"
 import DisplayPanel from "./components/DisplayPanel"
 import ErrorBoundary from "./components/ErrorBoundary"
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
 import UpdatesPanel from "./components/UpdatesPanel"
+import ZotacIcon from "./components/ZotacIcon"
 import type { ActiveGame, PluginSettings, PluginStatus } from "./types/plugin"
 
 type BrightnessDialDirection = 'up' | 'down'
@@ -403,7 +403,7 @@ export default definePlugin(() => {
     name: 'DeckyZone',
     titleView: <QuickAccessTitleView title="DeckyZone" />,
     content: <Content />,
-    icon: <FaSlidersH />,
+    icon: <ZotacIcon />,
     onDismount() {
       removeEventListener('zotac_home_short_pressed', unregisterHomeNavigationListener)
       unregisterActiveGameSync()

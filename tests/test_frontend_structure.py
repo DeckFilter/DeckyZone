@@ -7,6 +7,8 @@ class FrontendStructureTests(unittest.TestCase):
     def test_index_wires_bootstrap_and_top_level_panels(self):
         index_source = REPO_ROOT.joinpath("src", "index.tsx").read_text()
 
+        self.assertIn('import ZotacIcon from "./components/ZotacIcon"', index_source)
+        self.assertNotIn("import zotacLogo from '../assets/ui/ZotacLogo.png'", index_source)
         self.assertIn('import ControllerPanel from "./components/ControllerPanel"', index_source)
         self.assertIn('import DisplayPanel from "./components/DisplayPanel"', index_source)
         self.assertIn('import UpdatesPanel from "./components/UpdatesPanel"', index_source)
@@ -24,6 +26,28 @@ class FrontendStructureTests(unittest.TestCase):
         self.assertIn("<DisplayPanel", index_source)
         self.assertIn("<UpdatesPanel", index_source)
         self.assertIn("titleView: <QuickAccessTitleView", index_source)
+        self.assertNotIn("const ZOTAC_PLUGIN_ICON_DATA_URI =", index_source)
+        self.assertNotIn("data:image/png;base64,", index_source)
+        self.assertIn("icon: <ZotacIcon />", index_source)
+        self.assertNotIn("icon: <img", index_source)
+        self.assertNotIn("FaSlidersH", index_source)
+
+    def test_zotac_icon_is_inline_svg_with_current_color(self):
+        icon_path = REPO_ROOT.joinpath("src", "components", "ZotacIcon.tsx")
+        self.assertTrue(icon_path.exists())
+        icon_source = icon_path.read_text()
+
+        self.assertIn("const ZotacIcon", icon_source)
+        self.assertIn("<svg", icon_source)
+        self.assertIn('viewBox="0 0 40 53"', icon_source)
+        self.assertIn("<mask", icon_source)
+        self.assertIn("<image", icon_source)
+        self.assertIn("data:image/png;base64,", icon_source)
+        self.assertIn("currentColor", icon_source)
+        self.assertIn("width: '1rem'", icon_source)
+        self.assertIn("height: '1rem'", icon_source)
+        self.assertIn("display: 'block'", icon_source)
+        self.assertNotIn("<img", icon_source)
 
     def test_quick_access_title_view_opens_debug_info_modal(self):
         header_path = REPO_ROOT.joinpath("src", "components", "QuickAccessTitleView.tsx")
