@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
-import type { ActiveGame, PluginSettings, PluginStatus } from '../types/plugin'
+import type { ActiveGame, ControllerMode, PluginSettings, PluginStatus } from '../types/plugin'
 
 type SteamInputDiagnosticAppDetails = {
   bShowControllerConfig?: boolean
@@ -33,6 +33,7 @@ type Props = {
 
 const getStatus = callable<[], PluginStatus>('get_status')
 const setStartupApplyEnabled = callable<[boolean], PluginSettings>('set_startup_apply_enabled')
+const setControllerMode = callable<[ControllerMode], PluginSettings>('set_controller_mode')
 const setHomeButtonEnabled = callable<[boolean], PluginSettings>('set_home_button_enabled')
 const setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>('set_brightness_dial_fix_enabled')
 const setPerGameSettingsEnabled = callable<[string, boolean], PluginSettings>('set_per_game_settings_enabled')
@@ -48,6 +49,7 @@ const STEAM_INPUT_DIAGNOSTIC_UNAVAILABLE_MESSAGE = 'Steam Input state unavailabl
 const SUPPORT_POPUP_HINT = 'Open the header info popup for details.'
 const CONTROLLER_STATUS_FAILED_NOTICE = `Controller setup needs attention. ${SUPPORT_POPUP_HINT}`
 const CONTROLLER_ACTION_FAILED_NOTICE = `Couldn't update the controller setting. ${SUPPORT_POPUP_HINT}`
+const CONTROLLER_MODE_ACTION_FAILED_NOTICE = `Couldn't update the controller mode. ${SUPPORT_POPUP_HINT}`
 const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = `Couldn't update the per-game setting. ${SUPPORT_POPUP_HINT}`
 const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = `Couldn't update the button prompt fix. ${SUPPORT_POPUP_HINT}`
 const TRACKPADS_ACTION_FAILED_NOTICE = `Couldn't update the trackpad setting. ${SUPPORT_POPUP_HINT}`
@@ -128,6 +130,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [controllerNotice, setControllerNotice] = useState<string | null>(null)
   const [perGameNotice, setPerGameNotice] = useState<string | null>(null)
   const [savingStartup, setSavingStartup] = useState(false)
+  const [savingControllerMode, setSavingControllerMode] = useState(false)
   const [savingHomeButton, setSavingHomeButton] = useState(false)
   const [savingBrightnessDialFix, setSavingBrightnessDialFix] = useState(false)
   const [savingPerGameSettings, setSavingPerGameSettings] = useState(false)
@@ -193,6 +196,19 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       setControllerNotice(CONTROLLER_ACTION_FAILED_NOTICE)
     } finally {
       setSavingHomeButton(false)
+    }
+  }
+
+  const handleControllerModeChange = async (mode: ControllerMode) => {
+    setSavingControllerMode(true)
+    try {
+      const nextSettings = await setControllerMode(mode)
+      onSettingsChange(nextSettings)
+      setControllerNotice(null)
+    } catch {
+      setControllerNotice(CONTROLLER_MODE_ACTION_FAILED_NOTICE)
+    } finally {
+      setSavingControllerMode(false)
     }
   }
 
@@ -409,13 +425,15 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const visibleControllerNotice = getControllerStatusNotice(status) ?? controllerNotice
 
   return (
-    <PanelSection title="Controller">
+    <PanelSection title="Controller" spinner={savingControllerMode}>
       <ControllerTogglesPanel
         settings={settings}
         savingStartup={savingStartup}
+        savingControllerMode={savingControllerMode}
         savingHomeButton={savingHomeButton}
         savingBrightnessDialFix={savingBrightnessDialFix}
         onStartupToggleChange={(value: boolean) => void handleStartupToggleChange(value)}
+        onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
         onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
         onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
       />

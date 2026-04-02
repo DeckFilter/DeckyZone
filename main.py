@@ -3,6 +3,7 @@ import ctypes
 import ctypes.util
 import errno
 import os
+import select
 import subprocess
 import sys
 from pathlib import Path
@@ -36,6 +37,25 @@ FIRMWARE_ATTRIBUTES_CLASS_MODULE_PATH = "/sys/module/firmware_attributes_class"
 FIRMWARE_ATTRIBUTES_NODE_PATH = "/sys/class/firmware-attributes/zotac_zone_platform"
 ZOTAC_HID_CONFIG_SEARCH_ROOT = "/sys/class/hidraw/hidraw*/device"
 ZOTAC_HID_CONFIG_MATCH_MARKER = "save_config"
+ZOTAC_CONTROLLER_VENDOR_IDS = {"1ee9", "1e19"}
+ZOTAC_CONTROLLER_PRODUCT_ID = "1590"
+ZOTAC_CONTROLLER_INTERFACE_NUM = "03"
+ZOTAC_RAW_REPORT_SIZE = 64
+ZOTAC_RAW_HEADER_TAG = 0xE1
+ZOTAC_RAW_PAYLOAD_SIZE = 0x3C
+ZOTAC_RAW_CMD_SET_PROFILE = 0xB1
+ZOTAC_RAW_CMD_GET_PROFILE = 0xB2
+ZOTAC_CONTROLLER_MODE_GAMEPAD = "gamepad"
+ZOTAC_CONTROLLER_MODE_DESKTOP = "desktop"
+ZOTAC_CONTROLLER_MODE_TO_PROFILE = {
+    ZOTAC_CONTROLLER_MODE_GAMEPAD: 0,
+    ZOTAC_CONTROLLER_MODE_DESKTOP: 1,
+}
+ZOTAC_PROFILE_TO_CONTROLLER_MODE = {
+    0: ZOTAC_CONTROLLER_MODE_GAMEPAD,
+    1: ZOTAC_CONTROLLER_MODE_DESKTOP,
+}
+ZOTAC_RAW_REPLY_TIMEOUT_SECONDS = 1.0
 DBUS_READY_MESSAGE = "Waiting to apply startup mode."
 UNSUPPORTED_MESSAGE = "Unsupported device: startup mode only applies on Zotac Zone."
 DISABLED_MESSAGE = "Startup mode apply is disabled."
@@ -173,6 +193,7 @@ class DeckyZoneService:
         self._rumble_device_path = None
         self._rumble_task = None
         self._rumble_running = False
+        self._zotac_raw_command_seq = 0
         self._libc = ctypes.CDLL(ctypes.util.find_library("c") or None, use_errno=True)
 
     def get_status(self):
@@ -415,8 +436,12 @@ class DeckyZoneService:
 
     def _current_settings(self):
         display_profile_settings = self._get_display_profile_settings()
+        controller_mode_device_path = self._resolve_zotac_controller_hidraw_path()
+        controller_mode = self._get_controller_mode(controller_mode_device_path)
         return {
             "startupApplyEnabled": self.settings_store.get_startup_apply_enabled(),
+            "controllerMode": controller_mode,
+            "controllerModeAvailable": controller_mode_device_path is not None,
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
             "brightnessDialFixEnabled": self.settings_store.get_brightness_dial_fix_enabled(),
             "gamescopeZotacProfileBuiltIn": display_profile_settings["gamescopeZotacProfileBuiltIn"],
@@ -1229,6 +1254,140 @@ class DeckyZoneService:
 
         return None
 
+    def _get_zotac_controller_hidraw_paths(self):
+        hidraw_class_root = Path("/sys/class/hidraw")
+        if not hidraw_class_root.exists():
+            return []
+
+        matching_device_paths = []
+        for hidraw_class_path in sorted(hidraw_class_root.glob("hidraw*")):
+            try:
+                if self._is_zotac_controller_hidraw_path(hidraw_class_path):
+                    matching_device_paths.append(str(Path("/dev") / hidraw_class_path.name))
+            except Exception:
+                continue
+
+        return matching_device_paths
+
+    def _read_sysfs_attribute_upwards(self, start_path, attribute_name):
+        for candidate_path in [start_path, *start_path.parents]:
+            attribute_path = candidate_path / attribute_name
+            try:
+                if attribute_path.is_file():
+                    return self._read_text(attribute_path)
+            except Exception:
+                continue
+
+        return None
+
+    def _is_zotac_controller_hidraw_path(self, hidraw_class_path):
+        device_path = Path(hidraw_class_path, "device").resolve()
+        vendor_id = (self._read_sysfs_attribute_upwards(device_path, "idVendor") or "").lower()
+        product_id = (self._read_sysfs_attribute_upwards(device_path, "idProduct") or "").lower()
+        interface_num = (self._read_sysfs_attribute_upwards(device_path, "bInterfaceNumber") or "").lower()
+        return (
+            vendor_id in ZOTAC_CONTROLLER_VENDOR_IDS
+            and product_id == ZOTAC_CONTROLLER_PRODUCT_ID
+            and interface_num == ZOTAC_CONTROLLER_INTERFACE_NUM
+        )
+
+    def _resolve_zotac_controller_hidraw_path(self):
+        candidate_paths = self._get_zotac_controller_hidraw_paths()
+        if candidate_paths:
+            return candidate_paths[0]
+
+        return None
+
+    def _zotac_calc_crc(self, buffer):
+        crc = 0
+        for value in buffer[4:0x3E]:
+            h1 = (crc ^ value) & 0xFF
+            h2 = h1 & 0x0F
+            h3 = (h2 << 4) ^ h1
+            h4 = h3 >> 4
+            crc = (((((h3 << 1) ^ h4) << 4) ^ h2) << 3) ^ h4 ^ (crc >> 8)
+            crc &= 0xFFFF
+        return crc
+
+    def _zotac_make_packet(self, seq, command, data=b""):
+        buffer = bytearray(ZOTAC_RAW_REPORT_SIZE)
+        buffer[0] = ZOTAC_RAW_HEADER_TAG
+        buffer[1] = 0x00
+        buffer[2] = seq & 0xFF
+        buffer[3] = ZOTAC_RAW_PAYLOAD_SIZE
+        buffer[4] = command
+        if data:
+            buffer[5:5 + len(data)] = data
+        else:
+            buffer[5] = 0x00
+        crc = self._zotac_calc_crc(buffer)
+        buffer[0x3E] = (crc >> 8) & 0xFF
+        buffer[0x3F] = crc & 0xFF
+        return bytes(buffer)
+
+    def _normalize_zotac_reply(self, raw_reply):
+        if len(raw_reply) >= 65 and raw_reply[0] == 0x00 and raw_reply[1] == ZOTAC_RAW_HEADER_TAG:
+            return raw_reply[1:65]
+        if len(raw_reply) >= ZOTAC_RAW_REPORT_SIZE and raw_reply[0] == ZOTAC_RAW_HEADER_TAG:
+            return raw_reply[:ZOTAC_RAW_REPORT_SIZE]
+        raise RuntimeError("Unexpected Zotac HID reply.")
+
+    def _send_zotac_raw_command(self, device_path, command, data=b""):
+        fd = os.open(device_path, os.O_RDWR)
+        seq = self._zotac_raw_command_seq & 0xFF
+        self._zotac_raw_command_seq = (self._zotac_raw_command_seq + 1) & 0xFF
+        try:
+            packet = self._zotac_make_packet(seq, command, data)
+            os.write(fd, b"\x00" + packet)
+            readable, _, _ = select.select([fd], [], [], ZOTAC_RAW_REPLY_TIMEOUT_SECONDS)
+            if not readable:
+                raise RuntimeError("Timed out waiting for Zotac HID reply.")
+
+            return self._normalize_zotac_reply(os.read(fd, 65))
+        finally:
+            os.close(fd)
+
+    def _get_controller_mode(self, device_path=None):
+        if device_path is None:
+            device_path = self._resolve_zotac_controller_hidraw_path()
+        if not device_path:
+            return None
+
+        try:
+            reply = self._send_zotac_raw_command(device_path, ZOTAC_RAW_CMD_GET_PROFILE)
+            if reply[4] != ZOTAC_RAW_CMD_GET_PROFILE:
+                return None
+            return ZOTAC_PROFILE_TO_CONTROLLER_MODE.get(reply[5])
+        except Exception as error:
+            self.logger.warning(f"Failed to read controller mode: {error}")
+            return None
+
+    async def set_controller_mode(self, mode):
+        normalized_mode = str(mode or "").strip().lower()
+        raw_profile = ZOTAC_CONTROLLER_MODE_TO_PROFILE.get(normalized_mode)
+        if raw_profile is None:
+            return self._current_settings()
+
+        device_path = self._resolve_zotac_controller_hidraw_path()
+        if not device_path:
+            raise RuntimeError("Controller mode interface unavailable.")
+
+        try:
+            reply = self._send_zotac_raw_command(
+                device_path,
+                ZOTAC_RAW_CMD_SET_PROFILE,
+                bytes([raw_profile]),
+            )
+            if reply[4] != ZOTAC_RAW_CMD_SET_PROFILE:
+                raise RuntimeError("Unexpected controller mode reply.")
+            if reply[5] != 0:
+                raise RuntimeError(f"Controller mode change rejected: 0x{reply[5]:02x}")
+        except Exception as error:
+            self.logger.warning(f"Failed to set controller mode: {error}")
+            raise RuntimeError("Failed to set controller mode.")
+
+        return self._current_settings()
+
     def _has_zotac_hid_attribute(self, config_path, attribute_name):
         return Path(config_path, attribute_name).is_file()
 
@@ -1736,6 +1895,9 @@ class Plugin:
 
     async def set_home_button_enabled(self, enabled):
         return await self.service.set_home_button_enabled(enabled)
+
+    async def set_controller_mode(self, mode):
+        return await self.service.set_controller_mode(mode)
 
     async def set_rumble_enabled(self, enabled):
         return await self.service.set_rumble_enabled(enabled)

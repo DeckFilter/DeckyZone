@@ -3,6 +3,8 @@ export type PluginStatus = {
   message: string
 }
 
+export type ControllerMode = 'gamepad' | 'desktop'
+
 export type DebugInfoSnapshot = {
   deviceIdentity: {
     vendorName: string | null
@@ -66,6 +68,8 @@ export type ActiveGame = {
 
 export type PluginSettings = {
   startupApplyEnabled: boolean
+  controllerMode: ControllerMode | null
+  controllerModeAvailable: boolean
   homeButtonEnabled: boolean
   brightnessDialFixEnabled: boolean
   gamescopeZotacProfileBuiltIn: boolean
