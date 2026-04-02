@@ -11,24 +11,24 @@ type Props = {
 const setGamescopeZotacProfileEnabled = callable<[boolean], PluginSettings>('set_gamescope_zotac_profile_enabled')
 const setGamescopeGreenTintFixEnabled = callable<[boolean], PluginSettings>('set_gamescope_green_tint_fix_enabled')
 
-const RESTART_NOTE = 'Reboot after changing this.'
-const NATIVE_COLOR_TEMPERATURE_HINT = 'Tip: Settings -> Display -> Use Native Color Temperature as per preference.'
+const RESTART_NOTE = 'reboot after changing this'
+const NATIVE_COLOR_TEMPERATURE_HINT = 'Tip: Settings -> Display -> Use Native Color Temperature'
 const SUPPORT_POPUP_HINT = 'Open the header info popup for details.'
 const DISPLAY_UPDATE_FAILED_NOTICE = `Couldn't update the display setting. ${SUPPORT_POPUP_HINT}`
 const DISPLAY_MISMATCH_NOTICE = `Display profile did not match the requested state. ${SUPPORT_POPUP_HINT}`
 const DISPLAY_VERIFICATION_NOTICE = `Display profile needs attention. ${SUPPORT_POPUP_HINT}`
-const ZOTAC_PROFILE_DESCRIPTION = `Installs the Zotac OLED Gamescope profile on systems that do not ship it yet. ${RESTART_NOTE}`
+const ZOTAC_PROFILE_DESCRIPTION = `Adds the Zotac OLED Gamescope profile if it's missing, ${RESTART_NOTE}`
 
 function getGreenTintDescription(settings: PluginSettings, isBaseProfileAvailable: boolean) {
   if (!isBaseProfileAvailable) {
-    return `Requires the Zotac OLED profile first. ${RESTART_NOTE}`
+    return `Requires the Zotac OLED profile first, ${RESTART_NOTE}`
   }
 
   if (settings.gamescopeZotacProfileBuiltIn) {
-    return `Applies a white point correction to the built-in Zotac OLED profile. ${RESTART_NOTE}`
+    return `Applies a white point correction to the built-in Zotac OLED profile, ${RESTART_NOTE}`
   }
 
-  return `Applies a white point correction to reduce green tint. ${RESTART_NOTE}`
+  return `Applies a white point correction to reduce green tint, ${RESTART_NOTE}`
 }
 
 function getDisplayVerificationNotice(settings: PluginSettings) {

@@ -13,8 +13,8 @@ type Props = {
   onTestRumble: () => void
 }
 
-const DEFAULT_RUMBLE_DESCRIPTION = 'Change and test vibration intensity.'
-const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available.'
+const DEFAULT_RUMBLE_DESCRIPTION = 'Change and test vibration intensity'
+const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available'
 
 function getRumbleDescription(settings: PluginSettings) {
   if (!settings.rumbleAvailable) {

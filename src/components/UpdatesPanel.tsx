@@ -233,7 +233,7 @@ const UpdatesPanel = ({ installedVersionNum, onResetComplete }: Props) => {
           layout="below"
           onClick={() => void loadLatestVersion()}
           disabled={isLoadingLatestVersion || isUpdating || isResetting}
-          description={lastCheckTime ? `Last check: ${getLastCheckText(lastCheckTime)}` : "Click to check for updates"}
+          description={lastCheckTime ? `Last check: ${getLastCheckText(lastCheckTime)}` : 'Checks for the latest published version'}
         >
           {isLoadingLatestVersion ? "Checking..." : "Check Version"}
         </ButtonItem>
@@ -243,7 +243,7 @@ const UpdatesPanel = ({ installedVersionNum, onResetComplete }: Props) => {
           layout="below"
           onClick={openResetConfirmation}
           disabled={isUpdating || isResetting}
-          description="Reset DeckyZone settings and remove DeckyZone-managed display files."
+          description="Resets DeckyZone settings and removes DeckyZone-managed display files"
         >
           {isResetting ? "Resetting..." : "Reset All"}
         </ButtonItem>

@@ -18,10 +18,10 @@ type Props = {
   onPerGameTrackpadsChange: (disabled: boolean) => void
 }
 
-const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available.'
-const NO_ACTIVE_GAME_PER_GAME_SETTINGS_DESCRIPTION = 'Launch a game to enable per-game settings.'
-const BUTTON_PROMPT_FIX_DESCRIPTION = 'Fixes button prompts and glyphs.'
-const DISABLE_TRACKPADS_DESCRIPTION = 'Turns off the trackpads while this fix is on.'
+const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
+const NO_ACTIVE_GAME_PER_GAME_SETTINGS_DESCRIPTION = 'Launch a game to enable per-game settings'
+const BUTTON_PROMPT_FIX_DESCRIPTION = 'Fixes button prompts and glyphs'
+const DISABLE_TRACKPADS_DESCRIPTION = 'Turns off the trackpads while this fix is on'
 
 function getActiveGameIconSource(activeGame: ActiveGame | null) {
   if (!activeGame) {

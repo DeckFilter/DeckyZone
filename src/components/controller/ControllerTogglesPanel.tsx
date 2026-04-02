@@ -13,14 +13,15 @@ type Props = {
   onBrightnessDialFixToggleChange: (enabled: boolean) => void
 }
 
-const CONTROLLER_FEATURES_DESCRIPTION = 'Turns on controller features.'
-const CONTROLLER_MODE_DESCRIPTION = 'Switches between Gamepad and Desktop.'
-const CONTROLLER_MODE_UNKNOWN_DESCRIPTION = "Current mode couldn't be read."
-const CONTROLLER_MODE_UNAVAILABLE_DESCRIPTION = 'Controller mode is unavailable.'
+const CONTROLLER_FEATURES_DESCRIPTION = 'Turns on controller features'
+const CONTROLLER_MODE_DESCRIPTION = 'Gamepad is recommended'
+const CONTROLLER_MODE_DESKTOP_HINT = 'Switch back to Gamepad'
+const CONTROLLER_MODE_UNKNOWN_DESCRIPTION = "Current mode couldn't be read"
+const CONTROLLER_MODE_UNAVAILABLE_DESCRIPTION = 'Controller mode is unavailable'
 const CONTROLLER_MODE_UNAVAILABLE_OPTION = { data: 'unavailable', label: 'Unavailable' } as const
-const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Opens Home.'
-const BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Uses the right dial for screen brightness.'
-const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available.'
+const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Navigates to Home'
+const BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Controls screen brightness with the right dial'
+const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
 const CONTROLLER_MODE_OPTIONS = [
   { data: 'gamepad', label: 'Gamepad' },
   { data: 'desktop', label: 'Desktop' },
@@ -50,7 +51,9 @@ const ControllerTogglesPanel = ({
     ? CONTROLLER_MODE_UNAVAILABLE_DESCRIPTION
     : settings.controllerMode === null
       ? CONTROLLER_MODE_UNKNOWN_DESCRIPTION
-      : CONTROLLER_MODE_DESCRIPTION
+      : settings.controllerMode === 'desktop'
+        ? CONTROLLER_MODE_DESKTOP_HINT
+        : CONTROLLER_MODE_DESCRIPTION
   const controllerModeDropdownProps = {
     label: 'Controller Mode',
     menuLabel: 'Controller Mode',
