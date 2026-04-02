@@ -12,16 +12,16 @@ DeckyZone is a Decky plugin for the Zotac Gaming Zone that aims to bridge the mo
 
 ### Controller
 
-| Feature                    | SteamOS `main` | Bazzite |
-| -------------------------- | -------------- | ------- |
-| Enable Controller Features | ✅             | ❌      |
-| Enable Home Button         | ✅             | ❌      |
-| Enable Brightness Dial     | ✅             | ❌      |
-| Vibration / Rumble         | ✅             | ✅      |
-| Test Rumble                | ✅             | ❌      |
-| Enable Per-Game Settings   | ✅             | ❌      |
-| Button Prompt Fix          | ✅             | ❌      |
-| Disable Trackpads          | ✅             | ❌      |
+| Feature                      | SteamOS `main` | Bazzite |
+| ---------------------------- | -------------- | ------- |
+| Enable Controller Features   | ✅             | ❌      |
+| Enable Home Button           | ✅             | ❌      |
+| Enable Brightness Dial       | ✅             | ❌      |
+| Vibration / Rumble Intensity | ✅             | ✅      |
+| Test Rumble                  | ✅             | ❌      |
+| Enable Per-Game Settings     | ✅             | ❌      |
+| Button Prompt Fix            | ✅             | ❌      |
+| Disable Trackpads            | ✅             | ❌      |
 
 ### Display
 
@@ -40,13 +40,13 @@ Controller features rely on InputPlumber. Bazzite will soon switch to InputPlumb
 
 - [PowerControl](https://github.com/mengmeet/PowerControl)
 
-I already contributed patches there and it'S included in the latest release and it was much faster to extend these absolutely fantastic plugin than to integrate the same functionality into DeckyZone itself.
+I already contributed patches there and it's included in the latest release. It was much faster to extend these fantastic plugin than to integrate the same functionality into DeckyZone itself.
 
 ### RGB Control
 
 - [HueSync](https://github.com/honjow/HueSync)
 
-I already contributed patches there and it'S hopüefully soon released and it was much faster to extend these absolutely fantastic plugin than to integrate the same functionality into DeckyZone itself.
+I already contributed patches there and it's hopefully soon released. It was again much faster to extend these fantastic plugin than to integrate the same functionality into DeckyZone itself.
 
 ## Installation
 
