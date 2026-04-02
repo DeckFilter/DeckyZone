@@ -1,0 +1,35 @@
+img[src="/steaminputglyphs/ps5_l1.svg"],
+img[src="/steaminputglyphs/xbox_lb.svg"],
+img[src="/steaminputglyphs/sd_l1.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lb.svg");
+}
+
+img[src="/steaminputglyphs/ps5_r1.svg"],
+img[src="/steaminputglyphs/xbox_rb.svg"],
+img[src="/steaminputglyphs/sd_r1.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rb.svg");
+}
+
+img[src="/steaminputglyphs/ps5_l2.svg"],
+img[src="/steaminputglyphs/xbox_lt.svg"],
+img[src="/steaminputglyphs/sd_l2.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lt.svg");
+}
+
+img[src="/steaminputglyphs/ps5_l2_soft.svg"],
+img[src="/steaminputglyphs/xbox_lt_soft.svg"],
+img[src="/steaminputglyphs/sd_l2_half.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lt-soft.svg");
+}
+
+img[src="/steaminputglyphs/ps5_r2.svg"],
+img[src="/steaminputglyphs/xbox_rt.svg"],
+img[src="/steaminputglyphs/sd_r2.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rt.svg");
+}
+
+img[src="/steaminputglyphs/ps5_r2_soft.svg"],
+img[src="/steaminputglyphs/xbox_rt_soft.svg"],
+img[src="/steaminputglyphs/sd_r2_half.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rt-soft.svg");
+}

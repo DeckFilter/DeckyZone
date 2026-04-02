@@ -6,6 +6,7 @@ from settings import SettingsManager
 STARTUP_APPLY_KEY = "startupApplyEnabled"
 HOME_BUTTON_ENABLED_KEY = "homeButtonEnabled"
 BRIGHTNESS_DIAL_FIX_ENABLED_KEY = "brightnessDialFixEnabled"
+ZOTAC_GLYPHS_ENABLED_KEY = "zotacGlyphsEnabled"
 RUMBLE_ENABLED_KEY = "rumbleEnabled"
 RUMBLE_INTENSITY_KEY = "rumbleIntensity"
 PER_GAME_SETTINGS_KEY = "perGameSettings"
@@ -16,6 +17,7 @@ DISABLE_TRACKPADS_KEY = "disableTrackpads"
 DEFAULT_STARTUP_APPLY_ENABLED = False
 DEFAULT_HOME_BUTTON_ENABLED = False
 DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED = False
+DEFAULT_ZOTAC_GLYPHS_ENABLED = False
 DEFAULT_RUMBLE_ENABLED = False
 DEFAULT_RUMBLE_INTENSITY = 75
 
@@ -115,6 +117,16 @@ def get_brightness_dial_fix_enabled():
 def set_brightness_dial_fix_enabled(enabled):
     _write_setting(BRIGHTNESS_DIAL_FIX_ENABLED_KEY, bool(enabled))
     return get_brightness_dial_fix_enabled()
+
+
+def get_zotac_glyphs_enabled():
+    settings = _read_settings()
+    return bool(settings.get(ZOTAC_GLYPHS_ENABLED_KEY, DEFAULT_ZOTAC_GLYPHS_ENABLED))
+
+
+def set_zotac_glyphs_enabled(enabled):
+    _write_setting(ZOTAC_GLYPHS_ENABLED_KEY, bool(enabled))
+    return get_zotac_glyphs_enabled()
 
 
 def get_rumble_enabled():

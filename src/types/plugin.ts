@@ -72,6 +72,7 @@ export type PluginSettings = {
   controllerModeAvailable: boolean
   homeButtonEnabled: boolean
   brightnessDialFixEnabled: boolean
+  zotacGlyphsEnabled: boolean
   gamescopeZotacProfileBuiltIn: boolean
   gamescopeZotacProfileInstalled: boolean
   gamescopeGreenTintFixEnabled: boolean

@@ -4,8 +4,8 @@
   "description": "Zotac Gaming Zone plugin for Decky Loader.",
   "type": "module",
   "scripts": {
-    "build": "rollup -c",
-    "watch": "rollup -c -w",
+    "build": "node scripts/generate-zotac-glyph-css.mjs && rollup -c",
+    "watch": "node scripts/generate-zotac-glyph-css.mjs && rollup -c -w",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

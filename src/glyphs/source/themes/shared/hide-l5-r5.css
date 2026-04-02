@@ -1,0 +1,89 @@
+/* Hide back buttons that don't exist on the device in the controller configuration overview */
+._1KA4m3xP2X5TGmO81UKYgL._3eORnJNDqWC-fDQP-iI5yt:has(img[src="/steaminputglyphs/ps_lb.svg"]),
+._1KA4m3xP2X5TGmO81UKYgL._3eORnJNDqWC-fDQP-iI5yt:has(img[src="/steaminputglyphs/sd_l5.svg"]),
+._1KA4m3xP2X5TGmO81UKYgL._3eORnJNDqWC-fDQP-iI5yt:has(img[src="/steaminputglyphs/xbox_p4.svg"]),
+._1KA4m3xP2X5TGmO81UKYgL._11obaBOM-w3f1pVTV_kb-G:has(img[src="/steaminputglyphs/ps_rb.svg"]),
+._1KA4m3xP2X5TGmO81UKYgL._11obaBOM-w3f1pVTV_kb-G:has(img[src="/steaminputglyphs/sd_r5.svg"]),
+._1KA4m3xP2X5TGmO81UKYgL._11obaBOM-w3f1pVTV_kb-G:has(img[src="/steaminputglyphs/xbox_p2.svg"]),
+._1KA4m3xP2X5TGmO81UKYgL._30sIRI3p5gOFrdUD9wUeW2:has(img[src="/steaminputglyphs/hp_m1.svg"]),
+._1KA4m3xP2X5TGmO81UKYgL._2VVUWQlnM4AYMoylu5Ajr:has(img[src="/steaminputglyphs/hp_m2.svg"]) {
+    @container style(--hiding-enabled: 1) {
+        display: none;
+    }
+}
+
+/* Hide subsequent commands when using multiple commands in a button */
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/ps_lb.svg"]),
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/ps_lb.svg"]) *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/ps_lb.svg"]) ~ div[id*="EControllerModeInput ( 55 )-binding-"],
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/ps_lb.svg"]) ~ div[id*="EControllerModeInput ( 55 )-binding-"] *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/ps_rb.svg"]),
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/ps_rb.svg"]) *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/ps_rb.svg"]) ~ div[id*="EControllerModeInput ( 56 )-binding-"],
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/ps_rb.svg"]) ~ div[id*="EControllerModeInput ( 56 )-binding-"] *,
+    /* Hide the command itself */
+div[id*="EControllerModeInput ( 55 )-binding-"]:has(img[src="/steaminputglyphs/ps_lb.svg"]),
+div[id*="EControllerModeInput ( 55 )-binding-"]:has(img[src="/steaminputglyphs/ps_lb.svg"]) *,
+div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/ps_rb.svg"]),
+div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/ps_rb.svg"]) * {
+    @container style(--hiding-enabled: 1) {
+        display: none;
+    }
+}
+
+/* Hide subsequent commands when using multiple commands in a button */
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/xbox_p4.svg"]),
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/xbox_p4.svg"]) *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/xbox_p4.svg"]) ~ div[id*="EControllerModeInput ( 55 )-binding-"],
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/xbox_p4.svg"]) ~ div[id*="EControllerModeInput ( 55 )-binding-"] *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/xbox_p2.svg"]),
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/xbox_p2.svg"]) *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/xbox_p2.svg"]) ~ div[id*="EControllerModeInput ( 56 )-binding-"],
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/xbox_p2.svg"]) ~ div[id*="EControllerModeInput ( 56 )-binding-"] *,
+    /* Hide the command itself */
+div[id*="EControllerModeInput ( 55 )-binding-"]:has(img[src="/steaminputglyphs/xbox_p4.svg"]),
+div[id*="EControllerModeInput ( 55 )-binding-"]:has(img[src="/steaminputglyphs/xbox_p4.svg"]) *,
+div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/xbox_p2.svg"]),
+div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/xbox_p2.svg"]) * {
+    @container style(--hiding-enabled: 1) {
+        display: none;
+    }
+}
+
+/* Hide subsequent commands when using multiple commands in a button */
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/hp_m1.svg"]),
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/hp_m1.svg"]) *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/hp_m1.svg"]) ~ div[id*="EControllerModeInput ( 57 )-binding-"],
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/hp_m1.svg"]) ~ div[id*="EControllerModeInput ( 57 )-binding-"] *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/hp_m2.svg"]),
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/hp_m2.svg"]) *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/hp_m2.svg"]) ~ div[id*="EControllerModeInput ( 58 )-binding-"],
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/hp_m2.svg"]) ~ div[id*="EControllerModeInput ( 58 )-binding-"] *,
+    /* Hide the command itself, swapped because HHD maps the back buttons to these buttons in the Hori controller */
+div[id*="EControllerModeInput ( 57 )-binding-"]:has(img[src="/steaminputglyphs/hp_m1.svg"]),
+div[id*="EControllerModeInput ( 57 )-binding-"]:has(img[src="/steaminputglyphs/hp_m1.svg"]) *,
+div[id*="EControllerModeInput ( 58 )-binding-"]:has(img[src="/steaminputglyphs/hp_m2.svg"]),
+div[id*="EControllerModeInput ( 58 )-binding-"]:has(img[src="/steaminputglyphs/hp_m2.svg"]) * {
+    @container style(--hiding-enabled: 1) {
+        display: none;
+    }
+}
+
+/* Hide subsequent commands when using multiple commands in a button */
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/sd_l5.svg"]),
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/sd_l5.svg"]) *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/sd_l5.svg"]) ~ div[id*="EControllerModeInput ( 55 )-binding-"],
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/sd_l5.svg"]) ~ div[id*="EControllerModeInput ( 55 )-binding-"] *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/sd_r5.svg"]),
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/sd_r5.svg"]) *,
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/sd_r5.svg"]) ~ div[id*="EControllerModeInput ( 56 )-binding-"],
+.eKmEXJCm_lgme24Fp_HWt._2bDqk4Jeoyk1wZd7ttBNAR._16vVnDqpbNs-zIH-EdV6Vz.GxgIyq8R5xTOeu4ftGrgX._3nLNLFMUMSt4jvxIayuPV3.xIITXDcM70faUNqssgUyx._2HFrmMgB38Ike5w4rVxzEX.Panel:has(img[src="/steaminputglyphs/sd_r5.svg"]) ~ div[id*="EControllerModeInput ( 56 )-binding-"] *,
+    /* Hide the command itself */
+div[id*="EControllerModeInput ( 55 )-binding-"]:has(img[src="/steaminputglyphs/sd_l5.svg"]),
+div[id*="EControllerModeInput ( 55 )-binding-"]:has(img[src="/steaminputglyphs/sd_l5.svg"]) *,
+div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/sd_r5.svg"]),
+div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/sd_r5.svg"]) * {
+    @container style(--hiding-enabled: 1) {
+        display: none;
+    }
+}

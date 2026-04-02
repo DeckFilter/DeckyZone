@@ -1,0 +1,5 @@
+@property --hiding-enabled {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 1;
+}

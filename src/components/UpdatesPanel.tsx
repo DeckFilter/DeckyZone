@@ -1,16 +1,11 @@
-import { callable } from "@decky/api"
-import {
-  ButtonItem,
-  Field,
-  PanelSection,
-  PanelSectionRow,
-} from "@decky/ui"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { callable } from '@decky/api'
+import { ButtonItem, Field, PanelSection, PanelSectionRow } from '@decky/ui'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-const getLatestVersionNum = callable<[], string>("get_latest_version_num")
-const otaUpdate = callable<[], boolean>("ota_update")
+const getLatestVersionNum = callable<[], string>('get_latest_version_num')
+const otaUpdate = callable<[], boolean>('ota_update')
 
-const VERSION_CACHE_KEY = "DeckyZone.versionCache"
+const VERSION_CACHE_KEY = 'DeckyZone.versionCache'
 
 type Props = {
   installedVersionNum: string
@@ -31,9 +26,9 @@ const readVersionCache = (): VersionCache | null => {
 
     const parsedCache = JSON.parse(rawCache) as Partial<VersionCache>
     if (
-      typeof parsedCache.installedVersionNum !== "string"
-      || typeof parsedCache.latestVersionNum !== "string"
-      || typeof parsedCache.lastCheckTime !== "number"
+      typeof parsedCache.installedVersionNum !== 'string' ||
+      typeof parsedCache.latestVersionNum !== 'string' ||
+      typeof parsedCache.lastCheckTime !== 'number'
     ) {
       localStorage.removeItem(VERSION_CACHE_KEY)
       return null
@@ -58,26 +53,32 @@ const getLastCheckText = (lastCheckTime: number): string => {
   const diff = Date.now() - lastCheckTime
 
   if (diff < 60 * 1000) {
-    return "just now"
+    return 'just now'
   }
 
   if (diff < 60 * 60 * 1000) {
     const minutes = Math.floor(diff / 60000)
-    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`
+    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
   }
 
   if (diff < 24 * 60 * 60 * 1000) {
     const hours = Math.floor(diff / 3600000)
-    return `${hours} hour${hours === 1 ? "" : "s"} ago`
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`
   }
 
   const days = Math.floor(diff / 86400000)
-  return `${days} day${days === 1 ? "" : "s"} ago`
+  return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
 const compareVersions = (left: string, right: string): number => {
-  const leftParts = left.replace(/^v/i, "").split(".").map((part) => Number.parseInt(part, 10) || 0)
-  const rightParts = right.replace(/^v/i, "").split(".").map((part) => Number.parseInt(part, 10) || 0)
+  const leftParts = left
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0)
+  const rightParts = right
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0)
   const maxLength = Math.max(leftParts.length, rightParts.length)
 
   for (let index = 0; index < maxLength; index += 1) {
@@ -92,7 +93,7 @@ const compareVersions = (left: string, right: string): number => {
 }
 
 const UpdatesPanel = ({ installedVersionNum }: Props) => {
-  const [latestVersionNum, setLatestVersionNum] = useState("")
+  const [latestVersionNum, setLatestVersionNum] = useState('')
   const [lastCheckTime, setLastCheckTime] = useState<number | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
   const [updateError, setUpdateError] = useState<string | null>(null)
@@ -122,7 +123,7 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
         return
       }
 
-      setVersionError("Failed to fetch the latest version.")
+      setVersionError('Failed to fetch the latest version.')
     } finally {
       if (isMountedRef.current) {
         setIsLoadingLatestVersion(false)
@@ -146,7 +147,7 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
 
   const updateButtonText = useMemo(() => {
     if (!latestVersionNum) {
-      return "Reinstall Plugin"
+      return 'Reinstall Plugin'
     }
 
     const versionCompare = compareVersions(latestVersionNum, installedVersionNum)
@@ -156,7 +157,7 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
     if (versionCompare < 0) {
       return `Rollback to ${latestVersionNum}`
     }
-    return "Reinstall Plugin"
+    return 'Reinstall Plugin'
   }, [installedVersionNum, latestVersionNum])
 
   const handleUpdate = async () => {
@@ -165,10 +166,10 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
     try {
       const success = await otaUpdate()
       if (!success) {
-        setUpdateError("Failed to install the latest DeckyZone release.")
+        setUpdateError('Failed to install the latest DeckyZone release.')
       }
     } catch {
-      setUpdateError("Failed to install the latest DeckyZone release.")
+      setUpdateError('Failed to install the latest DeckyZone release.')
     } finally {
       setIsUpdating(false)
     }
@@ -177,12 +178,8 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
   return (
     <PanelSection title="Updates">
       <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={() => void handleUpdate()}
-          disabled={isUpdating || !latestVersionNum}
-        >
-          {isUpdating ? "Installing..." : updateButtonText}
+        <ButtonItem layout="below" onClick={() => void handleUpdate()} disabled={isUpdating || !latestVersionNum}>
+          {isUpdating ? 'Installing...' : updateButtonText}
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
@@ -192,25 +189,29 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
           disabled={isLoadingLatestVersion || isUpdating}
           description={lastCheckTime ? `Last check: ${getLastCheckText(lastCheckTime)}` : 'Checks for the latest published version'}
         >
-          {isLoadingLatestVersion ? "Checking..." : "Check Version"}
+          {isLoadingLatestVersion ? 'Checking...' : 'Check Version'}
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
-        <Field label="Installed Version">{installedVersionNum || "Unknown"}</Field>
+        <Field focusable disabled label="Installed Version">
+          {installedVersionNum || 'Unknown'}
+        </Field>
       </PanelSectionRow>
       {Boolean(latestVersionNum) && (
         <PanelSectionRow>
-          <Field label="Latest Version">{latestVersionNum}</Field>
+          <Field focusable disabled label="Latest Version">
+            {latestVersionNum}
+          </Field>
         </PanelSectionRow>
       )}
       {versionError && (
         <PanelSectionRow>
-          <div style={{ color: "red" }}>{versionError}</div>
+          <div style={{ color: 'red' }}>{versionError}</div>
         </PanelSectionRow>
       )}
       {updateError && (
         <PanelSectionRow>
-          <div style={{ color: "red" }}>{updateError}</div>
+          <div style={{ color: 'red' }}>{updateError}</div>
         </PanelSectionRow>
       )}
     </PanelSection>

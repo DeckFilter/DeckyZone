@@ -23,6 +23,12 @@ DeckyZone is a Decky plugin for the Zotac Gaming Zone that aims to bridge the mo
 | Button Prompt Fix            | ✅             | ❌      |
 | Disable Trackpads            | ✅             | ❌      |
 
+### Interface
+
+| Feature              | SteamOS `main` | Bazzite    |
+| -------------------- | -------------- | ---------- |
+| Enable Zotac Glyphs  | ✅             | Not tested |
+
 ### Display
 
 | Feature                   | SteamOS `main` | Bazzite    |
@@ -70,7 +76,6 @@ These are ideas, not promised features.
 
 ### Display
 
-- Zotac Zone glyphs and images
 - Startup movie(s)
 
 ### Troubleshooting / Tips & Tricks

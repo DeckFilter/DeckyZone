@@ -1,0 +1,23 @@
+img[src="/steaminputglyphs/shared_dpad"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/dpad.svg");
+}
+
+img[src="/steaminputglyphs/shared_dpad_up.svg"],
+img[src="/steaminputglyphs/ps_dpad_up.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/dpad-up.svg");
+}
+
+img[src="/steaminputglyphs/shared_dpad_down.svg"],
+img[src="/steaminputglyphs/ps_dpad_down.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/dpad-down.svg");
+}
+
+img[src="/steaminputglyphs/shared_dpad_left.svg"],
+img[src="/steaminputglyphs/ps_dpad_left.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/dpad-left.svg");
+}
+
+img[src="/steaminputglyphs/shared_dpad_right.svg"],
+img[src="/steaminputglyphs/ps_dpad_right.svg"] {
+    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/dpad-right.svg");
+}

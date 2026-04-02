@@ -1,0 +1,21 @@
+/* Controller Images */
+._3TvBVwaH8eIBabTdki35oe .rlz-U2wn9ktH5Z9trfpZa {
+    background-image: var(--controller-image);
+}
+
+/* Controller Image SVG - Steam Hori Controller */
+.controller_hori_steam svg {
+    display: none;
+}
+.controller_hori_steam ._3R2kU_aL39-YxgB3TuRgYc {
+    background: var(--controller-image) center no-repeat;
+    background-size: contain;
+}
+
+/* Controller Settings */
+img[src="/images/steamdeck_left.png"] {
+    content: var(--controller-left-image);
+}
+img[src="/images/steamdeck_right.png"] {
+    content: var(--controller-right-image);
+}

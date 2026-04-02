@@ -10,9 +10,11 @@ import { useEffect, useState } from 'react'
 import ControllerPanel from "./components/ControllerPanel"
 import DisplayPanel from "./components/DisplayPanel"
 import ErrorBoundary from "./components/ErrorBoundary"
+import InterfacePanel from "./components/InterfacePanel"
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
 import UpdatesPanel from "./components/UpdatesPanel"
 import ZotacIcon from "./components/ZotacIcon"
+import { cleanupZotacGlyphsRuntime, syncStoredZotacGlyphsRuntimeEnabled } from "./glyphs/zotacGlyphRuntime"
 import type { ActiveGame, PluginSettings, PluginStatus } from "./types/plugin"
 
 type BrightnessDialDirection = 'up' | 'down'
@@ -117,6 +119,7 @@ function getBootstrapSettings() {
 function setBootstrapSnapshot(nextStatus: PluginStatus, nextSettings: PluginSettings) {
   setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
   setHomeButtonRuntimeEnabled(nextSettings.homeButtonEnabled)
+  syncStoredZotacGlyphsRuntimeEnabled(nextSettings.zotacGlyphsEnabled)
   bootstrapState = {
     state: 'ready',
     snapshot: {
@@ -143,6 +146,7 @@ function cacheBootstrapStatus(nextStatus: PluginStatus) {
 function cacheBootstrapSettings(nextSettings: PluginSettings) {
   setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
   setHomeButtonRuntimeEnabled(nextSettings.homeButtonEnabled)
+  syncStoredZotacGlyphsRuntimeEnabled(nextSettings.zotacGlyphsEnabled)
 
   if (bootstrapState.state !== 'ready') {
     return
@@ -369,6 +373,12 @@ function Content() {
           onStatusChange={applyStatusUpdate}
         />
       </ErrorBoundary>
+      <ErrorBoundary title="Interface">
+        <InterfacePanel
+          settings={settings}
+          onSettingsChange={applySettingsUpdate}
+        />
+      </ErrorBoundary>
       <ErrorBoundary title="Display">
         <DisplayPanel
           settings={settings}
@@ -411,6 +421,7 @@ export default definePlugin(() => {
       unregisterActiveGameSync()
       RunningApps.unregister()
       cleanupBrightnessDialFixListeners()
+      void cleanupZotacGlyphsRuntime()
       console.log('DeckyZone unloaded')
     },
   }

@@ -391,6 +391,7 @@ class DeckyZoneService:
             "controllerModeAvailable": controller_mode_device_path is not None,
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
             "brightnessDialFixEnabled": self.settings_store.get_brightness_dial_fix_enabled(),
+            "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
             "gamescopeZotacProfileBuiltIn": display_profile_settings["gamescopeZotacProfileBuiltIn"],
             "gamescopeZotacProfileInstalled": display_profile_settings["gamescopeZotacProfileInstalled"],
             "gamescopeGreenTintFixEnabled": display_profile_settings["gamescopeGreenTintFixEnabled"],
@@ -1540,6 +1541,10 @@ class DeckyZoneService:
 
         return self._current_settings()
 
+    async def set_zotac_glyphs_enabled(self, enabled):
+        self.settings_store.set_zotac_glyphs_enabled(enabled)
+        return self._current_settings()
+
     async def set_gamescope_zotac_profile_enabled(self, enabled):
         self.gamescope_display_profiles.set_zotac_profile_enabled(enabled)
         return self._current_settings()
@@ -1854,6 +1859,9 @@ class Plugin:
 
     async def set_brightness_dial_fix_enabled(self, enabled):
         return await self.service.set_brightness_dial_fix_enabled(enabled)
+
+    async def set_zotac_glyphs_enabled(self, enabled):
+        return await self.service.set_zotac_glyphs_enabled(enabled)
 
     async def set_gamescope_zotac_profile_enabled(self, enabled):
         return await self.service.set_gamescope_zotac_profile_enabled(enabled)
