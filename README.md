@@ -10,11 +10,43 @@ DeckyZone is a Decky plugin for the Zotac Gaming Zone that aims to bridge the mo
 
 ## Current Features
 
-- Enable the Home button
-- Enable the dials, including brightness on the right dial
-- Adjust rumble / vibration intenstiy
-- Fix button prompts and glyphs in games (like Mafia 3, Mafia 1, Avengers)
-- Optionally disable trackpads while that fix is active (I tend to touch them with my palm 🤣)
+### Controller
+
+| Feature                    | SteamOS `main` | Bazzite |
+| -------------------------- | -------------- | ------- |
+| Enable Controller Features | ✅             | ❌      |
+| Enable Home Button         | ✅             | ❌      |
+| Enable Brightness Dial     | ✅             | ❌      |
+| Vibration / Rumble         | ✅             | ✅      |
+| Test Rumble                | ✅             | ❌      |
+| Enable Per-Game Settings   | ✅             | ❌      |
+| Button Prompt Fix          | ✅             | ❌      |
+| Disable Trackpads          | ✅             | ❌      |
+
+### Display
+
+| Feature                   | SteamOS `main` | Bazzite    |
+| ------------------------- | -------------- | ---------- |
+| Enable Zotac OLED Profile | Built in       | Built in   |
+| Enable Green Tint Fix     | ✅             | Not tested |
+
+`HDR / Washed out colors` is fixed out of the box on the latest SteamOS `main` and on the `SteamOS 3.8.1 Preview`. Was also fine on Bazzite, Nobara and CachyOS.
+
+Controller features rely on InputPlumber. Bazzite will soon switch to InputPlumber. Nobara did not work with Decky Loader but it has InputPlumber ootb and CachyOS needs to install InputPlumber manually.
+
+## Related Plugins
+
+### TDP & Fan Control
+
+- [PowerControl](https://github.com/mengmeet/PowerControl)
+
+I already contributed patches there and it'S included in the latest release and it was much faster to extend these absolutely fantastic plugin than to integrate the same functionality into DeckyZone itself.
+
+### RGB Control
+
+- [HueSync](https://github.com/honjow/HueSync)
+
+I already contributed patches there and it'S hopüefully soon released and it was much faster to extend these absolutely fantastic plugin than to integrate the same functionality into DeckyZone itself.
 
 ## Installation
 
@@ -23,20 +55,6 @@ Run the following in terminal:
 ```bash
 curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh | sh
 ```
-
-## Compatibility
-
-| Feature                             | SteamOS `main` | Bazzite |
-| ----------------------------------- | -------------- | ------- |
-| Enable Controller / Dials           | ✅             | ❌      |
-| Enable Home Button                  | ✅             | ❌      |
-| Enable Brightness Dial              | ✅             | ❌      |
-| Adjust rumble / vibration intensity | ✅             | ✅      |
-| Test Rumble                         | ✅             | ❌      |
-| Button Prompt Fix                   | ✅             | ❌      |
-| Disable Trackpads                   | ✅             | ❌      |
-
-Other distros with InputPlumber integrated, such as Nobara and CachyOS, may work too, but are not tested yet. Bazzite will soon switch to InputPlumber.
 
 ## Feedback
 
@@ -52,26 +70,8 @@ These are ideas, not promised features.
 
 ### Display
 
-- HDR / Washed out colors fix (is working out of the box in latest SteamOS but still not on stable)
-- Green tint fix
 - Zotac Zone glyphs and images
 - Startup movie(s)
-
-### TDP
-
-- Maybe via `"PowerControl"` or built-in
-- Per-game profiles
-- Per-AC mode behavior
-- Separate defaults for SteamUI and games
-- Presets and custom profiles
-
-### RGB
-
-- Maybe via `"HueSync"` or built-in
-
-### Fans
-
-- Maybe via a third-party plugin or built-in
 
 ### Troubleshooting / Tips & Tricks
 
@@ -84,8 +84,8 @@ These are ideas, not promised features.
 
 Projects currently inspiring DeckyZone:
 
-- `Legion Go Remapper`
-- `HueSync`
-- `PowerControl`
-- `DeckyPlumber`
-- `OpenZone`
+- [Legion Go Remapper](https://github.com/aarron-lee/LegionGoRemapper)
+- [HueSync](https://github.com/honjow/HueSync)
+- [PowerControl](https://github.com/mengmeet/PowerControl)
+- [DeckyPlumber](https://github.com/aarron-lee/DeckyPlumber)
+- [OpenZone](https://github.com/OpenZotacZone/ZotacZone-Drivers)
