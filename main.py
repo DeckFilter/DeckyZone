@@ -286,59 +286,6 @@ class DeckyZoneService:
             self.logger.error(f"Failed to update DeckyZone: {error}")
             return False
 
-    async def reset_all(self):
-        had_per_game_override = self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET
-        had_startup_runtime = (
-            self._startup_target_active or self.settings_store.get_startup_apply_enabled()
-        )
-        restore_ok = True
-
-        try:
-            await self.stop_rumble_fixer()
-        except Exception as error:
-            self.logger.warning(f"Failed to stop rumble fixer during reset: {error}")
-
-        try:
-            await self.stop_brightness_dial_fixer()
-        except Exception as error:
-            self.logger.warning(f"Failed to stop brightness dial fixer during reset: {error}")
-
-        self._release_zotac_mouse_device()
-
-        try:
-            await self._disable_home_button_navigation()
-        except Exception as error:
-            self.logger.warning(f"Failed to disable Home button navigation during reset: {error}")
-
-        self.settings_store.reset_settings()
-        self.remove_gamescope_display_profiles()
-
-        if had_per_game_override:
-            restore_ok = bool(await self.sync_per_game_target(DEFAULT_APP_ID))
-        elif had_startup_runtime:
-            restore_ok = bool(await self.disable_startup_target_runtime())
-        else:
-            self._startup_target_active = False
-            self._temporary_target_mode = None
-
-        self._startup_target_active = False
-        self._temporary_target_mode = None
-
-        if restore_ok:
-            self._set_status("disabled", DISABLED_MESSAGE)
-        else:
-            self._set_status(
-                "failed",
-                "Settings were reset, but failed to restore the inherited controller target.",
-            )
-
-        self._inputplumber_available = bool(self.probe_inputplumber_available())
-        self._rumble_available = bool(self.probe_rumble_available())
-        return {
-            "status": self.get_status(),
-            "settings": self._current_settings(),
-        }
-
     def _set_status(self, state, message):
         self._status = {"state": state, "message": message}
 
@@ -1953,9 +1900,6 @@ class Plugin:
 
     async def ota_update(self):
         return await self.service.ota_update()
-
-    async def reset_all(self):
-        return await self.service.reset_all()
 
     async def _main(self):
         self.loop = asyncio.get_event_loop()

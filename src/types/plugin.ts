@@ -84,8 +84,3 @@ export type PluginSettings = {
   rumbleAvailable: boolean
   perGameSettings: Record<string, PerGameSettings>
 }
-
-export type ResetAllSnapshot = {
-  status: PluginStatus
-  settings: PluginSettings
-}

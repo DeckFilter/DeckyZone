@@ -13,7 +13,7 @@ import ErrorBoundary from "./components/ErrorBoundary"
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
 import UpdatesPanel from "./components/UpdatesPanel"
 import ZotacIcon from "./components/ZotacIcon"
-import type { ActiveGame, PluginSettings, PluginStatus, ResetAllSnapshot } from "./types/plugin"
+import type { ActiveGame, PluginSettings, PluginStatus } from "./types/plugin"
 
 type BrightnessDialDirection = 'up' | 'down'
 type ActiveGameChangedHandler = (newGame: ActiveGame | null, oldGame: ActiveGame | null) => void
@@ -299,13 +299,6 @@ function Content() {
     setStatus(nextStatus)
   }
 
-  const applyBootstrapSnapshotUpdate = (nextSnapshot: ResetAllSnapshot) => {
-    setBootstrapSnapshot(nextSnapshot.status, nextSnapshot.settings)
-    setBootstrap(getBootstrapState())
-    setStatus(nextSnapshot.status)
-    setSettings(nextSnapshot.settings)
-  }
-
   useEffect(() => {
     const syncBootstrapIntoLocalState = () => {
       const nextBootstrap = getBootstrapState()
@@ -385,7 +378,6 @@ function Content() {
       <ErrorBoundary title="Updates">
         <UpdatesPanel
           installedVersionNum={settings.pluginVersionNum ?? ''}
-          onResetComplete={applyBootstrapSnapshotUpdate}
         />
       </ErrorBoundary>
     </>

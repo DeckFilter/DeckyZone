@@ -1,25 +1,19 @@
 import { callable } from "@decky/api"
 import {
   ButtonItem,
-  ConfirmModal,
   Field,
   PanelSection,
   PanelSectionRow,
-  showModal,
 } from "@decky/ui"
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import type { ResetAllSnapshot } from "../types/plugin"
-
 const getLatestVersionNum = callable<[], string>("get_latest_version_num")
 const otaUpdate = callable<[], boolean>("ota_update")
-const resetAll = callable<[], ResetAllSnapshot>("reset_all")
 
 const VERSION_CACHE_KEY = "DeckyZone.versionCache"
 
 type Props = {
   installedVersionNum: string
-  onResetComplete: (snapshot: ResetAllSnapshot) => void
 }
 
 type VersionCache = {
@@ -97,15 +91,13 @@ const compareVersions = (left: string, right: string): number => {
   return 0
 }
 
-const UpdatesPanel = ({ installedVersionNum, onResetComplete }: Props) => {
+const UpdatesPanel = ({ installedVersionNum }: Props) => {
   const [latestVersionNum, setLatestVersionNum] = useState("")
   const [lastCheckTime, setLastCheckTime] = useState<number | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
   const [updateError, setUpdateError] = useState<string | null>(null)
-  const [resetError, setResetError] = useState<string | null>(null)
   const [isLoadingLatestVersion, setIsLoadingLatestVersion] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
-  const [isResetting, setIsResetting] = useState(false)
   const isMountedRef = useRef(true)
 
   const loadLatestVersion = async () => {
@@ -182,48 +174,13 @@ const UpdatesPanel = ({ installedVersionNum, onResetComplete }: Props) => {
     }
   }
 
-  const handleReset = async () => {
-    setIsResetting(true)
-    setResetError(null)
-    try {
-      const snapshot = await resetAll()
-      if (!isMountedRef.current) {
-        return
-      }
-
-      onResetComplete(snapshot)
-    } catch {
-      if (!isMountedRef.current) {
-        return
-      }
-
-      setResetError("Failed to reset DeckyZone.")
-    } finally {
-      if (isMountedRef.current) {
-        setIsResetting(false)
-      }
-    }
-  }
-
-  const openResetConfirmation = () => {
-    showModal(
-      <ConfirmModal
-        strTitle="Reset All"
-        strDescription="Reset DeckyZone settings and remove DeckyZone-managed display files?"
-        strOKButtonText="Reset All"
-        strCancelButtonText="Cancel"
-        onOK={handleReset}
-      />
-    )
-  }
-
   return (
     <PanelSection title="Updates">
       <PanelSectionRow>
         <ButtonItem
           layout="below"
           onClick={() => void handleUpdate()}
-          disabled={isUpdating || isResetting || !latestVersionNum}
+          disabled={isUpdating || !latestVersionNum}
         >
           {isUpdating ? "Installing..." : updateButtonText}
         </ButtonItem>
@@ -232,20 +189,10 @@ const UpdatesPanel = ({ installedVersionNum, onResetComplete }: Props) => {
         <ButtonItem
           layout="below"
           onClick={() => void loadLatestVersion()}
-          disabled={isLoadingLatestVersion || isUpdating || isResetting}
+          disabled={isLoadingLatestVersion || isUpdating}
           description={lastCheckTime ? `Last check: ${getLastCheckText(lastCheckTime)}` : 'Checks for the latest published version'}
         >
           {isLoadingLatestVersion ? "Checking..." : "Check Version"}
-        </ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
-          onClick={openResetConfirmation}
-          disabled={isUpdating || isResetting}
-          description="Resets DeckyZone settings and removes DeckyZone-managed display files"
-        >
-          {isResetting ? "Resetting..." : "Reset All"}
         </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
@@ -264,11 +211,6 @@ const UpdatesPanel = ({ installedVersionNum, onResetComplete }: Props) => {
       {updateError && (
         <PanelSectionRow>
           <div style={{ color: "red" }}>{updateError}</div>
-        </PanelSectionRow>
-      )}
-      {resetError && (
-        <PanelSectionRow>
-          <div style={{ color: "red" }}>{resetError}</div>
         </PanelSectionRow>
       )}
     </PanelSection>
