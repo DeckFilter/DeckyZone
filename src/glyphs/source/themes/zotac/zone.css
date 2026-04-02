@@ -3,9 +3,9 @@
     --controller-left-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/controller-left.png");
     --controller-right-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/controller-right.png");
 
-    --button-guide-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/zotac.svg");
+    --button-guide-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/GamepadMenu.png");
     --button-view-image: url("/themes_custom/handheld-controller-glyphs/assets/shared/view.svg");
-    --button-menu-image: url("/themes_custom/handheld-controller-glyphs/assets/shared/menu.svg");
+    --button-menu-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/Option.png");
 
     --button-l4-image: url("/themes_custom/handheld-controller-glyphs/assets/shared/m2-left.svg");
     --button-r4-image: url("/themes_custom/handheld-controller-glyphs/assets/shared/m1-right.svg");
