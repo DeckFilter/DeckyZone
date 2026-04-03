@@ -1643,30 +1643,6 @@ class DeckyZoneService:
             self.logger.warning(f"Failed to apply rumble intensity: {error}")
             return False
 
-    async def _play_rumble_preview_once(self, device_path=None):
-        device_path = device_path or self._rumble_device_path
-        if not device_path:
-            return False
-
-        effect = self._build_preview_effect()
-        fd = None
-
-        try:
-            fd = self._open_rumble_device(device_path)
-            self._ioctl(fd, EVIOCSFF, ctypes.byref(effect))
-            self._write_event_to_fd(fd, self._build_input_event(EV_FF, effect.id, 1))
-            await self.sleep(RUMBLE_PREVIEW_DURATION_MS / 1000.0)
-            self._ioctl(fd, EVIOCRMFF, ctypes.c_int(effect.id))
-            return True
-        except OSError as error:
-            self.logger.warning(f"Failed to play rumble preview: {error}")
-            return False
-        finally:
-            try:
-                self._close_rumble_device(fd)
-            except Exception:
-                pass
-
     async def _rumble_loop(self):
         while self._rumble_running:
             await self._apply_rumble_gain_once(self._rumble_device_path)
@@ -1718,7 +1694,6 @@ class DeckyZoneService:
                 self._rumble_device_path = device_path
                 self._rumble_available = True
                 await self._apply_rumble_gain_once(device_path)
-                await self._play_rumble_preview_once(device_path)
             else:
                 self._rumble_device_path = None
                 self._rumble_available = False
