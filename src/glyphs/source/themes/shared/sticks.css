@@ -1,59 +1,59 @@
 /* Left Stick */
 img[src="/steaminputglyphs/shared_lstick_up.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lstick-up.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/lstick-up.svg");
 }
 
 img[src="/steaminputglyphs/shared_lstick_left.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lstick-left.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/lstick-left.svg");
 }
 
 img[src="/steaminputglyphs/shared_lstick_down.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lstick-down.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/lstick-down.svg");
 }
 
 img[src="/steaminputglyphs/shared_lstick_right.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lstick-right.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/lstick-right.svg");
 }
 
 img[src="/steaminputglyphs/shared_lstick.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lstick.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/lstick.svg");
 }
 
 img[src="/steaminputglyphs/shared_l3.svg"],
 img[src="/steaminputglyphs/shared_lstick_click.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lstick-click.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/lstick-click.svg");
 }
 
 img[src="/steaminputglyphs/shared_lstick_touch.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/lstick-touch.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/lstick-touch.svg");
 }
 
 /* Right Stick */
 img[src="/steaminputglyphs/shared_rstick_up.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rstick-up.png");
+    content: url("/__deckyzone_glyph_assets__/shared/rstick-up.png");
 }
 
 img[src="/steaminputglyphs/shared_rstick_left.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rstick-left.png");
+    content: url("/__deckyzone_glyph_assets__/shared/rstick-left.png");
 }
 
 img[src="/steaminputglyphs/shared_rstick_down.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rstick-down.png");
+    content: url("/__deckyzone_glyph_assets__/shared/rstick-down.png");
 }
 
 img[src="/steaminputglyphs/shared_rstick_right.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rstick-right.png");
+    content: url("/__deckyzone_glyph_assets__/shared/rstick-right.png");
 }
 
 img[src="/steaminputglyphs/shared_rstick.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rstick.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/rstick.svg");
 }
 
 img[src="/steaminputglyphs/shared_r3.svg"],
 img[src="/steaminputglyphs/shared_rstick_click.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rstick-click.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/rstick-click.svg");
 }
 
 img[src="/steaminputglyphs/shared_rstick_touch.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/rstick-touch.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/rstick-touch.svg");
 }

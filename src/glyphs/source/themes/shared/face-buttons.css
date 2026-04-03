@@ -20,28 +20,28 @@ img[src="/steaminputglyphs/sc_button_steam.svg"] {
 img[src="/steaminputglyphs/ps_button_x.svg"],
 img[src="/steaminputglyphs/shared_button_a.svg"],
 img[src="/steaminputglyphs/shared_color_button_a.svg"] {
-    content: var(--button-a-image, url("/themes_custom/handheld-controller-glyphs/assets/shared/a.svg"));
+    content: var(--button-a-image, url("/__deckyzone_glyph_assets__/shared/a.svg"));
 }
 
 /* B/East */
 img[src="/steaminputglyphs/ps_button_circle.svg"],
 img[src="/steaminputglyphs/shared_button_b.svg"],
 img[src="/steaminputglyphs/shared_color_button_b.svg"] {
-    content: var(--button-b-image, url("/themes_custom/handheld-controller-glyphs/assets/shared/b.svg"));
+    content: var(--button-b-image, url("/__deckyzone_glyph_assets__/shared/b.svg"));
 }
 
 /* X/West */
 img[src="/steaminputglyphs/ps_button_square.svg"],
 img[src="/steaminputglyphs/shared_button_x.svg"],
 img[src="/steaminputglyphs/shared_color_button_x.svg"] {
-    content: var(--button-x-image, url("/themes_custom/handheld-controller-glyphs/assets/shared/x.svg"));
+    content: var(--button-x-image, url("/__deckyzone_glyph_assets__/shared/x.svg"));
 }
 
 /* Y/North */
 img[src="/steaminputglyphs/ps_button_triangle.svg"],
 img[src="/steaminputglyphs/shared_button_y.svg"],
 img[src="/steaminputglyphs/shared_color_button_y.svg"] {
-    content: var(--button-y-image, url("/themes_custom/handheld-controller-glyphs/assets/shared/y.svg"));
+    content: var(--button-y-image, url("/__deckyzone_glyph_assets__/shared/y.svg"));
 }
 
 /* View/Select */
@@ -62,5 +62,5 @@ img[src="/steaminputglyphs/sd_button_menu.svg"] {
 
 /* Trackpad */
 img[src="/steaminputglyphs/sd_ltrackpad_swipe.svg"] {
-    content: url("/themes_custom/handheld-controller-glyphs/assets/shared/trackpad.svg");
+    content: url("/__deckyzone_glyph_assets__/shared/trackpad.svg");
 }

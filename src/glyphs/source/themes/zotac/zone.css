@@ -1,14 +1,14 @@
 :root {
-    --controller-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/controller.svg");
-    --controller-left-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/controller-left.png");
-    --controller-right-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/controller-right.png");
+    --controller-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller.svg");
+    --controller-left-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller-left.png");
+    --controller-right-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller-right.png");
 
-    --button-guide-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/GamepadMenu.png");
-    --button-view-image: url("/themes_custom/handheld-controller-glyphs/assets/shared/view.svg");
-    --button-menu-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/Option.png");
-    --button-lb-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/LB.png");
-    --button-rb-image: url("/themes_custom/handheld-controller-glyphs/assets/zotac/zone/RB.png");
+    --button-guide-image: url("/__deckyzone_glyph_assets__/zotac/zone/GamepadMenu.png");
+    --button-view-image: url("/__deckyzone_glyph_assets__/shared/view.svg");
+    --button-menu-image: url("/__deckyzone_glyph_assets__/zotac/zone/Option.png");
+    --button-lb-image: url("/__deckyzone_glyph_assets__/zotac/zone/LB.png");
+    --button-rb-image: url("/__deckyzone_glyph_assets__/zotac/zone/RB.png");
 
-    --button-l4-image: url("/themes_custom/handheld-controller-glyphs/assets/shared/m2-left.svg");
-    --button-r4-image: url("/themes_custom/handheld-controller-glyphs/assets/shared/m1-right.svg");
+    --button-l4-image: url("/__deckyzone_glyph_assets__/shared/m2-left.svg");
+    --button-r4-image: url("/__deckyzone_glyph_assets__/shared/m1-right.svg");
 }

@@ -7,7 +7,9 @@ const repoRoot = resolve(__dirname, "..");
 const sourceRoot = resolve(repoRoot, "src/glyphs/source");
 const outputPath = resolve(repoRoot, "src/glyphs/generated/zotacGlyphCss.ts");
 
-const THEME_ASSET_PREFIX = "/themes_custom/handheld-controller-glyphs/assets/";
+// Source theme CSS uses a build-only marker prefix. The generated runtime
+// bundle must inline those assets and must not preserve the marker.
+const THEME_ASSET_PREFIX = "/__deckyzone_glyph_assets__/";
 const cssFiles = [
   "themes/shared/hiding.css",
   "themes/zotac/zone.css",
