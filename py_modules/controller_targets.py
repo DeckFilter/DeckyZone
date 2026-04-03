@@ -1,10 +1,47 @@
-def build_target_devices(target_mode, include_mouse=True):
-    targets = [str(target_mode), "keyboard"]
+STARTUP_TARGET_GAMEPAD_DEVICE_NAMES = frozenset(
+    {
+        "Valve Steam Deck Controller",
+        "Steam Controller",
+        "Zone Controller",
+    }
+)
+STARTUP_TARGET_GAMEPAD_DEVICE_PREFIXES = ("Microsoft X-Box 360 pad",)
+
+
+def build_target_devices(target_mode, include_keyboard=True, include_mouse=True):
+    targets = [str(target_mode)]
+    if include_keyboard:
+        targets.append("keyboard")
     if include_mouse:
         targets.append("mouse")
     return targets
 
 
-def build_target_devices_busctl_args(target_mode, include_mouse=True):
-    targets = build_target_devices(target_mode, include_mouse=include_mouse)
+def build_target_devices_busctl_args(target_mode, include_keyboard=True, include_mouse=True):
+    targets = build_target_devices(
+        target_mode,
+        include_keyboard=include_keyboard,
+        include_mouse=include_mouse,
+    )
     return [str(len(targets)), *targets]
+
+
+def is_startup_target_gamepad_device_name(device_name):
+    if not device_name:
+        return False
+
+    if device_name in STARTUP_TARGET_GAMEPAD_DEVICE_NAMES:
+        return True
+
+    return any(
+        device_name.startswith(prefix)
+        for prefix in STARTUP_TARGET_GAMEPAD_DEVICE_PREFIXES
+    )
+
+
+def describe_startup_target_gamepad_names():
+    exact_names = ", ".join(sorted(STARTUP_TARGET_GAMEPAD_DEVICE_NAMES))
+    prefix_names = ", ".join(
+        f"{prefix}*" for prefix in STARTUP_TARGET_GAMEPAD_DEVICE_PREFIXES
+    )
+    return ", ".join(part for part in (exact_names, prefix_names) if part)

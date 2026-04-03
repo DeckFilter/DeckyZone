@@ -9,6 +9,25 @@ TARGET_APPLY_RETRY_ATTEMPTS = 3
 TARGET_APPLY_RETRY_BACKOFF_SECONDS = 0.5
 
 
+async def retry_detail_until_clear(
+    run_attempt,
+    sleep,
+    attempts=TARGET_APPLY_RETRY_ATTEMPTS,
+    backoff=TARGET_APPLY_RETRY_BACKOFF_SECONDS,
+):
+    last_detail = None
+
+    for attempt in range(attempts):
+        last_detail = await run_attempt()
+        if last_detail is None:
+            return None
+
+        if attempt < attempts - 1:
+            await sleep(backoff)
+
+    return last_detail
+
+
 def parse_busctl_string_output(output):
     text = (output or "").strip()
     if not text:
@@ -44,6 +63,7 @@ async def wait_for_target_devices(
     mark_unavailable,
     sleep,
     expected_count,
+    require_keyboard_device=True,
     timeout=TARGET_SETTLE_TIMEOUT_SECONDS,
     interval=TARGET_SETTLE_POLL_INTERVAL_SECONDS,
 ):
@@ -52,7 +72,9 @@ async def wait_for_target_devices(
     while elapsed < timeout:
         try:
             target_paths = get_target_device_paths()
-            keyboard_device_path = resolve_keyboard_device_path()
+            keyboard_device_path = (
+                resolve_keyboard_device_path() if require_keyboard_device else True
+            )
             if len(target_paths) >= expected_count and keyboard_device_path:
                 return True
         except Exception:
@@ -69,6 +91,7 @@ async def apply_target_devices_with_retries(
     wait_for_target_devices_fn,
     sleep,
     target_mode,
+    include_keyboard=True,
     include_mouse=True,
     attempts=TARGET_APPLY_RETRY_ATTEMPTS,
     backoff=TARGET_APPLY_RETRY_BACKOFF_SECONDS,
@@ -76,13 +99,21 @@ async def apply_target_devices_with_retries(
     expected_count = len(
         controller_targets.build_target_devices(
             target_mode,
+            include_keyboard=include_keyboard,
             include_mouse=include_mouse,
         )
     )
 
     for attempt in range(attempts):
-        apply_target_devices(target_mode, include_mouse=include_mouse)
-        if await wait_for_target_devices_fn(expected_count):
+        apply_target_devices(
+            target_mode,
+            include_keyboard=include_keyboard,
+            include_mouse=include_mouse,
+        )
+        if await wait_for_target_devices_fn(
+            expected_count,
+            require_keyboard_device=include_keyboard,
+        ):
             return True
 
         if attempt < attempts - 1:

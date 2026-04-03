@@ -14,6 +14,7 @@ import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_target_sync
 import plugin_update
 import plugin_settings
+import runtime_profile_utils
 
 gamescope_display_profiles = gamescope_display_profiles_module
 
@@ -64,6 +65,10 @@ DISABLED_REBOOT_MESSAGE = (
 )
 READY_TIMEOUT_SECONDS = 5.0
 READY_POLL_INTERVAL_SECONDS = 0.5
+STARTUP_APPLY_ATTEMPTS = 3
+STARTUP_APPLY_BACKOFF_SECONDS = 2.0
+STARTUP_RUNTIME_READY_TIMEOUT_SECONDS = 4.0
+STARTUP_RUNTIME_READY_POLL_INTERVAL_SECONDS = 0.25
 DEFAULT_APP_ID = "0"
 STARTUP_MODE = "deck-uhid"
 MISSING_GLYPH_FIX_TARGET = "xbox-elite"
@@ -95,6 +100,7 @@ DEFAULT_INPUTPLUMBER_PROFILE_PATH = "/usr/share/inputplumber/profiles/default.ya
 RUNTIME_INPUTPLUMBER_PROFILE_FILENAME = "inputplumber-runtime-profile.yaml"
 ZOTAC_MOUSE_DEVICE_NAME = "ZOTAC Gaming Zone Mouse"
 ZOTAC_KEYBOARD_DEVICE_NAME = "ZOTAC Gaming Zone Keyboard"
+ZOTAC_DIALS_DEVICE_NAME = "ZOTAC Gaming Zone Dials"
 DEFAULT_RUMBLE_REAPPLY_INTERVAL_SECONDS = 2
 DEFAULT_BRIGHTNESS_DIAL_RETRY_INTERVAL_SECONDS = 1
 DEFAULT_BRIGHTNESS_DIAL_POLL_INTERVAL_SECONDS = 0.1
@@ -102,11 +108,13 @@ DEFAULT_HOME_BUTTON_RETRY_INTERVAL_SECONDS = 1
 DEFAULT_HOME_BUTTON_POLL_INTERVAL_SECONDS = 0.1
 RUMBLE_PREVIEW_DURATION_MS = 180
 INPUTPLUMBER_KEYBOARD_DEVICE_NAME = "InputPlumber Keyboard"
-STARTUP_TARGET_GAMEPAD_DEVICE_NAME = "Valve Steam Deck Controller"
 EV_KEY = 0x01
+EV_REL = 0x02
 EV_FF = 0x15
 FF_RUMBLE = 0x50
 FF_GAIN = 0x60
+REL_HWHEEL = 0x06
+REL_WHEEL = 0x08
 KEY_BRIGHTNESSDOWN = 224
 KEY_BRIGHTNESSUP = 225
 KEY_ZOTAC_SHORT_PRESS = 186
@@ -540,7 +548,7 @@ class DeckyZoneService:
             self._inputplumber_available = False
             return False
 
-    def _apply_target_devices(self, target_mode, include_mouse=True):
+    def _apply_target_devices(self, target_mode, include_keyboard=True, include_mouse=True):
         self.command_runner(
             self._busctl_args(
                 "call",
@@ -551,6 +559,7 @@ class DeckyZoneService:
                 "as",
                 *controller_targets.build_target_devices_busctl_args(
                     target_mode,
+                    include_keyboard=include_keyboard,
                     include_mouse=include_mouse,
                 ),
             ),
@@ -724,10 +733,13 @@ class DeckyZoneService:
 
         return mappings
 
+    def _should_enable_runtime_home_button_mapping(self):
+        return self._should_enable_home_button_navigation()
+
     def _build_runtime_input_profile_mapping_lines(self, indent, app_id=None):
         mapping_lines = []
 
-        if self._should_enable_home_button_navigation():
+        if self._should_enable_runtime_home_button_mapping():
             mapping_lines.extend(
                 self._build_keyboard_mapping_lines(
                     indent,
@@ -752,6 +764,12 @@ class DeckyZoneService:
         return mapping_lines
 
     def _build_runtime_input_profile_yaml(self, profile_yaml, app_id=None):
+        if self._should_enable_runtime_home_button_mapping():
+            profile_yaml = runtime_profile_utils.remove_gamepad_button_source_mappings(
+                profile_yaml,
+                {"QuickAccess2"},
+            )
+
         lines = profile_yaml.splitlines()
         trailing_newline = profile_yaml.endswith("\n")
         mapping_indent = ""
@@ -796,7 +814,7 @@ class DeckyZoneService:
         self._runtime_input_profile_original_profile_yaml = None
 
     def _should_enable_runtime_input_profile(self, app_id=None):
-        return self._should_enable_home_button_navigation() or bool(
+        return self._should_enable_runtime_home_button_mapping() or bool(
             self._get_active_per_game_runtime_mappings(app_id)
         )
 
@@ -908,11 +926,26 @@ class DeckyZoneService:
 
         return None
 
+    def _resolve_input_device_path_by_match(self, match_device_name):
+        for candidate_path in self._get_zotac_mouse_candidate_paths():
+            try:
+                device_name = self._read_input_device_name(candidate_path)
+            except Exception:
+                continue
+
+            if match_device_name(device_name):
+                return candidate_path
+
+        return None
+
     def _resolve_zotac_mouse_device_path(self):
         return self._resolve_input_device_path_by_name(ZOTAC_MOUSE_DEVICE_NAME)
 
     def _resolve_zotac_keyboard_device_path(self):
         return self._resolve_input_device_path_by_name(ZOTAC_KEYBOARD_DEVICE_NAME)
+
+    def _resolve_zotac_dials_device_path(self):
+        return self._resolve_input_device_path_by_name(ZOTAC_DIALS_DEVICE_NAME)
 
     def _open_event_device(self, device_path):
         return os.open(device_path, os.O_RDONLY)
@@ -927,7 +960,9 @@ class DeckyZoneService:
         return self._resolve_input_device_path_by_name(INPUTPLUMBER_KEYBOARD_DEVICE_NAME)
 
     def _resolve_startup_gamepad_device_path(self):
-        return self._resolve_input_device_path_by_name(STARTUP_TARGET_GAMEPAD_DEVICE_NAME)
+        return self._resolve_input_device_path_by_match(
+            controller_targets.is_startup_target_gamepad_device_name
+        )
 
     async def _wait_for_resolved_input_device_path(
         self,
@@ -952,6 +987,7 @@ class DeckyZoneService:
     async def _wait_for_inputplumber_target_devices(
         self,
         expected_count,
+        require_keyboard_device=True,
         timeout=inputplumber_target_sync.TARGET_SETTLE_TIMEOUT_SECONDS,
         interval=inputplumber_target_sync.TARGET_SETTLE_POLL_INTERVAL_SECONDS,
     ):
@@ -961,16 +997,23 @@ class DeckyZoneService:
             mark_unavailable=lambda: setattr(self, "_inputplumber_available", False),
             sleep=self.sleep,
             expected_count=expected_count,
+            require_keyboard_device=require_keyboard_device,
             timeout=timeout,
             interval=interval,
         )
 
-    async def _apply_target_devices_with_retries(self, target_mode, include_mouse=True):
+    async def _apply_target_devices_with_retries(
+        self,
+        target_mode,
+        include_keyboard=True,
+        include_mouse=True,
+    ):
         return await inputplumber_target_sync.apply_target_devices_with_retries(
             apply_target_devices=self._apply_target_devices,
             wait_for_target_devices_fn=self._wait_for_inputplumber_target_devices,
             sleep=self.sleep,
             target_mode=target_mode,
+            include_keyboard=include_keyboard,
             include_mouse=include_mouse,
         )
 
@@ -988,12 +1031,101 @@ class DeckyZoneService:
             self._restart_inputplumber()
             self._startup_target_active = False
             return (
-                "InputPlumber target gamepad device "
-                f"{STARTUP_TARGET_GAMEPAD_DEVICE_NAME} did not appear."
+                "InputPlumber target gamepad device did not appear. "
+                "Accepted names: "
+                f"{controller_targets.describe_startup_target_gamepad_names()}."
             )
 
         self._startup_target_active = True
         return None
+
+    def _is_runtime_input_profile_active(self):
+        try:
+            return self._get_inputplumber_profile_path() == str(
+                self._get_runtime_inputplumber_profile_path()
+            )
+        except Exception:
+            self._inputplumber_available = False
+            return False
+
+    def _is_startup_runtime_ready(self):
+        try:
+            target_paths = self._get_inputplumber_target_device_paths()
+        except Exception:
+            self._inputplumber_available = False
+            return False
+
+        if len(target_paths) < len(controller_targets.build_target_devices(STARTUP_MODE)):
+            return False
+
+        if not self._resolve_startup_gamepad_device_path():
+            return False
+
+        if not self._resolve_inputplumber_keyboard_device_path():
+            return False
+
+        if self._should_enable_runtime_input_profile() and not self._is_runtime_input_profile_active():
+            return False
+
+        return True
+
+    async def _wait_for_startup_runtime_ready(
+        self,
+        timeout=STARTUP_RUNTIME_READY_TIMEOUT_SECONDS,
+        interval=STARTUP_RUNTIME_READY_POLL_INTERVAL_SECONDS,
+    ):
+        elapsed = 0.0
+
+        while elapsed < timeout:
+            if self._is_startup_runtime_ready():
+                return True
+
+            await self.sleep(interval)
+            elapsed += interval
+
+        return False
+
+    async def _reset_startup_runtime_attempt(self):
+        self._startup_target_active = False
+        self._temporary_target_mode = None
+        self._release_zotac_mouse_device()
+        await self._sync_brightness_dial_fixer_state()
+        await self._sync_home_button_navigation_state()
+
+    async def _apply_startup_runtime_once(self):
+        detail = await self._apply_verified_startup_target()
+        if detail is not None:
+            return detail
+
+        self._temporary_target_mode = None
+        self._release_zotac_mouse_device()
+        brightness_result = await self._sync_brightness_dial_fixer_state()
+        profile_result = await self._sync_home_button_navigation_state()
+
+        if not brightness_result:
+            return "Brightness dial listener did not activate."
+
+        if not profile_result:
+            return "Home button runtime profile did not activate."
+
+        if not await self._wait_for_startup_runtime_ready():
+            return "Startup runtime did not reach keyboard/profile-ready state."
+
+        return None
+
+    async def _apply_startup_runtime_with_retries(self):
+        async def run_attempt():
+            detail = await self._apply_startup_runtime_once()
+            if detail is not None:
+                await self._reset_startup_runtime_attempt()
+            return detail
+
+        return await inputplumber_target_sync.retry_detail_until_clear(
+            run_attempt,
+            self.sleep,
+            attempts=STARTUP_APPLY_ATTEMPTS,
+            backoff=STARTUP_APPLY_BACKOFF_SECONDS,
+        )
 
     def _read_input_event_from_fd(self, fd):
         raw_event = os.read(fd, ctypes.sizeof(_InputEvent))
@@ -1002,6 +1134,14 @@ class DeckyZoneService:
         return _InputEvent.from_buffer_copy(raw_event)
 
     def _get_brightness_dial_direction(self, event):
+        if event.type == EV_REL:
+            # The Zotac source dials device emits the right dial as REL_WHEEL
+            # and the left dial as REL_HWHEEL. Only the right dial drives
+            # brightness changes in DeckyZone.
+            if event.code != REL_WHEEL or event.value == 0:
+                return None
+            return "up" if event.value > 0 else "down"
+
         if event.type != EV_KEY or event.value != 1:
             return None
 
@@ -1305,20 +1445,18 @@ class DeckyZoneService:
             if self.settings_store.get_startup_apply_enabled():
                 if not await self.wait_for_inputplumber_dbus_silently():
                     return False
-                detail = await self._apply_verified_startup_target()
+                detail = await self._apply_startup_runtime_with_retries()
                 if detail is not None:
-                    self._temporary_target_mode = None
-                    await self._sync_brightness_dial_fixer_state()
-                    await self._sync_home_button_navigation_state()
                     self.logger.warning(f"Failed to restore inherited controller target: {detail}")
                     return False
             else:
                 self._restart_inputplumber()
                 self._startup_target_active = False
-            self._temporary_target_mode = None
-            await self._sync_brightness_dial_fixer_state()
-            profile_result = await self._sync_home_button_navigation_state()
-            return profile_result
+                self._temporary_target_mode = None
+                await self._sync_brightness_dial_fixer_state()
+                await self._sync_home_button_navigation_state()
+                return True
+            return True
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
             self.logger.warning(f"Failed to restore inherited controller target: {detail}")
@@ -1972,12 +2110,8 @@ class DeckyZoneService:
 
         try:
             self._set_status("waiting", "Waiting for InputPlumber target attachment.")
-            detail = await self._apply_verified_startup_target()
+            detail = await self._apply_startup_runtime_with_retries()
             if detail is not None:
-                self._startup_target_active = False
-                self._temporary_target_mode = None
-                await self._sync_brightness_dial_fixer_state()
-                await self._sync_home_button_navigation_state()
                 self._set_status(
                     "failed",
                     f"Failed to apply startup mode: {detail}",
@@ -1992,11 +2126,7 @@ class DeckyZoneService:
             return self.get_status()
 
         self._startup_applied_this_session = True
-        self._startup_target_active = True
         self._temporary_target_mode = None
-        self._release_zotac_mouse_device()
-        await self._sync_brightness_dial_fixer_state()
-        await self._sync_home_button_navigation_state()
         self._set_status("applied", f"Startup mode re-applied: {STARTUP_MODE}.")
         return self.get_status()
 
