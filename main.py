@@ -77,6 +77,7 @@ DEFAULT_HOME_BUTTON_RETRY_INTERVAL_SECONDS = 1
 DEFAULT_HOME_BUTTON_POLL_INTERVAL_SECONDS = 0.1
 RUMBLE_PREVIEW_DURATION_MS = 180
 INPUTPLUMBER_KEYBOARD_DEVICE_NAME = "InputPlumber Keyboard"
+STARTUP_TARGET_GAMEPAD_DEVICE_NAME = "Valve Steam Deck Controller"
 EV_KEY = 0x01
 EV_FF = 0x15
 FF_RUMBLE = 0x50
@@ -734,29 +735,23 @@ class DeckyZoneService:
         event_name = Path(device_path).name
         return self.read_text(f"/sys/class/input/{event_name}/device/name")
 
-    def _resolve_zotac_mouse_device_path(self):
+    def _resolve_input_device_path_by_name(self, target_device_name):
         for candidate_path in self._get_zotac_mouse_candidate_paths():
             try:
                 device_name = self._read_input_device_name(candidate_path)
             except Exception:
                 continue
 
-            if device_name == ZOTAC_MOUSE_DEVICE_NAME:
+            if device_name == target_device_name:
                 return candidate_path
 
         return None
+
+    def _resolve_zotac_mouse_device_path(self):
+        return self._resolve_input_device_path_by_name(ZOTAC_MOUSE_DEVICE_NAME)
 
     def _resolve_zotac_keyboard_device_path(self):
-        for candidate_path in self._get_zotac_mouse_candidate_paths():
-            try:
-                device_name = self._read_input_device_name(candidate_path)
-            except Exception:
-                continue
-
-            if device_name == ZOTAC_KEYBOARD_DEVICE_NAME:
-                return candidate_path
-
-        return None
+        return self._resolve_input_device_path_by_name(ZOTAC_KEYBOARD_DEVICE_NAME)
 
     def _open_event_device(self, device_path):
         return os.open(device_path, os.O_RDONLY)
@@ -768,16 +763,30 @@ class DeckyZoneService:
         os.close(fd)
 
     def _resolve_inputplumber_keyboard_device_path(self):
-        for candidate_path in self._get_zotac_mouse_candidate_paths():
+        return self._resolve_input_device_path_by_name(INPUTPLUMBER_KEYBOARD_DEVICE_NAME)
+
+    def _resolve_startup_gamepad_device_path(self):
+        return self._resolve_input_device_path_by_name(STARTUP_TARGET_GAMEPAD_DEVICE_NAME)
+
+    async def _wait_for_resolved_input_device_path(
+        self,
+        resolve_device_path,
+        timeout=inputplumber_target_sync.TARGET_SETTLE_TIMEOUT_SECONDS,
+        interval=inputplumber_target_sync.TARGET_SETTLE_POLL_INTERVAL_SECONDS,
+    ):
+        elapsed = 0.0
+
+        while elapsed < timeout:
             try:
-                device_name = self._read_input_device_name(candidate_path)
+                if resolve_device_path():
+                    return True
             except Exception:
-                continue
+                pass
 
-            if device_name == INPUTPLUMBER_KEYBOARD_DEVICE_NAME:
-                return candidate_path
+            await self.sleep(interval)
+            elapsed += interval
 
-        return None
+        return False
 
     async def _wait_for_inputplumber_target_devices(
         self,
@@ -803,6 +812,27 @@ class DeckyZoneService:
             target_mode=target_mode,
             include_mouse=include_mouse,
         )
+
+    async def _apply_verified_startup_target(self):
+        if not await self._apply_target_devices_with_retries(STARTUP_MODE):
+            self._restart_inputplumber()
+            self._startup_target_active = False
+            return "InputPlumber target devices did not settle after retries."
+
+        # The DBus target object can appear before the actual target gamepad
+        # input device is created, so verify the real device before succeeding.
+        if not await self._wait_for_resolved_input_device_path(
+            self._resolve_startup_gamepad_device_path
+        ):
+            self._restart_inputplumber()
+            self._startup_target_active = False
+            return (
+                "InputPlumber target gamepad device "
+                f"{STARTUP_TARGET_GAMEPAD_DEVICE_NAME} did not appear."
+            )
+
+        self._startup_target_active = True
+        return None
 
     def _read_input_event_from_fd(self, fd):
         raw_event = os.read(fd, ctypes.sizeof(_InputEvent))
@@ -1118,9 +1148,13 @@ class DeckyZoneService:
             if self.settings_store.get_startup_apply_enabled():
                 if not await self.wait_for_inputplumber_dbus_silently():
                     return False
-                if not await self._apply_target_devices_with_retries(STARTUP_MODE):
+                detail = await self._apply_verified_startup_target()
+                if detail is not None:
+                    self._temporary_target_mode = None
+                    await self._sync_brightness_dial_fixer_state()
+                    await self._sync_home_button_navigation_state()
+                    self.logger.warning(f"Failed to restore inherited controller target: {detail}")
                     return False
-                self._startup_target_active = True
             else:
                 self._restart_inputplumber()
                 self._startup_target_active = False
@@ -1806,14 +1840,15 @@ class DeckyZoneService:
 
         try:
             self._set_status("waiting", "Waiting for InputPlumber target attachment.")
-            if not await self._apply_target_devices_with_retries(STARTUP_MODE):
+            detail = await self._apply_verified_startup_target()
+            if detail is not None:
                 self._startup_target_active = False
                 self._temporary_target_mode = None
                 await self._sync_brightness_dial_fixer_state()
                 await self._sync_home_button_navigation_state()
                 self._set_status(
                     "failed",
-                    "Failed to apply startup mode: InputPlumber target devices did not settle after retries.",
+                    f"Failed to apply startup mode: {detail}",
                 )
                 return self.get_status()
         except subprocess.CalledProcessError as error:
