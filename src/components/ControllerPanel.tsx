@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
-import type { ActiveGame, ControllerMode, PluginSettings, PluginStatus } from '../types/plugin'
+import type { ActiveGame, ControllerMode, PerGameRemapTarget, PluginSettings, PluginStatus } from '../types/plugin'
 
 type SteamInputDiagnosticAppDetails = {
   bShowControllerConfig?: boolean
@@ -39,6 +39,8 @@ const setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>('set_bri
 const setPerGameSettingsEnabled = callable<[string, boolean], PluginSettings>('set_per_game_settings_enabled')
 const setButtonPromptFixEnabled = callable<[string, boolean], PluginSettings>('set_button_prompt_fix_enabled')
 const setPerGameTrackpadsDisabled = callable<[string, boolean], PluginSettings>('set_per_game_trackpads_disabled')
+const setPerGameM1RemapTarget = callable<[string, PerGameRemapTarget], PluginSettings>('set_per_game_m1_remap_target')
+const setPerGameM2RemapTarget = callable<[string, PerGameRemapTarget], PluginSettings>('set_per_game_m2_remap_target')
 const syncPerGameTarget = callable<[string], boolean>('sync_per_game_target')
 const setRumbleEnabled = callable<[boolean], PluginSettings>('set_rumble_enabled')
 const setRumbleIntensity = callable<[number], PluginSettings>('set_rumble_intensity')
@@ -53,6 +55,7 @@ const CONTROLLER_MODE_ACTION_FAILED_NOTICE = `Couldn't update the controller mod
 const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = `Couldn't update the per-game setting. ${SUPPORT_POPUP_HINT}`
 const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = `Couldn't update the button prompt fix. ${SUPPORT_POPUP_HINT}`
 const TRACKPADS_ACTION_FAILED_NOTICE = `Couldn't update the trackpad setting. ${SUPPORT_POPUP_HINT}`
+const PER_GAME_REMAP_ACTION_FAILED_NOTICE = `Couldn't update the M1/M2 remap. ${SUPPORT_POPUP_HINT}`
 const RUMBLE_ACTION_FAILED_NOTICE = `Couldn't update vibration. ${SUPPORT_POPUP_HINT}`
 const RUMBLE_TEST_FAILED_NOTICE = `Couldn't send a vibration test. ${SUPPORT_POPUP_HINT}`
 
@@ -136,6 +139,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [savingPerGameSettings, setSavingPerGameSettings] = useState(false)
   const [savingButtonPromptFix, setSavingButtonPromptFix] = useState(false)
   const [savingPerGameTrackpads, setSavingPerGameTrackpads] = useState(false)
+  const [savingPerGameRemaps, setSavingPerGameRemaps] = useState(false)
   const [savingRumble, setSavingRumble] = useState(false)
   const [testingRumble, setTestingRumble] = useState(false)
   const [rumbleMessage, setRumbleMessage] = useState<string | null>(null)
@@ -279,6 +283,42 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
+  const handlePerGameM1RemapTargetChange = async (target: PerGameRemapTarget) => {
+    if (!activeGame || !isPerGameSettingsEnabled || !isButtonPromptFixEnabled) {
+      return
+    }
+
+    setSavingPerGameRemaps(true)
+    try {
+      const nextSettings = await setPerGameM1RemapTarget(activeGame.appid, target)
+      onSettingsChange(nextSettings)
+      setPerGameNotice(null)
+      await syncActiveGameTarget(activeGame.appid)
+    } catch {
+      setPerGameNotice(PER_GAME_REMAP_ACTION_FAILED_NOTICE)
+    } finally {
+      setSavingPerGameRemaps(false)
+    }
+  }
+
+  const handlePerGameM2RemapTargetChange = async (target: PerGameRemapTarget) => {
+    if (!activeGame || !isPerGameSettingsEnabled || !isButtonPromptFixEnabled) {
+      return
+    }
+
+    setSavingPerGameRemaps(true)
+    try {
+      const nextSettings = await setPerGameM2RemapTarget(activeGame.appid, target)
+      onSettingsChange(nextSettings)
+      setPerGameNotice(null)
+      await syncActiveGameTarget(activeGame.appid)
+    } catch {
+      setPerGameNotice(PER_GAME_REMAP_ACTION_FAILED_NOTICE)
+    } finally {
+      setSavingPerGameRemaps(false)
+    }
+  }
+
   const handleRumbleToggleChange = async (enabled: boolean) => {
     if (!enabled) {
       clearPendingRumbleIntensitySave()
@@ -348,6 +388,8 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const isPerGameSettingsEnabled = activeGamePerGameSettings?.enabled ?? false
   const isButtonPromptFixEnabled = activeGamePerGameSettings?.buttonPromptFixEnabled ?? false
   const isTrackpadsDisabled = activeGamePerGameSettings?.disableTrackpads ?? true
+  const m1RemapTarget = activeGamePerGameSettings?.m1RemapTarget ?? 'none'
+  const m2RemapTarget = activeGamePerGameSettings?.m2RemapTarget ?? 'none'
 
   useEffect(() => {
     if (!activeGame || !isPerGameSettingsEnabled || !isButtonPromptFixEnabled) {
@@ -462,13 +504,18 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
             isButtonPromptFixEnabled={isButtonPromptFixEnabled}
             isButtonPromptFixActive={isButtonPromptFixActive}
             isTrackpadsDisabled={isTrackpadsDisabled}
+            m1RemapTarget={m1RemapTarget}
+            m2RemapTarget={m2RemapTarget}
             savingPerGameSettings={savingPerGameSettings}
             savingButtonPromptFix={savingButtonPromptFix}
             savingPerGameTrackpads={savingPerGameTrackpads}
+            savingPerGameRemaps={savingPerGameRemaps}
             shouldShowSteamInputDisabledWarning={shouldShowSteamInputDisabledWarning}
             onPerGameSettingsToggleChange={(value: boolean) => void handlePerGameSettingsToggleChange(value)}
             onButtonPromptFixToggleChange={(value: boolean) => void handleButtonPromptFixToggleChange(value)}
             onPerGameTrackpadsChange={(value: boolean) => void handlePerGameTrackpadsChange(value)}
+            onPerGameM1RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM1RemapTargetChange(value)}
+            onPerGameM2RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM2RemapTargetChange(value)}
           />
           {perGameNotice && (
             <PanelSectionRow>

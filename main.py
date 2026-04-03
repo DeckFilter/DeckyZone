@@ -67,7 +67,32 @@ READY_POLL_INTERVAL_SECONDS = 0.5
 DEFAULT_APP_ID = "0"
 STARTUP_MODE = "deck-uhid"
 MISSING_GLYPH_FIX_TARGET = "xbox-elite"
+PER_GAME_REMAP_NONE = "none"
+PER_GAME_REMAP_SOURCE_BUTTON_M1 = "LeftPaddle1"
+PER_GAME_REMAP_SOURCE_BUTTON_M2 = "RightPaddle1"
+PER_GAME_REMAP_TARGET_TO_INPUTPLUMBER_BUTTON = {
+    "a": "South",
+    "b": "East",
+    "x": "West",
+    "y": "North",
+    "select": "Select",
+    "start": "Start",
+    "lb": "LeftBumper",
+    "rb": "RightBumper",
+    "lt": "LeftTrigger",
+    "rt": "RightTrigger",
+    "ls": "LeftStick",
+    "rs": "RightStick",
+    "dpad_up": "DPadUp",
+    "dpad_down": "DPadDown",
+    "dpad_left": "DPadLeft",
+    "dpad_right": "DPadRight",
+}
+RUNTIME_PROFILE_HOME_BUTTON_MAPPING_NAME = "DeckyZone Home Button"
+RUNTIME_PROFILE_M1_MAPPING_NAME = "DeckyZone M1 Remap"
+RUNTIME_PROFILE_M2_MAPPING_NAME = "DeckyZone M2 Remap"
 DEFAULT_INPUTPLUMBER_PROFILE_PATH = "/usr/share/inputplumber/profiles/default.yaml"
+RUNTIME_INPUTPLUMBER_PROFILE_FILENAME = "inputplumber-runtime-profile.yaml"
 ZOTAC_MOUSE_DEVICE_NAME = "ZOTAC Gaming Zone Mouse"
 ZOTAC_KEYBOARD_DEVICE_NAME = "ZOTAC Gaming Zone Keyboard"
 DEFAULT_RUMBLE_REAPPLY_INTERVAL_SECONDS = 2
@@ -179,6 +204,7 @@ class DeckyZoneService:
         self._startup_applied_this_session = False
         self._startup_target_active = False
         self._temporary_target_mode = None
+        self._active_per_game_app_id = DEFAULT_APP_ID
         self._zotac_mouse_device_fd = None
         self._zotac_mouse_device_path = None
         self._brightness_dial_device_path = None
@@ -187,9 +213,9 @@ class DeckyZoneService:
         self._home_button_device_path = None
         self._home_button_task = None
         self._home_button_running = False
-        self._home_button_override_active = False
-        self._home_button_original_profile_path = None
-        self._home_button_original_profile_yaml = None
+        self._runtime_input_profile_active = False
+        self._runtime_input_profile_original_profile_path = None
+        self._runtime_input_profile_original_profile_yaml = None
         self._rumble_available = False
         self._rumble_device_path = None
         self._rumble_task = None
@@ -628,98 +654,233 @@ class DeckyZoneService:
         )
         self._inputplumber_available = True
 
-    def _build_home_button_mapping_lines(self, indent):
+    def _get_runtime_inputplumber_profile_path(self):
+        return (
+            Path(decky.DECKY_PLUGIN_RUNTIME_DIR)
+            / RUNTIME_INPUTPLUMBER_PROFILE_FILENAME
+        )
+
+    def _write_runtime_inputplumber_profile_file(self, profile_yaml):
+        runtime_profile_path = self._get_runtime_inputplumber_profile_path()
+        runtime_profile_path.parent.mkdir(parents=True, exist_ok=True)
+        runtime_profile_path.write_text(profile_yaml, encoding="utf-8")
+        return str(runtime_profile_path)
+
+    def _build_keyboard_mapping_lines(self, indent, name, source_button, target_key):
         return [
-            f"{indent}- name: QuickAccess2",
+            f"{indent}- name: {name}",
             f"{indent}  source_event:",
             f"{indent}    gamepad:",
-            f"{indent}      button: QuickAccess2",
+            f"{indent}      button: {source_button}",
             f"{indent}  target_events:",
-            f"{indent}    - keyboard: KeyF18",
+            f"{indent}    - keyboard: {target_key}",
         ]
 
-    def _build_home_button_override_profile_yaml(self, profile_yaml):
+    def _build_gamepad_button_mapping_lines(self, indent, name, source_button, target_button):
+        return [
+            f"{indent}- name: {name}",
+            f"{indent}  source_event:",
+            f"{indent}    gamepad:",
+            f"{indent}      button: {source_button}",
+            f"{indent}  target_events:",
+            f"{indent}    - gamepad:",
+            f"{indent}        button: {target_button}",
+        ]
+
+    def _get_active_per_game_runtime_mappings(self, app_id=None):
+        active_app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
+        if (
+            active_app_id == DEFAULT_APP_ID
+            or self._temporary_target_mode != MISSING_GLYPH_FIX_TARGET
+            or not self.settings_store.get_per_game_settings_enabled(active_app_id)
+            or not self.settings_store.get_button_prompt_fix_enabled(active_app_id)
+        ):
+            return []
+
+        mappings = []
+        m1_target = self.settings_store.get_per_game_m1_remap_target(active_app_id)
+        if m1_target != PER_GAME_REMAP_NONE:
+            target_button = PER_GAME_REMAP_TARGET_TO_INPUTPLUMBER_BUTTON.get(m1_target)
+            if target_button:
+                mappings.append(
+                    (
+                        RUNTIME_PROFILE_M1_MAPPING_NAME,
+                        PER_GAME_REMAP_SOURCE_BUTTON_M1,
+                        target_button,
+                    )
+                )
+
+        m2_target = self.settings_store.get_per_game_m2_remap_target(active_app_id)
+        if m2_target != PER_GAME_REMAP_NONE:
+            target_button = PER_GAME_REMAP_TARGET_TO_INPUTPLUMBER_BUTTON.get(m2_target)
+            if target_button:
+                mappings.append(
+                    (
+                        RUNTIME_PROFILE_M2_MAPPING_NAME,
+                        PER_GAME_REMAP_SOURCE_BUTTON_M2,
+                        target_button,
+                    )
+                )
+
+        return mappings
+
+    def _build_runtime_input_profile_mapping_lines(self, indent, app_id=None):
+        mapping_lines = []
+
+        if self._should_enable_home_button_navigation():
+            mapping_lines.extend(
+                self._build_keyboard_mapping_lines(
+                    indent,
+                    RUNTIME_PROFILE_HOME_BUTTON_MAPPING_NAME,
+                    "QuickAccess2",
+                    "KeyF18",
+                )
+            )
+
+        for name, source_button, target_button in self._get_active_per_game_runtime_mappings(
+            app_id
+        ):
+            mapping_lines.extend(
+                self._build_gamepad_button_mapping_lines(
+                    indent,
+                    name,
+                    source_button,
+                    target_button,
+                )
+            )
+
+        return mapping_lines
+
+    def _build_runtime_input_profile_yaml(self, profile_yaml, app_id=None):
         lines = profile_yaml.splitlines()
         trailing_newline = profile_yaml.endswith("\n")
-        quick_access_index = None
-        quick_access_indent = ""
+        mapping_indent = ""
+        insert_index = len(lines)
 
         for index, line in enumerate(lines):
-            stripped = line.lstrip()
-            if not stripped.startswith("- name:"):
+            if line.strip() != "mapping:":
                 continue
 
-            if stripped.split(":", 1)[1].strip() != "QuickAccess2":
-                continue
-
-            quick_access_index = index
-            quick_access_indent = line[: len(line) - len(stripped)]
-            break
-
-        if quick_access_index is not None:
-            end_index = len(lines)
-            for index in range(quick_access_index + 1, len(lines)):
-                stripped = lines[index].lstrip()
-                indent = lines[index][: len(lines[index]) - len(stripped)]
-                if stripped.startswith("- name:") and indent == quick_access_indent:
-                    end_index = index
-                    break
-
-            lines = (
-                lines[:quick_access_index]
-                + self._build_home_button_mapping_lines(quick_access_indent)
-                + lines[end_index:]
-            )
-        else:
-            mapping_indent = ""
+            mapping_indent = line[: len(line) - len(line.lstrip())]
             insert_index = len(lines)
-            for index, line in enumerate(lines):
-                if line.strip() == "mapping:":
-                    mapping_indent = line[: len(line) - len(line.lstrip())]
-                    insert_index = len(lines)
+            for candidate_index in range(index + 1, len(lines)):
+                stripped = lines[candidate_index].lstrip()
+                indent = lines[candidate_index][: len(lines[candidate_index]) - len(stripped)]
+                if (
+                    stripped
+                    and not stripped.startswith("#")
+                    and indent == mapping_indent
+                    and not stripped.startswith("-")
+                ):
+                    insert_index = candidate_index
                     break
-            else:
-                lines.append("mapping:")
-                insert_index = len(lines)
+            break
+        else:
+            lines.append("mapping:")
+            insert_index = len(lines)
 
-            lines.extend(self._build_home_button_mapping_lines(f"{mapping_indent}  "))
+        mapping_lines = self._build_runtime_input_profile_mapping_lines(
+            mapping_indent,
+            app_id,
+        )
+        lines = lines[:insert_index] + mapping_lines + lines[insert_index:]
 
         override_yaml = "\n".join(lines)
         if trailing_newline or not override_yaml.endswith("\n"):
             override_yaml = f"{override_yaml}\n"
         return override_yaml
 
-    def _ensure_home_button_original_profile(self):
-        if self._home_button_original_profile_yaml is not None:
+    def _reset_runtime_input_profile_state(self):
+        self._runtime_input_profile_active = False
+        self._runtime_input_profile_original_profile_path = None
+        self._runtime_input_profile_original_profile_yaml = None
+
+    def _should_enable_runtime_input_profile(self, app_id=None):
+        return self._should_enable_home_button_navigation() or bool(
+            self._get_active_per_game_runtime_mappings(app_id)
+        )
+
+    def _ensure_runtime_input_profile_original_profile(self):
+        if self._runtime_input_profile_original_profile_yaml is not None:
             return True
 
-        self._home_button_original_profile_path = self._get_inputplumber_profile_path() or None
-        self._home_button_original_profile_yaml = self._get_inputplumber_profile_yaml()
+        self._runtime_input_profile_original_profile_path = (
+            self._get_inputplumber_profile_path() or None
+        )
+        self._runtime_input_profile_original_profile_yaml = (
+            self._get_inputplumber_profile_yaml()
+        )
         return True
 
-    def _load_home_button_override_profile(self):
-        self._ensure_home_button_original_profile()
-        base_profile_yaml = self._home_button_original_profile_yaml or ""
-        override_profile_yaml = self._build_home_button_override_profile_yaml(base_profile_yaml)
-        self._load_inputplumber_profile_from_yaml(override_profile_yaml)
-        self._home_button_override_active = True
+    def _load_runtime_input_profile(self, app_id=None):
+        self._ensure_runtime_input_profile_original_profile()
+        base_profile_yaml = self._runtime_input_profile_original_profile_yaml or ""
+        override_profile_yaml = self._build_runtime_input_profile_yaml(
+            base_profile_yaml,
+            app_id,
+        )
+        override_profile_path = self._write_runtime_inputplumber_profile_file(
+            override_profile_yaml
+        )
+        self._load_inputplumber_profile_path(override_profile_path)
+        self._runtime_input_profile_active = True
         return True
 
-    def _restore_home_button_profile(self):
-        if not self._home_button_override_active:
+    def _restore_runtime_input_profile(self):
+        if not self._runtime_input_profile_active:
+            self._reset_runtime_input_profile_state()
             return True
 
-        if self._home_button_original_profile_path:
-            self._load_inputplumber_profile_path(self._home_button_original_profile_path)
-        elif self._home_button_original_profile_yaml:
-            self._load_inputplumber_profile_from_yaml(self._home_button_original_profile_yaml)
+        if self._runtime_input_profile_original_profile_path:
+            self._load_inputplumber_profile_path(
+                self._runtime_input_profile_original_profile_path
+            )
+        elif self._runtime_input_profile_original_profile_yaml:
+            original_profile_path = self._write_runtime_inputplumber_profile_file(
+                self._runtime_input_profile_original_profile_yaml
+            )
+            self._load_inputplumber_profile_path(original_profile_path)
         else:
             self._load_inputplumber_profile_path(DEFAULT_INPUTPLUMBER_PROFILE_PATH)
 
-        self._home_button_override_active = False
-        self._home_button_original_profile_path = None
-        self._home_button_original_profile_yaml = None
+        self._reset_runtime_input_profile_state()
         return True
+
+    def _sync_runtime_input_profile_state(self, app_id=None):
+        try:
+            if self._should_enable_runtime_input_profile(app_id):
+                return self._load_runtime_input_profile(app_id)
+
+            return self._restore_runtime_input_profile()
+        except Exception as error:
+            self.logger.warning(f"Failed to sync runtime InputPlumber profile: {error}")
+            try:
+                self._restore_runtime_input_profile()
+            except Exception as restore_error:
+                self.logger.warning(
+                    f"Failed to restore runtime InputPlumber profile after error: {restore_error}"
+                )
+            return False
+
+    def set_per_game_m1_remap_target(self, app_id, target):
+        if app_id in (None, "", DEFAULT_APP_ID):
+            return self._current_settings()
+
+        if target != PER_GAME_REMAP_NONE and not self.probe_inputplumber_available():
+            return self._current_settings()
+
+        self.settings_store.set_per_game_m1_remap_target(app_id, target)
+        return self._current_settings()
+
+    def set_per_game_m2_remap_target(self, app_id, target):
+        if app_id in (None, "", DEFAULT_APP_ID):
+            return self._current_settings()
+
+        if target != PER_GAME_REMAP_NONE and not self.probe_inputplumber_available():
+            return self._current_settings()
+
+        self.settings_store.set_per_game_m2_remap_target(app_id, target)
+        return self._current_settings()
 
     def _get_zotac_mouse_candidate_paths(self):
         input_class_path = Path("/sys/class/input")
@@ -949,7 +1110,6 @@ class DeckyZoneService:
 
     async def _enable_home_button_navigation(self):
         try:
-            self._load_home_button_override_profile()
             await self.start_home_button_listener()
             return True
         except Exception as error:
@@ -958,18 +1118,11 @@ class DeckyZoneService:
                 await self.stop_home_button_listener()
             except Exception:
                 pass
-            try:
-                self._restore_home_button_profile()
-            except Exception as restore_error:
-                self.logger.warning(
-                    f"Failed to restore Home button profile after error: {restore_error}"
-                )
             return False
 
     async def _disable_home_button_navigation(self):
         try:
             await self.stop_home_button_listener()
-            self._restore_home_button_profile()
             return True
         except Exception as error:
             self.logger.warning(f"Failed to disable Home button navigation: {error}")
@@ -983,9 +1136,12 @@ class DeckyZoneService:
 
     async def _sync_home_button_navigation_state(self):
         if self._should_enable_home_button_navigation():
-            return await self._enable_home_button_navigation()
+            listener_result = await self._enable_home_button_navigation()
+        else:
+            listener_result = await self._disable_home_button_navigation()
 
-        return await self._disable_home_button_navigation()
+        profile_result = self._sync_runtime_input_profile_state(self._active_per_game_app_id)
+        return listener_result and profile_result
 
     async def sync_home_button_navigation_state(self):
         return await self._sync_home_button_navigation_state()
@@ -1097,6 +1253,7 @@ class DeckyZoneService:
 
     async def sync_per_game_target(self, app_id):
         app_id = str(app_id or DEFAULT_APP_ID)
+        self._active_per_game_app_id = app_id
         per_game_settings_enabled = (
             app_id != DEFAULT_APP_ID
             and self.settings_store.get_per_game_settings_enabled(app_id)
@@ -1117,8 +1274,8 @@ class DeckyZoneService:
                 else self._release_zotac_mouse_device()
             )
             if self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET:
-                await self._sync_home_button_navigation_state()
-                return trackpad_result
+                profile_result = await self._sync_home_button_navigation_state()
+                return trackpad_result and profile_result
 
             try:
                 if not await self.wait_for_inputplumber_dbus_silently():
@@ -1129,8 +1286,8 @@ class DeckyZoneService:
                     return False
                 self._temporary_target_mode = MISSING_GLYPH_FIX_TARGET
                 await self._sync_brightness_dial_fixer_state()
-                await self._sync_home_button_navigation_state()
-                return trackpad_result
+                profile_result = await self._sync_home_button_navigation_state()
+                return trackpad_result and profile_result
             except subprocess.CalledProcessError as error:
                 detail = (error.stderr or error.stdout or str(error)).strip()
                 self.logger.warning(f"Failed to apply per-game controller override: {detail}")
@@ -1141,8 +1298,8 @@ class DeckyZoneService:
 
         self._release_zotac_mouse_device()
         if self._temporary_target_mode != MISSING_GLYPH_FIX_TARGET:
-            await self._sync_home_button_navigation_state()
-            return False
+            profile_result = await self._sync_home_button_navigation_state()
+            return profile_result
 
         try:
             if self.settings_store.get_startup_apply_enabled():
@@ -1160,8 +1317,8 @@ class DeckyZoneService:
                 self._startup_target_active = False
             self._temporary_target_mode = None
             await self._sync_brightness_dial_fixer_state()
-            await self._sync_home_button_navigation_state()
-            return True
+            profile_result = await self._sync_home_button_navigation_state()
+            return profile_result
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
             self.logger.warning(f"Failed to restore inherited controller target: {detail}")
@@ -1917,6 +2074,12 @@ class Plugin:
 
     async def set_per_game_trackpads_disabled(self, app_id, disabled):
         return self.service.set_per_game_trackpads_disabled(app_id, disabled)
+
+    async def set_per_game_m1_remap_target(self, app_id, target):
+        return self.service.set_per_game_m1_remap_target(app_id, target)
+
+    async def set_per_game_m2_remap_target(self, app_id, target):
+        return self.service.set_per_game_m2_remap_target(app_id, target)
 
     async def sync_per_game_target(self, app_id):
         if self.startup_task is not None:

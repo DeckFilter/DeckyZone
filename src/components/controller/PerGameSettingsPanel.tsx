@@ -1,6 +1,6 @@
-import { PanelSectionRow, ToggleField, gamepadDialogClasses } from '@decky/ui'
+import { DropdownItem, PanelSectionRow, ToggleField, gamepadDialogClasses } from '@decky/ui'
 import type { ReactNode } from 'react'
-import type { ActiveGame } from '../../types/plugin'
+import type { ActiveGame, PerGameRemapTarget } from '../../types/plugin'
 
 type Props = {
   activeGame: ActiveGame | null
@@ -9,19 +9,45 @@ type Props = {
   isButtonPromptFixEnabled: boolean
   isButtonPromptFixActive: boolean
   isTrackpadsDisabled: boolean
+  m1RemapTarget: PerGameRemapTarget
+  m2RemapTarget: PerGameRemapTarget
   savingPerGameSettings: boolean
   savingButtonPromptFix: boolean
   savingPerGameTrackpads: boolean
+  savingPerGameRemaps: boolean
   shouldShowSteamInputDisabledWarning: boolean
   onPerGameSettingsToggleChange: (enabled: boolean) => void
   onButtonPromptFixToggleChange: (enabled: boolean) => void
   onPerGameTrackpadsChange: (disabled: boolean) => void
+  onPerGameM1RemapTargetChange: (target: PerGameRemapTarget) => void
+  onPerGameM2RemapTargetChange: (target: PerGameRemapTarget) => void
 }
 
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
 const NO_ACTIVE_GAME_PER_GAME_SETTINGS_DESCRIPTION = 'Launch a game to enable per-game settings'
 const BUTTON_PROMPT_FIX_DESCRIPTION = 'Fixes button prompts and glyphs'
 const DISABLE_TRACKPADS_DESCRIPTION = 'Turns off the trackpads while this fix is on'
+const M1_REMAP_DESCRIPTION = 'Maps M1 while this fix is on'
+const M2_REMAP_DESCRIPTION = 'Maps M2 while this fix is on'
+const PER_GAME_REMAP_OPTIONS = [
+  { data: 'none', label: 'None' },
+  { data: 'a', label: 'A' },
+  { data: 'b', label: 'B' },
+  { data: 'x', label: 'X' },
+  { data: 'y', label: 'Y' },
+  { data: 'select', label: 'View / Select' },
+  { data: 'start', label: 'Menu / Start' },
+  { data: 'lb', label: 'LB' },
+  { data: 'rb', label: 'RB' },
+  { data: 'lt', label: 'LT' },
+  { data: 'rt', label: 'RT' },
+  { data: 'ls', label: 'LS' },
+  { data: 'rs', label: 'RS' },
+  { data: 'dpad_up', label: 'D-Pad Up' },
+  { data: 'dpad_down', label: 'D-Pad Down' },
+  { data: 'dpad_left', label: 'D-Pad Left' },
+  { data: 'dpad_right', label: 'D-Pad Right' },
+] as const
 
 function getActiveGameIconSource(activeGame: ActiveGame | null) {
   if (!activeGame) {
@@ -77,14 +103,42 @@ const PerGameSettingsPanel = ({
   isButtonPromptFixEnabled,
   isButtonPromptFixActive,
   isTrackpadsDisabled,
+  m1RemapTarget,
+  m2RemapTarget,
   savingPerGameSettings,
   savingButtonPromptFix,
   savingPerGameTrackpads,
+  savingPerGameRemaps,
   shouldShowSteamInputDisabledWarning,
   onPerGameSettingsToggleChange,
   onButtonPromptFixToggleChange,
   onPerGameTrackpadsChange,
+  onPerGameM1RemapTargetChange,
+  onPerGameM2RemapTargetChange,
 }: Props) => {
+  const remapDropdownDisabled =
+    savingPerGameSettings || savingButtonPromptFix || savingPerGameTrackpads || savingPerGameRemaps || !inputplumberAvailable
+  const m1RemapDropdownProps = {
+    label: 'M1 Remap',
+    menuLabel: 'M1 Remap',
+    rgOptions: PER_GAME_REMAP_OPTIONS,
+    selectedOption: m1RemapTarget,
+    strDefaultLabel: 'None',
+    description: M1_REMAP_DESCRIPTION,
+    disabled: remapDropdownDisabled,
+    onChange: (option: { data: PerGameRemapTarget }) => onPerGameM1RemapTargetChange(option.data),
+  } as any
+  const m2RemapDropdownProps = {
+    label: 'M2 Remap',
+    menuLabel: 'M2 Remap',
+    rgOptions: PER_GAME_REMAP_OPTIONS,
+    selectedOption: m2RemapTarget,
+    strDefaultLabel: 'None',
+    description: M2_REMAP_DESCRIPTION,
+    disabled: remapDropdownDisabled,
+    onChange: (option: { data: PerGameRemapTarget }) => onPerGameM2RemapTargetChange(option.data),
+  } as any
+
   return (
     <>
       <PanelSectionRow>
@@ -108,9 +162,17 @@ const PerGameSettingsPanel = ({
         </PanelSectionRow>
       )}
       {activeGame && isButtonPromptFixActive && shouldShowSteamInputDisabledWarning && (
-        <PanelSectionRow>
-          <div className={gamepadDialogClasses.FieldDescription}>Steam Input disabled</div>
-        </PanelSectionRow>
+        <>
+          <PanelSectionRow>
+            <div className={gamepadDialogClasses.FieldDescription}>Steam Input disabled</div>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <DropdownItem key={`${activeGame.appid}-m1-${m1RemapTarget}`} {...m1RemapDropdownProps} />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <DropdownItem key={`${activeGame.appid}-m2-${m2RemapTarget}`} {...m2RemapDropdownProps} />
+          </PanelSectionRow>
+        </>
       )}
       {activeGame && isButtonPromptFixActive && (
         <PanelSectionRow>

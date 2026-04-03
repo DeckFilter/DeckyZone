@@ -5,6 +5,25 @@ export type PluginStatus = {
 
 export type ControllerMode = 'gamepad' | 'desktop'
 
+export type PerGameRemapTarget =
+  | 'none'
+  | 'a'
+  | 'b'
+  | 'x'
+  | 'y'
+  | 'select'
+  | 'start'
+  | 'lb'
+  | 'rb'
+  | 'lt'
+  | 'rt'
+  | 'ls'
+  | 'rs'
+  | 'dpad_up'
+  | 'dpad_down'
+  | 'dpad_left'
+  | 'dpad_right'
+
 export type DebugInfoSnapshot = {
   deviceIdentity: {
     vendorName: string | null
@@ -59,6 +78,8 @@ export type PerGameSettings = {
   enabled: boolean
   buttonPromptFixEnabled: boolean
   disableTrackpads: boolean
+  m1RemapTarget: PerGameRemapTarget
+  m2RemapTarget: PerGameRemapTarget
 }
 
 export type ActiveGame = {

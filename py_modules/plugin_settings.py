@@ -14,12 +14,34 @@ LEGACY_MISSING_GLYPH_FIX_GAMES_KEY = "missingGlyphFixGames"
 ENABLED_KEY = "enabled"
 BUTTON_PROMPT_FIX_ENABLED_KEY = "buttonPromptFixEnabled"
 DISABLE_TRACKPADS_KEY = "disableTrackpads"
+M1_REMAP_TARGET_KEY = "m1RemapTarget"
+M2_REMAP_TARGET_KEY = "m2RemapTarget"
 DEFAULT_STARTUP_APPLY_ENABLED = False
 DEFAULT_HOME_BUTTON_ENABLED = False
 DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED = False
 DEFAULT_ZOTAC_GLYPHS_ENABLED = False
 DEFAULT_RUMBLE_ENABLED = False
 DEFAULT_RUMBLE_INTENSITY = 75
+DEFAULT_PER_GAME_REMAP_TARGET = "none"
+VALID_PER_GAME_REMAP_TARGETS = {
+    DEFAULT_PER_GAME_REMAP_TARGET,
+    "a",
+    "b",
+    "x",
+    "y",
+    "select",
+    "start",
+    "lb",
+    "rb",
+    "lt",
+    "rt",
+    "ls",
+    "rs",
+    "dpad_up",
+    "dpad_down",
+    "dpad_left",
+    "dpad_right",
+}
 
 
 settings_directory = os.environ["DECKY_PLUGIN_SETTINGS_DIR"]
@@ -50,7 +72,17 @@ def _default_per_game_settings_entry():
         ENABLED_KEY: False,
         BUTTON_PROMPT_FIX_ENABLED_KEY: False,
         DISABLE_TRACKPADS_KEY: True,
+        M1_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
+        M2_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
     }
+
+
+def _normalize_per_game_remap_target(target):
+    normalized_target = str(target or "").strip().lower()
+    if normalized_target in VALID_PER_GAME_REMAP_TARGETS:
+        return normalized_target
+
+    return DEFAULT_PER_GAME_REMAP_TARGET
 
 
 def _normalize_legacy_missing_glyph_fix_entry(entry):
@@ -59,6 +91,8 @@ def _normalize_legacy_missing_glyph_fix_entry(entry):
             ENABLED_KEY: True,
             BUTTON_PROMPT_FIX_ENABLED_KEY: True,
             DISABLE_TRACKPADS_KEY: True,
+            M1_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
+            M2_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
         }
 
     if isinstance(entry, dict):
@@ -66,6 +100,12 @@ def _normalize_legacy_missing_glyph_fix_entry(entry):
             ENABLED_KEY: True,
             BUTTON_PROMPT_FIX_ENABLED_KEY: True,
             DISABLE_TRACKPADS_KEY: bool(entry.get(DISABLE_TRACKPADS_KEY, True)),
+            M1_REMAP_TARGET_KEY: _normalize_per_game_remap_target(
+                entry.get(M1_REMAP_TARGET_KEY)
+            ),
+            M2_REMAP_TARGET_KEY: _normalize_per_game_remap_target(
+                entry.get(M2_REMAP_TARGET_KEY)
+            ),
         }
 
     return None
@@ -84,6 +124,12 @@ def _normalize_per_game_settings_entry(entry):
             entry.get(BUTTON_PROMPT_FIX_ENABLED_KEY, False)
         ),
         DISABLE_TRACKPADS_KEY: bool(entry.get(DISABLE_TRACKPADS_KEY, True)),
+        M1_REMAP_TARGET_KEY: _normalize_per_game_remap_target(
+            entry.get(M1_REMAP_TARGET_KEY)
+        ),
+        M2_REMAP_TARGET_KEY: _normalize_per_game_remap_target(
+            entry.get(M2_REMAP_TARGET_KEY)
+        ),
     }
 
 
@@ -210,6 +256,32 @@ def get_per_game_trackpads_disabled(app_id):
     return bool(entry.get(DISABLE_TRACKPADS_KEY, True))
 
 
+def get_per_game_m1_remap_target(app_id):
+    if app_id is None:
+        return DEFAULT_PER_GAME_REMAP_TARGET
+
+    entry = get_per_game_settings().get(str(app_id))
+    if not entry:
+        return DEFAULT_PER_GAME_REMAP_TARGET
+
+    return _normalize_per_game_remap_target(
+        entry.get(M1_REMAP_TARGET_KEY, DEFAULT_PER_GAME_REMAP_TARGET)
+    )
+
+
+def get_per_game_m2_remap_target(app_id):
+    if app_id is None:
+        return DEFAULT_PER_GAME_REMAP_TARGET
+
+    entry = get_per_game_settings().get(str(app_id))
+    if not entry:
+        return DEFAULT_PER_GAME_REMAP_TARGET
+
+    return _normalize_per_game_remap_target(
+        entry.get(M2_REMAP_TARGET_KEY, DEFAULT_PER_GAME_REMAP_TARGET)
+    )
+
+
 def set_per_game_settings_enabled(app_id, enabled):
     if app_id is None:
         return get_per_game_settings()
@@ -260,6 +332,42 @@ def set_per_game_trackpads_disabled(app_id, disabled):
 
     current_entry = dict(entry)
     current_entry[DISABLE_TRACKPADS_KEY] = bool(disabled)
+    games[app_id] = current_entry
+
+    _write_setting(PER_GAME_SETTINGS_KEY, games)
+    return get_per_game_settings()
+
+
+def set_per_game_m1_remap_target(app_id, target):
+    if app_id is None:
+        return get_per_game_settings()
+
+    games = get_per_game_settings()
+    app_id = str(app_id)
+    entry = games.get(app_id)
+    if not entry:
+        return get_per_game_settings()
+
+    current_entry = dict(entry)
+    current_entry[M1_REMAP_TARGET_KEY] = _normalize_per_game_remap_target(target)
+    games[app_id] = current_entry
+
+    _write_setting(PER_GAME_SETTINGS_KEY, games)
+    return get_per_game_settings()
+
+
+def set_per_game_m2_remap_target(app_id, target):
+    if app_id is None:
+        return get_per_game_settings()
+
+    games = get_per_game_settings()
+    app_id = str(app_id)
+    entry = games.get(app_id)
+    if not entry:
+        return get_per_game_settings()
+
+    current_entry = dict(entry)
+    current_entry[M2_REMAP_TARGET_KEY] = _normalize_per_game_remap_target(target)
     games[app_id] = current_entry
 
     _write_setting(PER_GAME_SETTINGS_KEY, games)
