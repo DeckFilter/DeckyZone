@@ -63,12 +63,14 @@ DISABLED_MESSAGE = "Startup mode apply is disabled."
 DISABLED_REBOOT_MESSAGE = (
     "Startup mode apply is disabled. Reboot to restore unmodified InputPlumber startup behavior."
 )
+GAMEPAD_MODE_REQUIRED_MESSAGE = "Gamepad mode is required for controller features."
 READY_TIMEOUT_SECONDS = 5.0
 READY_POLL_INTERVAL_SECONDS = 0.5
 STARTUP_APPLY_ATTEMPTS = 3
 STARTUP_APPLY_BACKOFF_SECONDS = 2.0
 STARTUP_RUNTIME_READY_TIMEOUT_SECONDS = 4.0
 STARTUP_RUNTIME_READY_POLL_INTERVAL_SECONDS = 0.25
+CONTROLLER_MODE_MONITOR_INTERVAL_SECONDS = 2.0
 DEFAULT_APP_ID = "0"
 STARTUP_MODE = "deck-uhid"
 MISSING_GLYPH_FIX_TARGET = "xbox-elite"
@@ -232,6 +234,8 @@ class DeckyZoneService:
         self._rumble_device_path = None
         self._rumble_task = None
         self._rumble_running = False
+        self._controller_mode_monitor_task = None
+        self._controller_mode_monitor_running = False
         self._zotac_raw_command_seq = 0
         self._libc = ctypes.CDLL(ctypes.util.find_library("c") or None, use_errno=True)
 
@@ -246,6 +250,7 @@ class DeckyZoneService:
     def get_debug_info(self):
         status = self.get_status()
         inputplumber_available = bool(self.probe_inputplumber_available())
+        controller_mode_snapshot = self._get_controller_mode_snapshot()
         profile_name = None
         profile_path = None
         display_profile_settings = self._get_display_profile_settings()
@@ -280,6 +285,8 @@ class DeckyZoneService:
                 "available": inputplumber_available,
                 "profileName": profile_name,
                 "profilePath": profile_path,
+                "controllerMode": controller_mode_snapshot["mode"],
+                "controllerModeAvailable": controller_mode_snapshot["available"],
                 "compositeDeviceObjectPath": INPUTPLUMBER_DBUS_PATH,
             },
             "zotacZoneKernelDrivers": {
@@ -450,14 +457,26 @@ class DeckyZoneService:
             ),
         }
 
+    def _get_controller_mode_snapshot(self):
+        controller_mode_device_path = self._resolve_zotac_controller_hidraw_path()
+        return {
+            "available": controller_mode_device_path is not None,
+            "mode": self._get_controller_mode(controller_mode_device_path),
+        }
+
+    def _is_controller_mode_snapshot_safe(self, controller_mode_snapshot):
+        return bool(
+            controller_mode_snapshot["available"]
+            and controller_mode_snapshot["mode"] == ZOTAC_CONTROLLER_MODE_GAMEPAD
+        )
+
     def _current_settings(self):
         display_profile_settings = self._get_display_profile_settings()
-        controller_mode_device_path = self._resolve_zotac_controller_hidraw_path()
-        controller_mode = self._get_controller_mode(controller_mode_device_path)
+        controller_mode_snapshot = self._get_controller_mode_snapshot()
         return {
             "startupApplyEnabled": self.settings_store.get_startup_apply_enabled(),
-            "controllerMode": controller_mode,
-            "controllerModeAvailable": controller_mode_device_path is not None,
+            "controllerMode": controller_mode_snapshot["mode"],
+            "controllerModeAvailable": controller_mode_snapshot["available"],
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
             "brightnessDialFixEnabled": self.settings_store.get_brightness_dial_fix_enabled(),
             "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
@@ -1558,6 +1577,10 @@ class DeckyZoneService:
             app_id != DEFAULT_APP_ID
             and self.settings_store.get_per_game_settings_enabled(app_id)
         )
+        controller_mode_snapshot = self._get_controller_mode_snapshot()
+        if not self._is_controller_mode_snapshot_safe(controller_mode_snapshot):
+            await self._reconcile_controller_mode_runtime(controller_mode_snapshot)
+            return False
         button_prompt_fix_enabled = (
             per_game_settings_enabled
             and self.settings_store.get_button_prompt_fix_enabled(app_id)
@@ -1853,7 +1876,160 @@ class DeckyZoneService:
             self.logger.warning(f"Failed to set controller mode: {error}")
             raise RuntimeError("Failed to set controller mode.")
 
+        await self._reconcile_controller_mode_runtime(
+            self._get_controller_mode_snapshot(),
+            update_status=True,
+        )
         return self._current_settings()
+
+    async def _disable_effective_controller_runtime(self):
+        had_active_controller_target = (
+            self._startup_target_active
+            or self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET
+        )
+
+        self._startup_target_active = False
+        self._temporary_target_mode = None
+        self._release_zotac_mouse_device()
+
+        brightness_result = await self._sync_brightness_dial_fixer_state()
+        profile_result = await self._sync_home_button_navigation_state()
+
+        if not had_active_controller_target:
+            return brightness_result and profile_result
+
+        try:
+            self._restart_inputplumber()
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or error.stdout or str(error)).strip()
+            self.logger.warning(f"Failed to restore inherited controller target: {detail}")
+            return False
+        except Exception as error:
+            self.logger.warning(f"Failed to restore inherited controller target: {error}")
+            return False
+
+        return brightness_result and profile_result
+
+    async def _reconcile_controller_mode_runtime(
+        self,
+        controller_mode_snapshot=None,
+        update_status=False,
+    ):
+        controller_mode_snapshot = controller_mode_snapshot or self._get_controller_mode_snapshot()
+        controller_mode_safe = self._is_controller_mode_snapshot_safe(
+            controller_mode_snapshot
+        )
+        startup_apply_enabled = self.settings_store.get_startup_apply_enabled()
+
+        if not controller_mode_safe:
+            await self._disable_effective_controller_runtime()
+            if update_status and startup_apply_enabled:
+                self._set_status("idle", GAMEPAD_MODE_REQUIRED_MESSAGE)
+            return controller_mode_snapshot
+
+        if (
+            not startup_apply_enabled
+            or self._startup_target_active
+            or self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET
+        ):
+            return controller_mode_snapshot
+
+        try:
+            if not await self.wait_for_inputplumber_dbus_silently():
+                if update_status:
+                    self._set_status(
+                        "failed",
+                        f"InputPlumber D-Bus was not ready within {READY_TIMEOUT_SECONDS:.1f}s.",
+                    )
+                return controller_mode_snapshot
+
+            detail = await self._apply_startup_runtime_with_retries()
+            if detail is not None:
+                if update_status:
+                    self._set_status(
+                        "failed",
+                        f"Failed to apply startup mode: {detail}",
+                    )
+                else:
+                    self.logger.warning(
+                        f"Failed to apply startup mode after controller mode change: {detail}"
+                    )
+                return controller_mode_snapshot
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or error.stdout or str(error)).strip()
+            if update_status:
+                self._set_status("failed", f"Failed to apply startup mode: {detail}")
+            else:
+                self.logger.warning(
+                    f"Failed to apply startup mode after controller mode change: {detail}"
+                )
+            return controller_mode_snapshot
+        except Exception as error:
+            if update_status:
+                self._set_status("failed", f"Failed to apply startup mode: {error}")
+            else:
+                self.logger.warning(
+                    "Failed to apply startup mode after controller mode change: "
+                    f"{error}"
+                )
+            return controller_mode_snapshot
+
+        self._startup_applied_this_session = True
+        self._temporary_target_mode = None
+        if update_status:
+            self._set_status("applied", f"Startup mode re-applied: {STARTUP_MODE}.")
+        return controller_mode_snapshot
+
+    async def _controller_mode_monitor_loop(self):
+        last_controller_mode_signature = None
+
+        while self._controller_mode_monitor_running:
+            try:
+                controller_mode_snapshot = self._get_controller_mode_snapshot()
+                controller_mode_signature = (
+                    controller_mode_snapshot["available"],
+                    controller_mode_snapshot["mode"],
+                )
+                if (
+                    last_controller_mode_signature is not None
+                    and controller_mode_signature != last_controller_mode_signature
+                ):
+                    await self._reconcile_controller_mode_runtime(
+                        controller_mode_snapshot
+                    )
+                last_controller_mode_signature = controller_mode_signature
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                self.logger.warning(f"Controller mode monitor failed: {error}")
+
+            await self.sleep(CONTROLLER_MODE_MONITOR_INTERVAL_SECONDS)
+
+    async def start_controller_mode_monitor(self):
+        if self._controller_mode_monitor_task and not self._controller_mode_monitor_task.done():
+            return True
+
+        self._controller_mode_monitor_running = True
+        self._controller_mode_monitor_task = asyncio.create_task(
+            self._controller_mode_monitor_loop()
+        )
+        return True
+
+    async def stop_controller_mode_monitor(self):
+        self._controller_mode_monitor_running = False
+
+        if (
+            self._controller_mode_monitor_task
+            and not self._controller_mode_monitor_task.done()
+        ):
+            self._controller_mode_monitor_task.cancel()
+            try:
+                await self._controller_mode_monitor_task
+            except asyncio.CancelledError:
+                pass
+
+        self._controller_mode_monitor_task = None
+        return True
 
     def _has_zotac_hid_attribute(self, config_path, attribute_name):
         return Path(config_path, attribute_name).is_file()
@@ -2263,6 +2439,14 @@ class DeckyZoneService:
             self._set_status("unsupported", UNSUPPORTED_MESSAGE)
             return self.get_status()
 
+        controller_mode_snapshot = self._get_controller_mode_snapshot()
+        if not self._is_controller_mode_snapshot_safe(controller_mode_snapshot):
+            await self._reconcile_controller_mode_runtime(
+                controller_mode_snapshot,
+                update_status=True,
+            )
+            return self.get_status()
+
         if not await self.wait_for_inputplumber_dbus():
             return self.get_status()
 
@@ -2291,6 +2475,7 @@ class DeckyZoneService:
         return self.get_status()
 
     async def cleanup(self):
+        await self.stop_controller_mode_monitor()
         self._startup_target_active = False
         self._temporary_target_mode = None
         await self._sync_home_button_navigation_state()
@@ -2406,6 +2591,7 @@ class Plugin:
         self.loop = asyncio.get_event_loop()
         decky.logger.info("DeckyZone starting")
         settings = self.service.get_settings()
+        await self.service.start_controller_mode_monitor()
         if settings["rumbleEnabled"]:
             await self.service.start_rumble_fixer()
         if settings["startupApplyEnabled"]:
@@ -2421,6 +2607,7 @@ class Plugin:
                 await self.startup_task
             except asyncio.CancelledError:
                 pass
+        await self.service.stop_controller_mode_monitor()
         if hasattr(self.service, "cleanup"):
             await self.service.cleanup()
         else:

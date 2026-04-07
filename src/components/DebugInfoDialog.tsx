@@ -94,6 +94,18 @@ const formatBoolean = (value: boolean) => {
   return value ? 'Yes' : 'No'
 }
 
+const formatControllerMode = (value: DebugInfoSnapshot['inputPlumber']['controllerMode'], available: boolean) => {
+  if (!available) {
+    return 'Unavailable'
+  }
+
+  if (value === null) {
+    return 'Unknown'
+  }
+
+  return value === 'gamepad' ? 'Gamepad' : 'Desktop'
+}
+
 const isVerificationHealthy = (value: string | null | undefined) => {
   const normalized = (value ?? '').trim().toLowerCase()
   return normalized === 'ok' || normalized === 'healthy' || normalized === 'verified'
@@ -195,6 +207,17 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
                         <SnapshotRow
                           label="Profile Path"
                           value={formatValue(snapshot.inputPlumber.profilePath)}
+                        />
+                        <SnapshotRow
+                          label="Controller Mode"
+                          value={formatControllerMode(
+                            snapshot.inputPlumber.controllerMode,
+                            snapshot.inputPlumber.controllerModeAvailable,
+                          )}
+                        />
+                        <SnapshotRow
+                          label="Mode Interface Available"
+                          value={formatBoolean(snapshot.inputPlumber.controllerModeAvailable)}
                         />
                         <SnapshotRow
                           label="Zotac HID sysfs config node"

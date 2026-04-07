@@ -1,4 +1,4 @@
-import { DropdownItem, PanelSectionRow, ToggleField } from '@decky/ui'
+import { ButtonItem, Field, PanelSectionRow, ToggleField } from '@decky/ui'
 import type { ControllerMode, PluginSettings } from '../../types/plugin'
 
 type Props = {
@@ -14,25 +14,59 @@ type Props = {
 }
 
 const CONTROLLER_FEATURES_DESCRIPTION = 'Turns on controller features'
-const CONTROLLER_MODE_DESCRIPTION = 'Gamepad is recommended'
+const NO_GAMEPAD_MODE_DESCRIPTION = 'No Gamepad mode detected'
+const CONTROLLER_MODE_GAMEPAD_DESCRIPTION = 'Current mode detected'
 const CONTROLLER_MODE_DESKTOP_HINT = 'Switch back to Gamepad'
 const CONTROLLER_MODE_UNKNOWN_DESCRIPTION = "Current mode couldn't be read"
 const CONTROLLER_MODE_UNAVAILABLE_DESCRIPTION = 'Controller mode is unavailable'
-const CONTROLLER_MODE_UNAVAILABLE_OPTION = { data: 'unavailable', label: 'Unavailable' } as const
+const CONTROLLER_MODE_SWITCH_BUTTON = 'Switch to Gamepad'
+const CONTROLLER_MODE_SWITCH_BUTTON_PENDING = 'Switching to Gamepad...'
 const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Navigates to Home'
 const BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Controls screen brightness with the right dial'
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
-const CONTROLLER_MODE_OPTIONS = [
-  { data: 'gamepad', label: 'Gamepad' },
-  { data: 'desktop', label: 'Desktop' },
-] as const
 
-function getStartupDescription(settings: PluginSettings) {
+function isControllerModeConfirmed(settings: PluginSettings) {
+  return settings.controllerModeAvailable && settings.controllerMode === 'gamepad'
+}
+
+function getStartupDescription(settings: PluginSettings, controllerModeBlocked: boolean) {
   if (!settings.inputplumberAvailable) {
     return INPUTPLUMBER_UNAVAILABLE_DESCRIPTION
   }
 
+  if (controllerModeBlocked) {
+    return NO_GAMEPAD_MODE_DESCRIPTION
+  }
+
   return CONTROLLER_FEATURES_DESCRIPTION
+}
+
+function getControllerModeDisplay(settings: PluginSettings) {
+  if (!settings.controllerModeAvailable) {
+    return {
+      value: 'Unavailable',
+      description: CONTROLLER_MODE_UNAVAILABLE_DESCRIPTION,
+    }
+  }
+
+  if (settings.controllerMode === null) {
+    return {
+      value: 'Unknown',
+      description: CONTROLLER_MODE_UNKNOWN_DESCRIPTION,
+    }
+  }
+
+  if (settings.controllerMode === 'desktop') {
+    return {
+      value: 'Desktop',
+      description: CONTROLLER_MODE_DESKTOP_HINT,
+    }
+  }
+
+  return {
+    value: 'Gamepad',
+    description: CONTROLLER_MODE_GAMEPAD_DESCRIPTION,
+  }
 }
 
 const ControllerTogglesPanel = ({
@@ -46,24 +80,12 @@ const ControllerTogglesPanel = ({
   onHomeButtonToggleChange,
   onBrightnessDialFixToggleChange,
 }: Props) => {
-  const controllerModeAvailable = settings.controllerModeAvailable
-  const controllerModeDescription = !controllerModeAvailable
-    ? CONTROLLER_MODE_UNAVAILABLE_DESCRIPTION
-    : settings.controllerMode === null
-      ? CONTROLLER_MODE_UNKNOWN_DESCRIPTION
-      : settings.controllerMode === 'desktop'
-        ? CONTROLLER_MODE_DESKTOP_HINT
-        : CONTROLLER_MODE_DESCRIPTION
-  const controllerModeDropdownProps = {
-    label: 'Controller Mode',
-    menuLabel: 'Controller Mode',
-    rgOptions: controllerModeAvailable ? CONTROLLER_MODE_OPTIONS : [CONTROLLER_MODE_UNAVAILABLE_OPTION],
-    selectedOption: controllerModeAvailable ? settings.controllerMode ?? undefined : CONTROLLER_MODE_UNAVAILABLE_OPTION.data,
-    strDefaultLabel: controllerModeAvailable ? 'Unknown' : CONTROLLER_MODE_UNAVAILABLE_OPTION.label,
-    description: controllerModeDescription,
-    disabled: savingControllerMode || !controllerModeAvailable,
-    onChange: (option: { data: ControllerMode }) => onControllerModeChange(option.data),
-  } as any
+  const controllerModeConfirmed = isControllerModeConfirmed(settings)
+  const controllerModeBlocked = !controllerModeConfirmed
+  const controllerModeDisplay = getControllerModeDisplay(settings)
+  const showControllerModeStatus = controllerModeBlocked
+  const showControllerModeSwitchButton = settings.controllerModeAvailable && settings.controllerMode !== 'gamepad'
+  const showControllerFeatureControls = settings.startupApplyEnabled && controllerModeConfirmed
 
   return (
     <>
@@ -72,15 +94,28 @@ const ControllerTogglesPanel = ({
           label="Enable Controller Features"
           checked={settings.startupApplyEnabled}
           onChange={(value: boolean) => onStartupToggleChange(value)}
-          disabled={savingStartup || !settings.inputplumberAvailable}
-          description={getStartupDescription(settings)}
+          disabled={savingStartup || !settings.inputplumberAvailable || controllerModeBlocked}
+          description={getStartupDescription(settings, controllerModeBlocked)}
         />
       </PanelSectionRow>
-      {settings.startupApplyEnabled && (
+      {showControllerModeStatus && (
         <>
           <PanelSectionRow>
-            <DropdownItem {...controllerModeDropdownProps} />
+            <Field focusable disabled label="Controller Mode" description={controllerModeDisplay.description}>
+              {controllerModeDisplay.value}
+            </Field>
           </PanelSectionRow>
+          {showControllerModeSwitchButton && (
+            <PanelSectionRow>
+              <ButtonItem layout="below" onClick={() => onControllerModeChange('gamepad')} disabled={savingControllerMode}>
+                {savingControllerMode ? CONTROLLER_MODE_SWITCH_BUTTON_PENDING : CONTROLLER_MODE_SWITCH_BUTTON}
+              </ButtonItem>
+            </PanelSectionRow>
+          )}
+        </>
+      )}
+      {showControllerFeatureControls && (
+        <>
           <PanelSectionRow>
             <ToggleField
               label="Enable Home Button"

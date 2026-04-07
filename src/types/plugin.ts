@@ -42,6 +42,8 @@ export type DebugInfoSnapshot = {
     available: boolean
     profileName: string | null
     profilePath: string | null
+    controllerMode: ControllerMode | null
+    controllerModeAvailable: boolean
     compositeDeviceObjectPath: string
   }
   zotacZoneKernelDrivers: {

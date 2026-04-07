@@ -71,6 +71,10 @@ function getControllerStatusNotice(status: PluginStatus) {
   return null
 }
 
+function isControllerModeConfirmed(settings: PluginSettings) {
+  return settings.controllerModeAvailable && settings.controllerMode === 'gamepad'
+}
+
 function normalizeSteamInputDiagnosticDetails(rawDetails: unknown): SteamInputDiagnosticAppDetails | null {
   let parsedDetails = rawDetails
 
@@ -209,6 +213,8 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       const nextSettings = await setControllerMode(mode)
       onSettingsChange(nextSettings)
       setControllerNotice(null)
+      await loadStatus()
+      await syncActiveGameTarget(activeGame?.appid ?? DEFAULT_APP_ID)
     } catch {
       setControllerNotice(CONTROLLER_MODE_ACTION_FAILED_NOTICE)
     } finally {
@@ -384,7 +390,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   }
 
   const activeGamePerGameSettings = activeGame ? settings.perGameSettings[activeGame.appid] : undefined
-  const controllerFeaturesEnabled = settings.startupApplyEnabled
+  const controllerFeaturesEnabled = settings.startupApplyEnabled && isControllerModeConfirmed(settings)
   const isPerGameSettingsEnabled = activeGamePerGameSettings?.enabled ?? false
   const isButtonPromptFixEnabled = activeGamePerGameSettings?.buttonPromptFixEnabled ?? false
   const isTrackpadsDisabled = activeGamePerGameSettings?.disableTrackpads ?? true
