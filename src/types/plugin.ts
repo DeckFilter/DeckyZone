@@ -40,10 +40,16 @@ export type DebugInfoSnapshot = {
   }
   inputPlumber: {
     available: boolean
+    version: string | null
     profileName: string | null
     profilePath: string | null
     controllerMode: ControllerMode | null
     controllerModeAvailable: boolean
+    targetGamepadPresent: boolean
+    targetGamepadPath: string | null
+    keyboardPresent: boolean
+    keyboardPath: string | null
+    controllerRuntimeState: string
     compositeDeviceObjectPath: string
   }
   zotacZoneKernelDrivers: {
@@ -60,6 +66,7 @@ export type DebugInfoSnapshot = {
     hidConfigMatchMarker: string
   }
   gamescope: {
+    version: string | null
     builtInAvailable: boolean
     managedProfileInstalled: boolean
     greenTintFixEnabled: boolean

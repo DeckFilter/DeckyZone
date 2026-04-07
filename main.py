@@ -250,9 +250,13 @@ class DeckyZoneService:
     def get_debug_info(self):
         status = self.get_status()
         inputplumber_available = bool(self.probe_inputplumber_available())
+        inputplumber_version = self._get_binary_version("inputplumber")
+        gamescope_version = self._get_binary_version("gamescope")
         controller_mode_snapshot = self._get_controller_mode_snapshot()
         profile_name = None
         profile_path = None
+        target_gamepad_path = None
+        keyboard_path = None
         display_profile_settings = self._get_display_profile_settings()
         gamescope_paths = self._get_gamescope_support_paths()
 
@@ -266,6 +270,23 @@ class DeckyZoneService:
                 profile_path = self._get_inputplumber_profile_path() or None
             except Exception:
                 profile_path = None
+
+            try:
+                target_gamepad_path = self._resolve_startup_gamepad_device_path() or None
+            except Exception:
+                target_gamepad_path = None
+
+            try:
+                keyboard_path = self._resolve_inputplumber_keyboard_device_path() or None
+            except Exception:
+                keyboard_path = None
+
+        controller_runtime_state = self._get_controller_runtime_state(
+            inputplumber_available=inputplumber_available,
+            controller_mode_snapshot=controller_mode_snapshot,
+            target_gamepad_path=target_gamepad_path,
+            keyboard_path=keyboard_path,
+        )
 
         return {
             "deviceIdentity": {
@@ -283,10 +304,16 @@ class DeckyZoneService:
             },
             "inputPlumber": {
                 "available": inputplumber_available,
+                "version": inputplumber_version,
                 "profileName": profile_name,
                 "profilePath": profile_path,
                 "controllerMode": controller_mode_snapshot["mode"],
                 "controllerModeAvailable": controller_mode_snapshot["available"],
+                "targetGamepadPresent": target_gamepad_path is not None,
+                "targetGamepadPath": target_gamepad_path,
+                "keyboardPresent": keyboard_path is not None,
+                "keyboardPath": keyboard_path,
+                "controllerRuntimeState": controller_runtime_state,
                 "compositeDeviceObjectPath": INPUTPLUMBER_DBUS_PATH,
             },
             "zotacZoneKernelDrivers": {
@@ -307,6 +334,7 @@ class DeckyZoneService:
                 "hidConfigMatchMarker": ZOTAC_HID_CONFIG_MATCH_MARKER,
             },
             "gamescope": {
+                "version": gamescope_version,
                 "builtInAvailable": bool(display_profile_settings["gamescopeZotacProfileBuiltIn"]),
                 "managedProfileInstalled": bool(display_profile_settings["gamescopeZotacProfileInstalled"]),
                 "greenTintFixEnabled": bool(display_profile_settings["gamescopeGreenTintFixEnabled"]),
@@ -350,6 +378,84 @@ class DeckyZoneService:
 
     def _path_exists(self, path):
         return Path(path).exists()
+
+    def _extract_version_from_output(self, binary_name, output):
+        binary_prefix = f"{binary_name.lower()} "
+        version_prefix = f"{binary_name.lower()} version "
+
+        for raw_line in (output or "").splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            normalized_line = line.lower()
+            if normalized_line.startswith(version_prefix):
+                version = line[len(binary_name) + len(" version ") :].strip()
+                return version or line
+
+            if normalized_line.startswith(binary_prefix):
+                version = line[len(binary_name) + 1 :].strip()
+                return version or line
+
+            version_marker_index = normalized_line.find(" version ")
+            if version_marker_index != -1:
+                version = line[version_marker_index + len(" version ") :].strip()
+                return version or line
+
+            return line
+
+        return None
+
+    def _get_binary_version(self, binary_name):
+        try:
+            result = self.command_runner(
+                [binary_name, "--version"],
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=self.get_env(),
+            )
+        except Exception:
+            return None
+
+        output = "\n".join(
+            part.strip()
+            for part in (result.stdout, result.stderr)
+            if isinstance(part, str) and part.strip()
+        )
+        return self._extract_version_from_output(binary_name, output)
+
+    def _get_controller_runtime_state(
+        self,
+        *,
+        inputplumber_available,
+        controller_mode_snapshot,
+        target_gamepad_path,
+        keyboard_path,
+    ):
+        if not inputplumber_available:
+            return "InputPlumber unavailable"
+
+        if not self._path_exists(ZOTAC_ZONE_HID_MODULE_PATH):
+            return "Zotac HID driver missing"
+
+        if not controller_mode_snapshot["available"]:
+            return "Controller mode interface unavailable"
+
+        if controller_mode_snapshot["mode"] == ZOTAC_CONTROLLER_MODE_DESKTOP:
+            return "Desktop mode"
+
+        if controller_mode_snapshot["mode"] is None:
+            return "Controller mode read failed"
+
+        if not target_gamepad_path:
+            return "Target gamepad missing"
+
+        if not keyboard_path:
+            return "InputPlumber keyboard missing"
+
+        return "Healthy"
 
     def _get_kernel_release(self):
         try:

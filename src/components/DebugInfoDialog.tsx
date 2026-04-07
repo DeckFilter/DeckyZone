@@ -94,6 +94,10 @@ const formatBoolean = (value: boolean) => {
   return value ? 'Yes' : 'No'
 }
 
+const formatPresence = (value: string | null | undefined) => {
+  return value ? 'Available' : 'Unavailable'
+}
+
 const formatControllerMode = (value: DebugInfoSnapshot['inputPlumber']['controllerMode'], available: boolean) => {
   if (!available) {
     return 'Unavailable'
@@ -113,6 +117,10 @@ const isVerificationHealthy = (value: string | null | undefined) => {
 
 const TabContent = ({ children }: { children: ReactNode }) => {
   return <div style={tabContentStyle}>{children}</div>
+}
+
+const renderPathDescription = (path: string | null | undefined) => {
+  return path ? <PathText path={path} /> : undefined
 }
 
 const DebugInfoDialog = ({ closeModal }: Props) => {
@@ -188,6 +196,18 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
                           value={formatValue(snapshot.osContext.kernelRelease)}
                         />
                         <SnapshotRow
+                          label="InputPlumber Version"
+                          value={formatValue(snapshot.inputPlumber.version)}
+                        />
+                        <SnapshotRow
+                          label="Gamescope Version"
+                          value={formatValue(snapshot.gamescope.version)}
+                        />
+                        <SnapshotRow
+                          label="Controller Runtime State"
+                          value={formatValue(snapshot.inputPlumber.controllerRuntimeState)}
+                        />
+                        <SnapshotRow
                           label="DeckyZone Status"
                           value={formatValue(snapshot.deckyZoneStatus.message)}
                           bottomSeparator="none"
@@ -203,10 +223,10 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
                     <TabContent>
                       <DialogControlsSection>
                         <SnapshotRow label="Available" value={formatBoolean(snapshot.inputPlumber.available)} />
-                        <SnapshotRow label="Profile Name" value={formatValue(snapshot.inputPlumber.profileName)} />
                         <SnapshotRow
-                          label="Profile Path"
-                          value={formatValue(snapshot.inputPlumber.profilePath)}
+                          label="Profile Name"
+                          value={formatValue(snapshot.inputPlumber.profileName)}
+                          description={renderPathDescription(snapshot.inputPlumber.profilePath)}
                         />
                         <SnapshotRow
                           label="Controller Mode"
@@ -220,8 +240,33 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
                           value={formatBoolean(snapshot.inputPlumber.controllerModeAvailable)}
                         />
                         <SnapshotRow
+                          label="Target Gamepad Present"
+                          value={formatBoolean(snapshot.inputPlumber.targetGamepadPresent)}
+                          description={renderPathDescription(snapshot.inputPlumber.targetGamepadPath)}
+                        />
+                        <SnapshotRow
+                          label="InputPlumber Keyboard Present"
+                          value={formatBoolean(snapshot.inputPlumber.keyboardPresent)}
+                          description={renderPathDescription(snapshot.inputPlumber.keyboardPath)}
+                        />
+                        <SnapshotRow
+                          label="Zotac HID Driver Loaded"
+                          value={formatBoolean(snapshot.zotacZoneKernelDrivers.zotacZoneHidLoaded)}
+                          description={<PathText path={snapshot.zotacZoneKernelDrivers.zotacZoneHidPath} />}
+                        />
+                        <SnapshotRow
+                          label="Zotac Platform Driver Loaded"
+                          value={formatBoolean(snapshot.zotacZoneKernelDrivers.zotacZonePlatformLoaded)}
+                          description={<PathText path={snapshot.zotacZoneKernelDrivers.zotacZonePlatformPath} />}
+                        />
+                        <SnapshotRow
                           label="Zotac HID sysfs config node"
-                          value={formatValue(snapshot.zotacZoneKernelDrivers.hidConfigNodePath)}
+                          value={formatPresence(snapshot.zotacZoneKernelDrivers.hidConfigNodePath)}
+                          description={renderPathDescription(snapshot.zotacZoneKernelDrivers.hidConfigNodePath)}
+                        />
+                        <SnapshotRow
+                          label="Controller Runtime State"
+                          value={formatValue(snapshot.inputPlumber.controllerRuntimeState)}
                           bottomSeparator="none"
                         />
                       </DialogControlsSection>
