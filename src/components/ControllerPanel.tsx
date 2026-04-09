@@ -145,12 +145,19 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [savingPerGameTrackpads, setSavingPerGameTrackpads] = useState(false)
   const [savingPerGameRemaps, setSavingPerGameRemaps] = useState(false)
   const [savingRumble, setSavingRumble] = useState(false)
+  const [savingRumbleIntensity, setSavingRumbleIntensity] = useState(false)
   const [testingRumble, setTestingRumble] = useState(false)
   const [rumbleMessage, setRumbleMessage] = useState<string | null>(null)
   const [rumbleMessageKind, setRumbleMessageKind] = useState<'success' | 'error' | null>(null)
   const [steamInputDiagnostic, setSteamInputDiagnostic] = useState<SteamInputDiagnosticState>({ state: 'idle' })
   const rumbleIntensityLatestValue = useRef(settings.rumbleIntensity)
+  const rumbleIntensityCommittedValue = useRef(settings.rumbleIntensity)
   const rumbleIntensitySaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rumbleIntensityStateVersion = useRef(0)
+  const rumbleIntensityQueuedVersion = useRef<number | null>(null)
+  const rumbleIntensityQueuedPromise = useRef<Promise<boolean> | null>(null)
+  const rumbleIntensitySaveChain = useRef<Promise<boolean>>(Promise.resolve(true))
+  const rumbleIntensityActiveSaveCount = useRef(0)
 
   const clearPendingRumbleIntensitySave = () => {
     if (rumbleIntensitySaveTimeout.current !== null) {
@@ -167,6 +174,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   useEffect(() => {
     setRumbleIntensityDraft(settings.rumbleIntensity)
     rumbleIntensityLatestValue.current = settings.rumbleIntensity
+    rumbleIntensityCommittedValue.current = settings.rumbleIntensity
     if (!settings.rumbleAvailable) {
       setRumbleMessage(null)
       setRumbleMessageKind(null)
@@ -326,6 +334,8 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   }
 
   const handleRumbleToggleChange = async (enabled: boolean) => {
+    rumbleIntensityStateVersion.current += 1
+
     if (!enabled) {
       clearPendingRumbleIntensitySave()
     }
@@ -346,37 +356,101 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
-  const saveRumbleIntensity = async (value: number) => {
-    try {
-      const nextSettings = await setRumbleIntensity(value)
-      onSettingsChange({
-        ...settings,
-        rumbleIntensity: nextSettings.rumbleIntensity,
-        rumbleAvailable: nextSettings.rumbleAvailable,
-      })
-      setRumbleMessage(null)
-      setRumbleMessageKind(null)
-    } catch {
-      setRumbleMessage(RUMBLE_ACTION_FAILED_NOTICE)
-      setRumbleMessageKind('error')
+  const beginRumbleIntensitySave = () => {
+    rumbleIntensityActiveSaveCount.current += 1
+    setSavingRumbleIntensity(true)
+  }
+
+  const finishRumbleIntensitySave = () => {
+    rumbleIntensityActiveSaveCount.current = Math.max(0, rumbleIntensityActiveSaveCount.current - 1)
+    if (rumbleIntensityActiveSaveCount.current === 0) {
+      setSavingRumbleIntensity(false)
     }
   }
 
+  const saveRumbleIntensity = async (value: number, version: number) => {
+    beginRumbleIntensitySave()
+    try {
+      const nextSettings = await setRumbleIntensity(value)
+      if (version === rumbleIntensityStateVersion.current) {
+        rumbleIntensityCommittedValue.current = nextSettings.rumbleIntensity
+        rumbleIntensityLatestValue.current = nextSettings.rumbleIntensity
+        setRumbleIntensityDraft(nextSettings.rumbleIntensity)
+        onSettingsChange(nextSettings)
+        setRumbleMessage(null)
+        setRumbleMessageKind(null)
+      }
+      return true
+    } catch {
+      if (version === rumbleIntensityStateVersion.current) {
+        setRumbleMessage(RUMBLE_ACTION_FAILED_NOTICE)
+        setRumbleMessageKind('error')
+      }
+      return false
+    } finally {
+      finishRumbleIntensitySave()
+    }
+  }
+
+  const queueRumbleIntensitySave = (value: number, version: number) => {
+    if (rumbleIntensityQueuedVersion.current === version && rumbleIntensityQueuedPromise.current) {
+      return rumbleIntensityQueuedPromise.current
+    }
+
+    const nextSave = rumbleIntensitySaveChain.current
+      .catch(() => false)
+      .then(() => saveRumbleIntensity(value, version))
+
+    const trackedSave = nextSave.finally(() => {
+      if (rumbleIntensityQueuedVersion.current === version) {
+        rumbleIntensityQueuedVersion.current = null
+        rumbleIntensityQueuedPromise.current = null
+      }
+    })
+
+    rumbleIntensitySaveChain.current = trackedSave
+    rumbleIntensityQueuedVersion.current = version
+    rumbleIntensityQueuedPromise.current = trackedSave
+    return trackedSave
+  }
+
+  const flushPendingRumbleIntensitySave = async () => {
+    clearPendingRumbleIntensitySave()
+
+    const latestValue = rumbleIntensityLatestValue.current
+    const latestVersion = rumbleIntensityStateVersion.current
+
+    if (latestValue === rumbleIntensityCommittedValue.current && !savingRumbleIntensity) {
+      return true
+    }
+
+    return await queueRumbleIntensitySave(latestValue, latestVersion)
+  }
+
   const handleRumbleIntensityChange = (value: number) => {
+    const nextVersion = rumbleIntensityStateVersion.current + 1
+    rumbleIntensityStateVersion.current = nextVersion
     setRumbleIntensityDraft(value)
     rumbleIntensityLatestValue.current = value
+    setRumbleMessage(null)
+    setRumbleMessageKind(null)
     clearPendingRumbleIntensitySave()
     rumbleIntensitySaveTimeout.current = setTimeout(() => {
       rumbleIntensitySaveTimeout.current = null
-      void saveRumbleIntensity(rumbleIntensityLatestValue.current)
+      void queueRumbleIntensitySave(value, nextVersion)
     }, 500)
   }
 
   const handleTestRumble = async () => {
-    clearPendingRumbleIntensitySave()
-    setTestingRumble(true)
     setRumbleMessage(null)
     setRumbleMessageKind(null)
+
+    const didFlushIntensity = await flushPendingRumbleIntensitySave()
+    if (!didFlushIntensity) {
+      return
+    }
+
+    setTestingRumble(true)
     try {
       const success = await testRumble()
       setRumbleMessage(success ? 'Vibration test sent.' : RUMBLE_TEST_FAILED_NOTICE)
@@ -471,9 +545,10 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     steamInputDiagnostic.state === 'ready' && getSteamInputDiagnosticStatus(steamInputDiagnostic.details) === 'Steam Input disabled'
   const isButtonPromptFixActive = settings.inputplumberAvailable && isPerGameSettingsEnabled && isButtonPromptFixEnabled
   const visibleControllerNotice = getControllerStatusNotice(status) ?? controllerNotice
+  const controllerSpinner = savingControllerMode || savingRumbleIntensity
 
   return (
-    <PanelSection title="Controller" spinner={savingControllerMode}>
+    <PanelSection title="Controller" spinner={controllerSpinner}>
       <ControllerTogglesPanel
         settings={settings}
         savingStartup={savingStartup}
@@ -495,6 +570,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
           <RumblePanel
             settings={settings}
             savingRumble={savingRumble}
+            savingRumbleIntensity={savingRumbleIntensity}
             testingRumble={testingRumble}
             rumbleIntensityDraft={rumbleIntensityDraft}
             rumbleMessage={rumbleMessage}

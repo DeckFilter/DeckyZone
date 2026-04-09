@@ -4,6 +4,7 @@ import type { PluginSettings } from '../../types/plugin'
 type Props = {
   settings: PluginSettings
   savingRumble: boolean
+  savingRumbleIntensity: boolean
   testingRumble: boolean
   rumbleIntensityDraft: number
   rumbleMessage: string | null
@@ -14,6 +15,7 @@ type Props = {
 }
 
 const DEFAULT_RUMBLE_DESCRIPTION = 'Change and test vibration intensity'
+const RUMBLE_INTENSITY_DESCRIPTION = '75% recommended, 100% is very strong'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available'
 
 function getRumbleDescription(settings: PluginSettings) {
@@ -27,6 +29,7 @@ function getRumbleDescription(settings: PluginSettings) {
 const RumblePanel = ({
   settings,
   savingRumble,
+  savingRumbleIntensity,
   testingRumble,
   rumbleIntensityDraft,
   rumbleMessage,
@@ -50,13 +53,17 @@ const RumblePanel = ({
         <>
           <PanelSectionRow>
             <SliderField
+              label="Intensity"
+              description={RUMBLE_INTENSITY_DESCRIPTION}
               value={rumbleIntensityDraft}
               min={0}
               max={100}
               step={5}
               notchTicksVisible
+              showValue
+              resetValue={75}
               onChange={onRumbleIntensityChange}
-              disabled={savingRumble || !settings.rumbleEnabled || !settings.rumbleAvailable}
+              disabled={savingRumble || savingRumbleIntensity || !settings.rumbleEnabled || !settings.rumbleAvailable}
             />
           </PanelSectionRow>
           <PanelSectionRow>
@@ -64,13 +71,18 @@ const RumblePanel = ({
               layout="below"
               onClick={() => onTestRumble()}
               disabled={
-                savingRumble || testingRumble || !settings.rumbleEnabled || !settings.rumbleAvailable || !settings.inputplumberAvailable
+                savingRumble ||
+                savingRumbleIntensity ||
+                testingRumble ||
+                !settings.rumbleEnabled ||
+                !settings.rumbleAvailable ||
+                !settings.inputplumberAvailable
               }
             >
-              {testingRumble ? 'Testing Rumble...' : `Test  ${rumbleIntensityDraft}% Rumble`}
+              {testingRumble ? 'Testing Rumble...' : 'Test Rumble'}
             </ButtonItem>
           </PanelSectionRow>
-          {rumbleMessage && rumbleMessageKind === 'error' && (
+          {rumbleMessage && (
             <PanelSectionRow>
               <div
                 className={gamepadDialogClasses.FieldDescription}
