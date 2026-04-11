@@ -1,8 +1,9 @@
 import { callable } from "@decky/api"
-import { PanelSection, PanelSectionRow, ToggleField, gamepadDialogClasses } from "@decky/ui"
+import { PanelSection, PanelSectionRow, ToggleField } from "@decky/ui"
 import { useState } from "react"
 import { applyZotacGlyphsRuntimeEnabled } from "../glyphs/zotacGlyphRuntime"
 import type { PluginSettings } from "../types/plugin"
+import { useDeckyToastNotice } from "../utils/toasts"
 
 type Props = {
   settings: PluginSettings
@@ -19,6 +20,17 @@ const GLYPH_APPLY_FAILED_NOTICE = `Couldn't apply Zotac glyphs live. ${SUPPORT_P
 const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
   const [savingZotacGlyphs, setSavingZotacGlyphs] = useState(false)
   const [interfaceNotice, setInterfaceNotice] = useState<string | null>(null)
+
+  useDeckyToastNotice(
+    interfaceNotice
+      ? {
+          activeKey: `interface:${interfaceNotice}`,
+          title: "Interface",
+          body: interfaceNotice,
+          severity: "error",
+        }
+      : null,
+  )
 
   const handleZotacGlyphsChange = async (enabled: boolean) => {
     setSavingZotacGlyphs(true)
@@ -54,11 +66,6 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
           description={ZOTAC_GLYPHS_DESCRIPTION}
         />
       </PanelSectionRow>
-      {interfaceNotice && (
-        <PanelSectionRow>
-          <div className={gamepadDialogClasses.FieldDescription}>{interfaceNotice}</div>
-        </PanelSectionRow>
-      )}
     </PanelSection>
   )
 }

@@ -2,6 +2,7 @@ import { callable } from '@decky/api'
 import { PanelSection, PanelSectionRow, ToggleField, gamepadDialogClasses } from '@decky/ui'
 import { useState } from 'react'
 import type { PluginSettings } from '../types/plugin'
+import { useDeckyToastNotice } from '../utils/toasts'
 
 type Props = {
   settings: PluginSettings
@@ -17,6 +18,7 @@ const SUPPORT_POPUP_HINT = 'Open the header info popup for details.'
 const DISPLAY_UPDATE_FAILED_NOTICE = `Couldn't update the display setting. ${SUPPORT_POPUP_HINT}`
 const DISPLAY_MISMATCH_NOTICE = `Display profile did not match the requested state. ${SUPPORT_POPUP_HINT}`
 const DISPLAY_VERIFICATION_NOTICE = `Display profile needs attention. ${SUPPORT_POPUP_HINT}`
+const DISPLAY_RESTART_REQUIRED_NOTICE = 'Restart the device for the display profile change to take effect.'
 const ZOTAC_PROFILE_DESCRIPTION = `Adds the Zotac OLED Gamescope profile if it's missing, ${RESTART_NOTE}`
 
 function getGreenTintDescription(settings: PluginSettings, isBaseProfileAvailable: boolean) {
@@ -50,14 +52,39 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
   const [savingGreenTintFix, setSavingGreenTintFix] = useState(false)
   const [displayNotice, setDisplayNotice] = useState<string | null>(null)
   const isBaseProfileAvailable = settings.gamescopeZotacProfileBuiltIn || settings.gamescopeZotacProfileInstalled
-  const visibleDisplayNotice = displayNotice ?? getDisplayVerificationNotice(settings)
+  const displayVerificationNotice = getDisplayVerificationNotice(settings)
+
+  useDeckyToastNotice(
+    displayNotice
+      ? {
+          activeKey: `display-action:${displayNotice}`,
+          title: 'Display',
+          body: displayNotice,
+          severity: displayNotice === DISPLAY_UPDATE_FAILED_NOTICE ? 'error' : 'warning',
+        }
+      : null,
+  )
+
+  useDeckyToastNotice(
+    displayVerificationNotice
+      ? {
+          activeKey: `display-verification:${settings.gamescopeZotacProfileVerificationState}`,
+          title: 'Display',
+          body: displayVerificationNotice,
+          severity: 'warning',
+        }
+      : null,
+  )
 
   const handleZotacProfileChange = async (enabled: boolean) => {
+    setDisplayNotice(null)
     setSavingZotacProfile(true)
     try {
       const nextSettings = await setGamescopeZotacProfileEnabled(enabled)
       onSettingsChange(nextSettings)
-      setDisplayNotice(nextSettings.gamescopeZotacProfileInstalled !== enabled ? DISPLAY_MISMATCH_NOTICE : null)
+      setDisplayNotice(
+        nextSettings.gamescopeZotacProfileInstalled !== enabled ? DISPLAY_MISMATCH_NOTICE : DISPLAY_RESTART_REQUIRED_NOTICE,
+      )
     } catch {
       setDisplayNotice(DISPLAY_UPDATE_FAILED_NOTICE)
     } finally {
@@ -66,11 +93,14 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
   }
 
   const handleGreenTintFixChange = async (enabled: boolean) => {
+    setDisplayNotice(null)
     setSavingGreenTintFix(true)
     try {
       const nextSettings = await setGamescopeGreenTintFixEnabled(enabled)
       onSettingsChange(nextSettings)
-      setDisplayNotice(nextSettings.gamescopeGreenTintFixEnabled !== enabled ? DISPLAY_MISMATCH_NOTICE : null)
+      setDisplayNotice(
+        nextSettings.gamescopeGreenTintFixEnabled !== enabled ? DISPLAY_MISMATCH_NOTICE : DISPLAY_RESTART_REQUIRED_NOTICE,
+      )
     } catch {
       setDisplayNotice(DISPLAY_UPDATE_FAILED_NOTICE)
     } finally {
@@ -100,11 +130,6 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
           description={getGreenTintDescription(settings, isBaseProfileAvailable)}
         />
       </PanelSectionRow>
-      {visibleDisplayNotice && (
-        <PanelSectionRow>
-          <div className={gamepadDialogClasses.FieldDescription}>{visibleDisplayNotice}</div>
-        </PanelSectionRow>
-      )}
       <PanelSectionRow>
         <div className={gamepadDialogClasses.FieldDescription}>{NATIVE_COLOR_TEMPERATURE_HINT}</div>
       </PanelSectionRow>

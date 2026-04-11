@@ -1,6 +1,7 @@
 import { callable } from '@decky/api'
 import { ButtonItem, Field, PanelSection, PanelSectionRow } from '@decky/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeckyToastNotice } from '../utils/toasts'
 
 const getLatestVersionNum = callable<[], string>('get_latest_version_num')
 const otaUpdate = callable<[], boolean>('ota_update')
@@ -100,6 +101,28 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
   const [isLoadingLatestVersion, setIsLoadingLatestVersion] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const isMountedRef = useRef(true)
+
+  useDeckyToastNotice(
+    versionError
+      ? {
+          activeKey: `updates-version:${versionError}`,
+          title: 'Updates',
+          body: versionError,
+          severity: 'error',
+        }
+      : null,
+  )
+
+  useDeckyToastNotice(
+    updateError
+      ? {
+          activeKey: `updates-install:${updateError}`,
+          title: 'Updates',
+          body: updateError,
+          severity: 'error',
+        }
+      : null,
+  )
 
   const loadLatestVersion = async () => {
     setIsLoadingLatestVersion(true)
@@ -202,16 +225,6 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
           <Field focusable disabled label="Latest Version">
             {latestVersionNum}
           </Field>
-        </PanelSectionRow>
-      )}
-      {versionError && (
-        <PanelSectionRow>
-          <div style={{ color: 'red' }}>{versionError}</div>
-        </PanelSectionRow>
-      )}
-      {updateError && (
-        <PanelSectionRow>
-          <div style={{ color: 'red' }}>{updateError}</div>
         </PanelSectionRow>
       )}
     </PanelSection>

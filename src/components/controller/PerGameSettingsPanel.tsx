@@ -1,8 +1,9 @@
 // TODO: Re-enable this import after M1/M2 remap behavior is fully confirmed on-device.
 // import { DropdownItem } from '@decky/ui'
-import { PanelSectionRow, ToggleField, gamepadDialogClasses } from '@decky/ui'
+import { PanelSectionRow, ToggleField } from '@decky/ui'
 import type { ReactNode } from 'react'
 import type { ActiveGame, PerGameRemapTarget } from '../../types/plugin'
+import { useDeckyToastNotice } from '../../utils/toasts'
 
 type Props = {
   activeGame: ActiveGame | null
@@ -143,6 +144,17 @@ const PerGameSettingsPanel = ({
   //   onChange: (option: { data: PerGameRemapTarget }) => onPerGameM2RemapTargetChange(option.data),
   // } as any
 
+  useDeckyToastNotice(
+    activeGame && isButtonPromptFixActive && shouldShowSteamInputDisabledWarning
+      ? {
+          activeKey: `steam-input-disabled:${activeGame.appid}`,
+          title: 'Controller',
+          body: 'Steam Input disabled',
+          severity: 'warning',
+        }
+      : null,
+  )
+
   return (
     <>
       <PanelSectionRow>
@@ -167,9 +179,6 @@ const PerGameSettingsPanel = ({
       )}
       {activeGame && isButtonPromptFixActive && shouldShowSteamInputDisabledWarning && (
         <>
-          <PanelSectionRow>
-            <div className={gamepadDialogClasses.FieldDescription}>Steam Input disabled</div>
-          </PanelSectionRow>
           {/*
             TODO: Re-enable these M1/M2 remap dropdowns after their behavior is fully confirmed on-device.
           <PanelSectionRow>

@@ -1,10 +1,11 @@
 import { callable } from '@decky/api'
-import { PanelSection, PanelSectionRow, gamepadDialogClasses } from '@decky/ui'
+import { PanelSection } from '@decky/ui'
 import { useEffect, useRef, useState } from 'react'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
 import type { ActiveGame, ControllerMode, PerGameRemapTarget, PluginSettings, PluginStatus } from '../types/plugin'
+import { useDeckyToastNotice } from '../utils/toasts'
 
 type SteamInputDiagnosticAppDetails = {
   bShowControllerConfig?: boolean
@@ -49,7 +50,7 @@ const testRumble = callable<[], boolean>('test_rumble')
 const DEFAULT_APP_ID = '0'
 const STEAM_INPUT_DIAGNOSTIC_UNAVAILABLE_MESSAGE = 'Steam Input state unavailable.'
 const SUPPORT_POPUP_HINT = 'Open the header info popup for details.'
-const CONTROLLER_STATUS_FAILED_NOTICE = `Controller setup needs attention. ${SUPPORT_POPUP_HINT}`
+const CONTROLLER_STATUS_FAILED_NOTICE = 'Controller could not be initialized. Please restart the device.'
 const CONTROLLER_ACTION_FAILED_NOTICE = `Couldn't update the controller setting. ${SUPPORT_POPUP_HINT}`
 const CONTROLLER_MODE_ACTION_FAILED_NOTICE = `Couldn't update the controller mode. ${SUPPORT_POPUP_HINT}`
 const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = `Couldn't update the per-game setting. ${SUPPORT_POPUP_HINT}`
@@ -171,6 +172,52 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     onStatusChange(nextStatus)
   }
 
+  const controllerStatusNotice = getControllerStatusNotice(status)
+
+  useDeckyToastNotice(
+    controllerStatusNotice
+      ? {
+          activeKey: `controller-status:${status.state}:${status.message}`,
+          title: 'Controller',
+          body: controllerStatusNotice,
+          severity: 'warning',
+        }
+      : null,
+  )
+
+  useDeckyToastNotice(
+    controllerNotice
+      ? {
+          activeKey: `controller-action:${controllerNotice}`,
+          title: 'Controller',
+          body: controllerNotice,
+          severity: 'error',
+        }
+      : null,
+  )
+
+  useDeckyToastNotice(
+    perGameNotice
+      ? {
+          activeKey: `controller-per-game:${perGameNotice}`,
+          title: 'Controller',
+          body: perGameNotice,
+          severity: 'error',
+        }
+      : null,
+  )
+
+  useDeckyToastNotice(
+    rumbleMessage && rumbleMessageKind === 'error'
+      ? {
+          activeKey: `controller-rumble:error:${rumbleMessage}`,
+          title: 'Controller',
+          body: rumbleMessage,
+          severity: 'error',
+        }
+      : null,
+  )
+
   useEffect(() => {
     setRumbleIntensityDraft(settings.rumbleIntensity)
     rumbleIntensityLatestValue.current = settings.rumbleIntensity
@@ -188,6 +235,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   }, [])
 
   const handleStartupToggleChange = async (enabled: boolean) => {
+    setControllerNotice(null)
     setSavingStartup(true)
     try {
       const nextSettings = await setStartupApplyEnabled(enabled)
@@ -203,6 +251,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   }
 
   const handleHomeButtonToggleChange = async (enabled: boolean) => {
+    setControllerNotice(null)
     setSavingHomeButton(true)
     try {
       const nextSettings = await setHomeButtonEnabled(enabled)
@@ -216,6 +265,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   }
 
   const handleControllerModeChange = async (mode: ControllerMode) => {
+    setControllerNotice(null)
     setSavingControllerMode(true)
     try {
       const nextSettings = await setControllerMode(mode)
@@ -231,6 +281,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   }
 
   const handleBrightnessDialFixToggleChange = async (enabled: boolean) => {
+    setControllerNotice(null)
     setSavingBrightnessDialFix(true)
     try {
       const nextSettings = await setBrightnessDialFixEnabled(enabled)
@@ -248,6 +299,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       return
     }
 
+    setPerGameNotice(null)
     setSavingPerGameSettings(true)
     try {
       const nextSettings = await setPerGameSettingsEnabled(activeGame.appid, enabled)
@@ -266,6 +318,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       return
     }
 
+    setPerGameNotice(null)
     setSavingButtonPromptFix(true)
     try {
       const nextSettings = await setButtonPromptFixEnabled(activeGame.appid, enabled)
@@ -284,6 +337,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       return
     }
 
+    setPerGameNotice(null)
     setSavingPerGameTrackpads(true)
     try {
       const nextSettings = await setPerGameTrackpadsDisabled(activeGame.appid, disabled)
@@ -302,6 +356,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       return
     }
 
+    setPerGameNotice(null)
     setSavingPerGameRemaps(true)
     try {
       const nextSettings = await setPerGameM1RemapTarget(activeGame.appid, target)
@@ -320,6 +375,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       return
     }
 
+    setPerGameNotice(null)
     setSavingPerGameRemaps(true)
     try {
       const nextSettings = await setPerGameM2RemapTarget(activeGame.appid, target)
@@ -340,6 +396,8 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       clearPendingRumbleIntensitySave()
     }
 
+    setRumbleMessage(null)
+    setRumbleMessageKind(null)
     setSavingRumble(true)
     try {
       const nextSettings = await setRumbleEnabled(enabled)
@@ -453,8 +511,10 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     setTestingRumble(true)
     try {
       const success = await testRumble()
-      setRumbleMessage(success ? 'Vibration test sent.' : RUMBLE_TEST_FAILED_NOTICE)
-      setRumbleMessageKind(success ? 'success' : 'error')
+      if (!success) {
+        setRumbleMessage(RUMBLE_TEST_FAILED_NOTICE)
+        setRumbleMessageKind('error')
+      }
     } catch {
       setRumbleMessage(RUMBLE_TEST_FAILED_NOTICE)
       setRumbleMessageKind('error')
@@ -544,7 +604,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const shouldShowSteamInputDisabledWarning =
     steamInputDiagnostic.state === 'ready' && getSteamInputDiagnosticStatus(steamInputDiagnostic.details) === 'Steam Input disabled'
   const isButtonPromptFixActive = settings.inputplumberAvailable && isPerGameSettingsEnabled && isButtonPromptFixEnabled
-  const visibleControllerNotice = getControllerStatusNotice(status) ?? controllerNotice
   const controllerSpinner = savingControllerMode || savingRumbleIntensity
 
   return (
@@ -560,11 +619,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
         onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
       />
-      {visibleControllerNotice && (
-        <PanelSectionRow>
-          <div className={gamepadDialogClasses.FieldDescription}>{visibleControllerNotice}</div>
-        </PanelSectionRow>
-      )}
       {controllerFeaturesEnabled && (
         <>
           <RumblePanel
@@ -573,8 +627,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
             savingRumbleIntensity={savingRumbleIntensity}
             testingRumble={testingRumble}
             rumbleIntensityDraft={rumbleIntensityDraft}
-            rumbleMessage={rumbleMessage}
-            rumbleMessageKind={rumbleMessageKind}
             onRumbleToggleChange={(value: boolean) => void handleRumbleToggleChange(value)}
             onRumbleIntensityChange={handleRumbleIntensityChange}
             onTestRumble={() => void handleTestRumble()}
@@ -599,11 +651,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
             onPerGameM1RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM1RemapTargetChange(value)}
             onPerGameM2RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM2RemapTargetChange(value)}
           />
-          {perGameNotice && (
-            <PanelSectionRow>
-              <div className={gamepadDialogClasses.FieldDescription}>{perGameNotice}</div>
-            </PanelSectionRow>
-          )}
         </>
       )}
     </PanelSection>
