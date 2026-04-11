@@ -6,6 +6,7 @@ from settings import SettingsManager
 STARTUP_APPLY_KEY = "startupApplyEnabled"
 HOME_BUTTON_ENABLED_KEY = "homeButtonEnabled"
 BRIGHTNESS_DIAL_FIX_ENABLED_KEY = "brightnessDialFixEnabled"
+TRACKPADS_DISABLED_KEY = "trackpadsDisabled"
 ZOTAC_GLYPHS_ENABLED_KEY = "zotacGlyphsEnabled"
 RUMBLE_ENABLED_KEY = "rumbleEnabled"
 RUMBLE_INTENSITY_KEY = "rumbleIntensity"
@@ -19,6 +20,7 @@ M2_REMAP_TARGET_KEY = "m2RemapTarget"
 DEFAULT_STARTUP_APPLY_ENABLED = False
 DEFAULT_HOME_BUTTON_ENABLED = False
 DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED = False
+DEFAULT_TRACKPADS_DISABLED = False
 DEFAULT_ZOTAC_GLYPHS_ENABLED = False
 DEFAULT_RUMBLE_ENABLED = False
 DEFAULT_RUMBLE_INTENSITY = 75
@@ -71,7 +73,7 @@ def _default_per_game_settings_entry():
     return {
         ENABLED_KEY: False,
         BUTTON_PROMPT_FIX_ENABLED_KEY: False,
-        DISABLE_TRACKPADS_KEY: True,
+        DISABLE_TRACKPADS_KEY: False,
         M1_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
         M2_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
     }
@@ -123,7 +125,7 @@ def _normalize_per_game_settings_entry(entry):
         BUTTON_PROMPT_FIX_ENABLED_KEY: bool(
             entry.get(BUTTON_PROMPT_FIX_ENABLED_KEY, False)
         ),
-        DISABLE_TRACKPADS_KEY: bool(entry.get(DISABLE_TRACKPADS_KEY, True)),
+        DISABLE_TRACKPADS_KEY: bool(entry.get(DISABLE_TRACKPADS_KEY, False)),
         M1_REMAP_TARGET_KEY: _normalize_per_game_remap_target(
             entry.get(M1_REMAP_TARGET_KEY)
         ),
@@ -163,6 +165,16 @@ def get_brightness_dial_fix_enabled():
 def set_brightness_dial_fix_enabled(enabled):
     _write_setting(BRIGHTNESS_DIAL_FIX_ENABLED_KEY, bool(enabled))
     return get_brightness_dial_fix_enabled()
+
+
+def get_trackpads_disabled():
+    settings = _read_settings()
+    return bool(settings.get(TRACKPADS_DISABLED_KEY, DEFAULT_TRACKPADS_DISABLED))
+
+
+def set_trackpads_disabled(disabled):
+    _write_setting(TRACKPADS_DISABLED_KEY, bool(disabled))
+    return get_trackpads_disabled()
 
 
 def get_zotac_glyphs_enabled():
@@ -310,9 +322,12 @@ def set_button_prompt_fix_enabled(app_id, enabled):
     if entry is None and not enabled:
         return get_per_game_settings()
 
+    entry_exists = entry is not None
     current_entry = dict(entry or _default_per_game_settings_entry())
     if enabled:
         current_entry[ENABLED_KEY] = True
+        if not entry_exists:
+            current_entry[DISABLE_TRACKPADS_KEY] = True
     current_entry[BUTTON_PROMPT_FIX_ENABLED_KEY] = bool(enabled)
     games[app_id] = current_entry
 

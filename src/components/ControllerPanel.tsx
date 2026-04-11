@@ -37,6 +37,7 @@ const setStartupApplyEnabled = callable<[boolean], PluginSettings>('set_startup_
 const setControllerMode = callable<[ControllerMode], PluginSettings>('set_controller_mode')
 const setHomeButtonEnabled = callable<[boolean], PluginSettings>('set_home_button_enabled')
 const setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>('set_brightness_dial_fix_enabled')
+const setTrackpadsDisabled = callable<[boolean], PluginSettings>('set_trackpads_disabled')
 const setPerGameSettingsEnabled = callable<[string, boolean], PluginSettings>('set_per_game_settings_enabled')
 const setButtonPromptFixEnabled = callable<[string, boolean], PluginSettings>('set_button_prompt_fix_enabled')
 const setPerGameTrackpadsDisabled = callable<[string, boolean], PluginSettings>('set_per_game_trackpads_disabled')
@@ -140,6 +141,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [savingControllerMode, setSavingControllerMode] = useState(false)
   const [savingHomeButton, setSavingHomeButton] = useState(false)
   const [savingBrightnessDialFix, setSavingBrightnessDialFix] = useState(false)
+  const [savingTrackpads, setSavingTrackpads] = useState(false)
   const [savingPerGameSettings, setSavingPerGameSettings] = useState(false)
   const [savingButtonPromptFix, setSavingButtonPromptFix] = useState(false)
   const [savingPerGameTrackpads, setSavingPerGameTrackpads] = useState(false)
@@ -293,6 +295,21 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
+  const handleTrackpadsToggleChange = async (disabled: boolean) => {
+    setControllerNotice(null)
+    setSavingTrackpads(true)
+    try {
+      const nextSettings = await setTrackpadsDisabled(disabled)
+      onSettingsChange(nextSettings)
+      setControllerNotice(null)
+      await syncActiveGameTarget(activeGame?.appid ?? DEFAULT_APP_ID)
+    } catch {
+      setControllerNotice(TRACKPADS_ACTION_FAILED_NOTICE)
+    } finally {
+      setSavingTrackpads(false)
+    }
+  }
+
   const handlePerGameSettingsToggleChange = async (enabled: boolean) => {
     if (!activeGame) {
       return
@@ -332,7 +349,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   }
 
   const handlePerGameTrackpadsChange = async (disabled: boolean) => {
-    if (!activeGame || !isPerGameSettingsEnabled || !isButtonPromptFixEnabled) {
+    if (!activeGame || !isPerGameSettingsEnabled) {
       return
     }
 
@@ -526,7 +543,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const controllerFeaturesEnabled = settings.startupApplyEnabled && isControllerModeConfirmed(settings)
   const isPerGameSettingsEnabled = activeGamePerGameSettings?.enabled ?? false
   const isButtonPromptFixEnabled = activeGamePerGameSettings?.buttonPromptFixEnabled ?? false
-  const isTrackpadsDisabled = activeGamePerGameSettings?.disableTrackpads ?? true
+  const isTrackpadsDisabled = activeGamePerGameSettings?.disableTrackpads ?? false
   const m1RemapTarget = activeGamePerGameSettings?.m1RemapTarget ?? 'none'
   const m2RemapTarget = activeGamePerGameSettings?.m2RemapTarget ?? 'none'
 
@@ -613,10 +630,12 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         savingControllerMode={savingControllerMode}
         savingHomeButton={savingHomeButton}
         savingBrightnessDialFix={savingBrightnessDialFix}
+        savingTrackpads={savingTrackpads}
         onStartupToggleChange={(value: boolean) => void handleStartupToggleChange(value)}
         onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
         onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
         onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
+        onTrackpadsToggleChange={(value: boolean) => void handleTrackpadsToggleChange(value)}
       />
       {controllerFeaturesEnabled && (
         <>

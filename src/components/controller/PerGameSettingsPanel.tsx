@@ -29,7 +29,7 @@ type Props = {
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
 const NO_ACTIVE_GAME_PER_GAME_SETTINGS_DESCRIPTION = 'Launch a game to enable per-game settings'
 const BUTTON_PROMPT_FIX_DESCRIPTION = 'Fixes button prompts and glyphs'
-const DISABLE_TRACKPADS_DESCRIPTION = 'Turns off the trackpads while this fix is on'
+const DISABLE_TRACKPADS_DESCRIPTION = 'Turns off the trackpads for this game'
 // TODO: Re-enable these remap options after M1/M2 remap behavior is fully confirmed on-device.
 // const M1_REMAP_DESCRIPTION = 'Maps M1 while this fix is on'
 // const M2_REMAP_DESCRIPTION = 'Maps M2 while this fix is on'
@@ -190,14 +190,14 @@ const PerGameSettingsPanel = ({
           */}
         </>
       )}
-      {activeGame && isButtonPromptFixActive && (
+      {activeGame && isPerGameSettingsEnabled && (
         <PanelSectionRow>
           <ToggleField
             label="Disable Trackpads"
             checked={isTrackpadsDisabled}
             onChange={(value: boolean) => onPerGameTrackpadsChange(value)}
-            disabled={savingPerGameSettings || savingButtonPromptFix || savingPerGameTrackpads}
-            description={DISABLE_TRACKPADS_DESCRIPTION}
+            disabled={savingPerGameSettings || savingPerGameTrackpads || !inputplumberAvailable}
+            description={inputplumberAvailable ? DISABLE_TRACKPADS_DESCRIPTION : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
           />
         </PanelSectionRow>
       )}

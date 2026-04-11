@@ -585,6 +585,7 @@ class DeckyZoneService:
             "controllerModeAvailable": controller_mode_snapshot["available"],
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
             "brightnessDialFixEnabled": self.settings_store.get_brightness_dial_fix_enabled(),
+            "trackpadsDisabled": self.settings_store.get_trackpads_disabled(),
             "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
             "gamescopeZotacProfileBuiltIn": display_profile_settings["gamescopeZotacProfileBuiltIn"],
             "gamescopeZotacProfileInstalled": display_profile_settings["gamescopeZotacProfileInstalled"],
@@ -1349,9 +1350,12 @@ class DeckyZoneService:
             return detail
 
         self._temporary_target_mode = None
-        self._release_zotac_mouse_device()
+        trackpad_result = self._sync_trackpad_suppression_state()
         brightness_result = await self._sync_brightness_dial_fixer_state()
         profile_result = await self._sync_home_button_navigation_state()
+
+        if not trackpad_result:
+            return "Trackpad suppression state did not apply."
 
         if not brightness_result:
             return "Brightness dial listener did not activate."
@@ -1586,6 +1590,25 @@ class DeckyZoneService:
     async def sync_brightness_dial_fixer_state(self):
         return await self._sync_brightness_dial_fixer_state()
 
+    def _should_disable_trackpads(self, app_id=None):
+        if self.settings_store.get_trackpads_disabled():
+            return True
+
+        app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
+        if app_id == DEFAULT_APP_ID:
+            return False
+
+        if not self.settings_store.get_per_game_settings_enabled(app_id):
+            return False
+
+        return self.settings_store.get_per_game_trackpads_disabled(app_id)
+
+    def _sync_trackpad_suppression_state(self, app_id=None):
+        if self._should_disable_trackpads(app_id):
+            return self._grab_zotac_mouse_device()
+
+        return self._release_zotac_mouse_device()
+
     def _set_event_device_grab(self, fd, grabbed):
         self._ioctl(fd, EVIOCGRAB, ctypes.c_int(1 if grabbed else 0))
 
@@ -1691,17 +1714,9 @@ class DeckyZoneService:
             per_game_settings_enabled
             and self.settings_store.get_button_prompt_fix_enabled(app_id)
         )
-        trackpads_disabled = (
-            button_prompt_fix_enabled
-            and self.settings_store.get_per_game_trackpads_disabled(app_id)
-        )
+        trackpad_result = self._sync_trackpad_suppression_state(app_id)
 
         if button_prompt_fix_enabled:
-            trackpad_result = (
-                self._grab_zotac_mouse_device()
-                if trackpads_disabled
-                else self._release_zotac_mouse_device()
-            )
             if self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET:
                 profile_result = await self._sync_home_button_navigation_state()
                 return trackpad_result and profile_result
@@ -1725,10 +1740,9 @@ class DeckyZoneService:
                 self.logger.warning(f"Failed to apply per-game controller override: {error}")
                 return False
 
-        self._release_zotac_mouse_device()
         if self._temporary_target_mode != MISSING_GLYPH_FIX_TARGET:
             profile_result = await self._sync_home_button_navigation_state()
-            return profile_result
+            return trackpad_result and profile_result
 
         try:
             if self.settings_store.get_startup_apply_enabled():
@@ -2342,6 +2356,13 @@ class DeckyZoneService:
 
         return self._current_settings()
 
+    def set_trackpads_disabled(self, disabled):
+        if disabled and not self.probe_inputplumber_available():
+            return self._current_settings()
+
+        self.settings_store.set_trackpads_disabled(disabled)
+        return self._current_settings()
+
     async def set_zotac_glyphs_enabled(self, enabled):
         self.settings_store.set_zotac_glyphs_enabled(enabled)
         return self._current_settings()
@@ -2637,6 +2658,9 @@ class Plugin:
 
     async def set_brightness_dial_fix_enabled(self, enabled):
         return await self.service.set_brightness_dial_fix_enabled(enabled)
+
+    async def set_trackpads_disabled(self, disabled):
+        return self.service.set_trackpads_disabled(disabled)
 
     async def set_zotac_glyphs_enabled(self, enabled):
         return await self.service.set_zotac_glyphs_enabled(enabled)

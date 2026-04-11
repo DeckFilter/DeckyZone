@@ -7,10 +7,12 @@ type Props = {
   savingControllerMode: boolean
   savingHomeButton: boolean
   savingBrightnessDialFix: boolean
+  savingTrackpads: boolean
   onStartupToggleChange: (enabled: boolean) => void
   onControllerModeChange: (mode: ControllerMode) => void
   onHomeButtonToggleChange: (enabled: boolean) => void
   onBrightnessDialFixToggleChange: (enabled: boolean) => void
+  onTrackpadsToggleChange: (disabled: boolean) => void
 }
 
 const CONTROLLER_FEATURES_DESCRIPTION = 'Turns on controller features'
@@ -23,6 +25,7 @@ const CONTROLLER_MODE_SWITCH_BUTTON = 'Switch to Gamepad'
 const CONTROLLER_MODE_SWITCH_BUTTON_PENDING = 'Switching to Gamepad...'
 const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Navigates to Home'
 const BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Controls screen brightness with the right dial'
+const TRACKPADS_DISABLED_DESCRIPTION = 'Turns off the trackpads'
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
 
 function isControllerModeConfirmed(settings: PluginSettings) {
@@ -75,10 +78,12 @@ const ControllerTogglesPanel = ({
   savingControllerMode,
   savingHomeButton,
   savingBrightnessDialFix,
+  savingTrackpads,
   onStartupToggleChange,
   onControllerModeChange,
   onHomeButtonToggleChange,
   onBrightnessDialFixToggleChange,
+  onTrackpadsToggleChange,
 }: Props) => {
   const controllerModeConfirmed = isControllerModeConfirmed(settings)
   const controllerModeBlocked = !controllerModeConfirmed
@@ -132,6 +137,15 @@ const ControllerTogglesPanel = ({
               onChange={(value: boolean) => onBrightnessDialFixToggleChange(value)}
               disabled={savingBrightnessDialFix || !settings.inputplumberAvailable}
               description={settings.inputplumberAvailable ? BRIGHTNESS_DIAL_FIX_DESCRIPTION : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
+            />
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ToggleField
+              label="Disable Trackpads"
+              checked={settings.trackpadsDisabled}
+              onChange={(value: boolean) => onTrackpadsToggleChange(value)}
+              disabled={savingTrackpads || !settings.inputplumberAvailable}
+              description={settings.inputplumberAvailable ? TRACKPADS_DISABLED_DESCRIPTION : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
             />
           </PanelSectionRow>
         </>
