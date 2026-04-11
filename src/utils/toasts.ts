@@ -1,5 +1,6 @@
 import { toaster } from '@decky/api'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, createElement } from 'react'
+import ZotacIcon from '../components/ZotacIcon'
 
 type ToastSeverity = 'error' | 'warning' | 'success'
 
@@ -13,11 +14,27 @@ type DeckyToastNotice = DeckyToast & {
   activeKey: string
 }
 
+const TOAST_LOGO_FRAME_STYLE = {
+  width: '40px',
+  height: '40px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+} as const
+
 export function showDeckyToast({ title, body, severity }: DeckyToast) {
   toaster.toast({
     title,
     body,
     critical: severity === 'error',
+    logo: createElement(
+      'div',
+      {
+        style: TOAST_LOGO_FRAME_STYLE,
+      },
+      createElement(ZotacIcon, { size: '1.5rem' }),
+    ),
   })
 }
 

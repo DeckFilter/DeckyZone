@@ -49,16 +49,15 @@ const testRumble = callable<[], boolean>('test_rumble')
 
 const DEFAULT_APP_ID = '0'
 const STEAM_INPUT_DIAGNOSTIC_UNAVAILABLE_MESSAGE = 'Steam Input state unavailable.'
-const SUPPORT_POPUP_HINT = 'Open the header info popup for details.'
-const CONTROLLER_STATUS_FAILED_NOTICE = 'Controller could not be initialized. Please restart the device.'
-const CONTROLLER_ACTION_FAILED_NOTICE = `Couldn't update the controller setting. ${SUPPORT_POPUP_HINT}`
-const CONTROLLER_MODE_ACTION_FAILED_NOTICE = `Couldn't update the controller mode. ${SUPPORT_POPUP_HINT}`
-const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = `Couldn't update the per-game setting. ${SUPPORT_POPUP_HINT}`
-const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = `Couldn't update the button prompt fix. ${SUPPORT_POPUP_HINT}`
-const TRACKPADS_ACTION_FAILED_NOTICE = `Couldn't update the trackpad setting. ${SUPPORT_POPUP_HINT}`
-const PER_GAME_REMAP_ACTION_FAILED_NOTICE = `Couldn't update the M1/M2 remap. ${SUPPORT_POPUP_HINT}`
-const RUMBLE_ACTION_FAILED_NOTICE = `Couldn't update vibration. ${SUPPORT_POPUP_HINT}`
-const RUMBLE_TEST_FAILED_NOTICE = `Couldn't send a vibration test. ${SUPPORT_POPUP_HINT}`
+const CONTROLLER_STATUS_FAILED_NOTICE = 'Controller failed to initialize. Restart device.'
+const CONTROLLER_ACTION_FAILED_NOTICE = "Couldn't update setting."
+const CONTROLLER_MODE_ACTION_FAILED_NOTICE = "Couldn't update mode."
+const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = "Couldn't update per-game setting."
+const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = "Couldn't update prompt fix."
+const TRACKPADS_ACTION_FAILED_NOTICE = "Couldn't update trackpad setting."
+const PER_GAME_REMAP_ACTION_FAILED_NOTICE = "Couldn't update M1/M2 remap."
+const RUMBLE_ACTION_FAILED_NOTICE = "Couldn't update vibration."
+const RUMBLE_TEST_FAILED_NOTICE = "Couldn't send vibration test."
 
 function getControllerStatusNotice(status: PluginStatus) {
   if (status.state === 'unsupported') {

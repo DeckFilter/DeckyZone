@@ -146,7 +146,7 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
         return
       }
 
-      setVersionError('Failed to fetch the latest version.')
+      setVersionError('Failed to fetch latest version.')
     } finally {
       if (isMountedRef.current) {
         setIsLoadingLatestVersion(false)
@@ -189,10 +189,10 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
     try {
       const success = await otaUpdate()
       if (!success) {
-        setUpdateError('Failed to install the latest DeckyZone release.')
+        setUpdateError('Failed to install latest release.')
       }
     } catch {
-      setUpdateError('Failed to install the latest DeckyZone release.')
+      setUpdateError('Failed to install latest release.')
     } finally {
       setIsUpdating(false)
     }

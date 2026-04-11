@@ -14,11 +14,10 @@ const setGamescopeGreenTintFixEnabled = callable<[boolean], PluginSettings>('set
 
 const RESTART_NOTE = 'reboot after changing this'
 const NATIVE_COLOR_TEMPERATURE_HINT = 'Tip: Settings -> Display -> Use Native Color Temperature'
-const SUPPORT_POPUP_HINT = 'Open the header info popup for details.'
-const DISPLAY_UPDATE_FAILED_NOTICE = `Couldn't update the display setting. ${SUPPORT_POPUP_HINT}`
-const DISPLAY_MISMATCH_NOTICE = `Display profile did not match the requested state. ${SUPPORT_POPUP_HINT}`
-const DISPLAY_VERIFICATION_NOTICE = `Display profile needs attention. ${SUPPORT_POPUP_HINT}`
-const DISPLAY_RESTART_REQUIRED_NOTICE = 'Restart the device for the display profile change to take effect.'
+const DISPLAY_UPDATE_FAILED_NOTICE = "Couldn't update display."
+const DISPLAY_MISMATCH_NOTICE = 'Display change did not apply.'
+const DISPLAY_VERIFICATION_NOTICE = 'Display profile needs attention.'
+const DISPLAY_RESTART_REQUIRED_NOTICE = 'Restart to apply display change.'
 const ZOTAC_PROFILE_DESCRIPTION = `Adds the Zotac OLED Gamescope profile if it's missing, ${RESTART_NOTE}`
 
 function getGreenTintDescription(settings: PluginSettings, isBaseProfileAvailable: boolean) {

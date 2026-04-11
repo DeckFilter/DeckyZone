@@ -13,9 +13,8 @@ type Props = {
 const setZotacGlyphsEnabled = callable<[boolean], PluginSettings>("set_zotac_glyphs_enabled")
 
 const ZOTAC_GLYPHS_DESCRIPTION = "Applies Zotac controller glyphs and images"
-const SUPPORT_POPUP_HINT = "Open the header info popup for details."
-const INTERFACE_UPDATE_FAILED_NOTICE = `Couldn't update the interface setting. ${SUPPORT_POPUP_HINT}`
-const GLYPH_APPLY_FAILED_NOTICE = `Couldn't apply Zotac glyphs live. ${SUPPORT_POPUP_HINT}`
+const INTERFACE_UPDATE_FAILED_NOTICE = "Couldn't update setting."
+const GLYPH_APPLY_FAILED_NOTICE = "Couldn't apply glyphs live."
 
 const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
   const [savingZotacGlyphs, setSavingZotacGlyphs] = useState(false)
