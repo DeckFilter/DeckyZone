@@ -88,6 +88,8 @@ export type PerGameSettings = {
   enabled: boolean
   buttonPromptFixEnabled: boolean
   trackpadMode: TrackpadMode
+  rumbleEnabled: boolean
+  rumbleIntensity: number
   m1RemapTarget: PerGameRemapTarget
   m2RemapTarget: PerGameRemapTarget
 }

@@ -857,6 +857,30 @@ class DeckyZoneService:
             self._get_effective_trackpad_mode(app_id)
         )
 
+    def _get_effective_rumble_enabled(self, app_id=None):
+        app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
+        global_enabled = self.settings_store.get_rumble_enabled()
+
+        if app_id == DEFAULT_APP_ID:
+            return global_enabled
+
+        if not self.settings_store.get_per_game_settings_enabled(app_id):
+            return global_enabled
+
+        return self.settings_store.get_per_game_rumble_enabled(app_id)
+
+    def _get_effective_rumble_intensity(self, app_id=None):
+        app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
+        global_intensity = self.settings_store.get_rumble_intensity()
+
+        if app_id == DEFAULT_APP_ID:
+            return global_intensity
+
+        if not self.settings_store.get_per_game_settings_enabled(app_id):
+            return global_intensity
+
+        return self.settings_store.get_per_game_rumble_intensity(app_id)
+
     def _should_include_mouse_target(self, app_id=None):
         return not self._should_enable_directional_trackpads(app_id)
 
@@ -1571,6 +1595,7 @@ class DeckyZoneService:
         self._temporary_target_mode = None
         trackpad_result = self._sync_trackpad_suppression_state()
         brightness_result = await self._sync_brightness_dial_fixer_state()
+        rumble_result = await self._sync_rumble_state(self._active_per_game_app_id)
         profile_result = await self._sync_home_button_navigation_state()
 
         if not trackpad_result:
@@ -1578,6 +1603,9 @@ class DeckyZoneService:
 
         if not brightness_result:
             return "Brightness dial listener did not activate."
+
+        if not rumble_result:
+            return "Rumble state did not apply."
 
         if not profile_result:
             return "Home button runtime profile did not activate."
@@ -1809,6 +1837,29 @@ class DeckyZoneService:
     async def sync_brightness_dial_fixer_state(self):
         return await self._sync_brightness_dial_fixer_state()
 
+    async def _sync_rumble_state(self, app_id=None):
+        effective_enabled = self._get_effective_rumble_enabled(app_id)
+
+        if not effective_enabled:
+            await self.stop_rumble_fixer()
+            self._rumble_available = bool(self.probe_rumble_available())
+            return True
+
+        device_path = self._resolve_rumble_device_path()
+        if not self._validate_rumble_device_path(device_path):
+            self._rumble_device_path = None
+            self._rumble_available = False
+            await self.stop_rumble_fixer()
+            return True
+
+        self._rumble_device_path = device_path
+        self._rumble_available = True
+
+        if self._rumble_task and not self._rumble_task.done():
+            return bool(await self._apply_rumble_gain_once(device_path, app_id=app_id))
+
+        return bool(await self.start_rumble_fixer(app_id))
+
     def _sync_trackpad_suppression_state(self, app_id=None):
         if self._should_disable_trackpads(app_id) or self._should_enable_directional_trackpads(app_id):
             return self._grab_zotac_mouse_device()
@@ -1919,6 +1970,25 @@ class DeckyZoneService:
         self.settings_store.set_per_game_trackpad_mode(app_id, normalized_mode)
         return self._current_settings()
 
+    async def set_per_game_rumble_enabled(self, app_id, enabled):
+        if app_id in (None, "", DEFAULT_APP_ID):
+            return self._current_settings()
+
+        self.settings_store.set_per_game_rumble_enabled(app_id, enabled)
+        if str(app_id) == str(self._active_per_game_app_id):
+            await self._sync_rumble_state(app_id)
+        return self._current_settings()
+
+    async def set_per_game_rumble_intensity(self, app_id, intensity):
+        if app_id in (None, "", DEFAULT_APP_ID):
+            return self._current_settings()
+
+        intensity = max(0, min(100, int(intensity)))
+        self.settings_store.set_per_game_rumble_intensity(app_id, intensity)
+        if str(app_id) == str(self._active_per_game_app_id):
+            await self._sync_rumble_state(app_id)
+        return self._current_settings()
+
     async def sync_per_game_target(self, app_id):
         app_id = str(app_id or DEFAULT_APP_ID)
         self._active_per_game_app_id = app_id
@@ -1938,6 +2008,7 @@ class DeckyZoneService:
         )
         include_mouse = self._should_include_mouse_target(app_id)
         trackpad_result = self._sync_trackpad_suppression_state(app_id)
+        rumble_result = await self._sync_rumble_state(app_id)
 
         if button_prompt_fix_enabled:
             try:
@@ -1951,7 +2022,7 @@ class DeckyZoneService:
                 self._temporary_target_mode = MISSING_GLYPH_FIX_TARGET
                 await self._sync_brightness_dial_fixer_state()
                 profile_result = await self._sync_home_button_navigation_state()
-                return trackpad_result and profile_result
+                return trackpad_result and rumble_result and profile_result
             except subprocess.CalledProcessError as error:
                 detail = (error.stderr or error.stdout or str(error)).strip()
                 self.logger.warning(f"Failed to apply per-game controller override: {detail}")
@@ -1984,7 +2055,7 @@ class DeckyZoneService:
                     return False
 
             profile_result = await self._sync_home_button_navigation_state()
-            return trackpad_result and profile_result
+            return trackpad_result and rumble_result and profile_result
 
         try:
             if self.settings_store.get_startup_apply_enabled():
@@ -1999,6 +2070,7 @@ class DeckyZoneService:
                 self._startup_target_active = False
                 self._temporary_target_mode = None
                 await self._sync_brightness_dial_fixer_state()
+                await self._sync_rumble_state(app_id)
                 await self._sync_home_button_navigation_state()
                 return True
             return True
@@ -2779,7 +2851,7 @@ class DeckyZoneService:
     # a native HID/sysfs method via save_config, vibration_intensity, and
     # motor_test; a future change could evaluate that path or add a
     # compatibility/testing switch between methods if needed.
-    async def _apply_rumble_gain_once(self, device_path=None):
+    async def _apply_rumble_gain_once(self, device_path=None, app_id=None):
         device_path = device_path or self._rumble_device_path
         if not device_path:
             return False
@@ -2787,7 +2859,7 @@ class DeckyZoneService:
         try:
             self._write_event_to_device(
                 device_path,
-                self._build_gain_event(self.settings_store.get_rumble_intensity()),
+                self._build_gain_event(self._get_effective_rumble_intensity(app_id)),
             )
             return True
         except OSError as error:
@@ -2796,10 +2868,13 @@ class DeckyZoneService:
 
     async def _rumble_loop(self):
         while self._rumble_running:
-            await self._apply_rumble_gain_once(self._rumble_device_path)
+            await self._apply_rumble_gain_once(
+                self._rumble_device_path,
+                app_id=self._active_per_game_app_id,
+            )
             await self.sleep(DEFAULT_RUMBLE_REAPPLY_INTERVAL_SECONDS)
 
-    async def start_rumble_fixer(self):
+    async def start_rumble_fixer(self, app_id=None):
         if self._rumble_task and not self._rumble_task.done():
             return True
 
@@ -2807,7 +2882,7 @@ class DeckyZoneService:
             return False
 
         self._rumble_running = True
-        await self._apply_rumble_gain_once(self._rumble_device_path)
+        await self._apply_rumble_gain_once(self._rumble_device_path, app_id=app_id)
         self._rumble_task = asyncio.create_task(self._rumble_loop())
         return True
 
@@ -2826,33 +2901,17 @@ class DeckyZoneService:
 
     async def set_rumble_enabled(self, enabled):
         self.settings_store.set_rumble_enabled(enabled)
-
-        if enabled:
-            self._rumble_available = bool(await self.start_rumble_fixer())
-        else:
-            await self.stop_rumble_fixer()
-            self._rumble_available = bool(self.probe_rumble_available())
-
+        await self._sync_rumble_state()
         return self._current_settings()
 
     async def set_rumble_intensity(self, intensity):
         intensity = max(0, min(100, int(intensity)))
         self.settings_store.set_rumble_intensity(intensity)
-
-        if self.settings_store.get_rumble_enabled():
-            device_path = self._resolve_rumble_device_path()
-            if self._validate_rumble_device_path(device_path):
-                self._rumble_device_path = device_path
-                self._rumble_available = True
-                await self._apply_rumble_gain_once(device_path)
-            else:
-                self._rumble_device_path = None
-                self._rumble_available = False
-
+        await self._sync_rumble_state()
         return self._current_settings()
 
     async def test_rumble(self):
-        intensity = max(0.0, min(1.0, self.settings_store.get_rumble_intensity() / 100.0))
+        intensity = max(0.0, min(1.0, self._get_effective_rumble_intensity() / 100.0))
         try:
             self.command_runner(
                 self._busctl_args(
@@ -3080,6 +3139,12 @@ class Plugin:
 
     async def set_per_game_trackpads_disabled(self, app_id, disabled):
         return self.service.set_per_game_trackpads_disabled(app_id, disabled)
+
+    async def set_per_game_rumble_enabled(self, app_id, enabled):
+        return await self.service.set_per_game_rumble_enabled(app_id, enabled)
+
+    async def set_per_game_rumble_intensity(self, app_id, intensity):
+        return await self.service.set_per_game_rumble_intensity(app_id, intensity)
 
     async def set_per_game_m1_remap_target(self, app_id, target):
         return self.service.set_per_game_m1_remap_target(app_id, target)

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
-import type { ActiveGame, ControllerMode, PerGameRemapTarget, PluginSettings, PluginStatus, TrackpadMode } from '../types/plugin'
+import type { ActiveGame, ControllerMode, PluginSettings, PluginStatus, TrackpadMode } from '../types/plugin'
 import { useDeckyToastNotice } from '../utils/toasts'
 
 type SteamInputDiagnosticAppDetails = {
@@ -41,12 +41,14 @@ const setTrackpadMode = callable<[TrackpadMode], PluginSettings>('set_trackpad_m
 const setPerGameSettingsEnabled = callable<[string, boolean], PluginSettings>('set_per_game_settings_enabled')
 const setButtonPromptFixEnabled = callable<[string, boolean], PluginSettings>('set_button_prompt_fix_enabled')
 const setPerGameTrackpadMode = callable<[string, TrackpadMode], PluginSettings>('set_per_game_trackpad_mode')
-const setPerGameM1RemapTarget = callable<[string, PerGameRemapTarget], PluginSettings>('set_per_game_m1_remap_target')
-const setPerGameM2RemapTarget = callable<[string, PerGameRemapTarget], PluginSettings>('set_per_game_m2_remap_target')
+const setPerGameRumbleEnabled = callable<[string, boolean], PluginSettings>('set_per_game_rumble_enabled')
+const setPerGameRumbleIntensity = callable<[string, number], PluginSettings>('set_per_game_rumble_intensity')
 const syncPerGameTarget = callable<[string], boolean>('sync_per_game_target')
 const setRumbleEnabled = callable<[boolean], PluginSettings>('set_rumble_enabled')
 const setRumbleIntensity = callable<[number], PluginSettings>('set_rumble_intensity')
 const testRumble = callable<[], boolean>('test_rumble')
+
+type RumbleSaveTarget = { scope: 'global' } | { scope: 'per_game'; appId: string }
 
 const DEFAULT_APP_ID = '0'
 const STEAM_INPUT_DIAGNOSTIC_UNAVAILABLE_MESSAGE = 'Steam Input state unavailable.'
@@ -56,7 +58,6 @@ const CONTROLLER_MODE_ACTION_FAILED_NOTICE = "Couldn't update mode."
 const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = "Couldn't update per-game setting."
 const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = "Couldn't update prompt fix."
 const TRACKPADS_ACTION_FAILED_NOTICE = "Couldn't update trackpad setting."
-const PER_GAME_REMAP_ACTION_FAILED_NOTICE = "Couldn't update M1/M2 remap."
 const RUMBLE_ACTION_FAILED_NOTICE = "Couldn't update vibration."
 const RUMBLE_TEST_FAILED_NOTICE = "Couldn't send vibration test."
 
@@ -133,6 +134,18 @@ async function syncActiveGameTarget(appId: string) {
   }
 }
 
+function areRumbleSaveTargetsEqual(left: RumbleSaveTarget, right: RumbleSaveTarget) {
+  if (left.scope !== right.scope) {
+    return false
+  }
+
+  if (left.scope === 'global' || right.scope === 'global') {
+    return true
+  }
+
+  return left.appId === right.appId
+}
+
 const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onStatusChange }: Props) => {
   const [rumbleIntensityDraft, setRumbleIntensityDraft] = useState(settings.rumbleIntensity)
   const [controllerNotice, setControllerNotice] = useState<string | null>(null)
@@ -144,8 +157,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [savingTrackpads, setSavingTrackpads] = useState(false)
   const [savingPerGameSettings, setSavingPerGameSettings] = useState(false)
   const [savingButtonPromptFix, setSavingButtonPromptFix] = useState(false)
-  const [savingPerGameTrackpads, setSavingPerGameTrackpads] = useState(false)
-  const [savingPerGameRemaps, setSavingPerGameRemaps] = useState(false)
   const [savingRumble, setSavingRumble] = useState(false)
   const [savingRumbleIntensity, setSavingRumbleIntensity] = useState(false)
   const [testingRumble, setTestingRumble] = useState(false)
@@ -154,6 +165,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [steamInputDiagnostic, setSteamInputDiagnostic] = useState<SteamInputDiagnosticState>({ state: 'idle' })
   const rumbleIntensityLatestValue = useRef(settings.rumbleIntensity)
   const rumbleIntensityCommittedValue = useRef(settings.rumbleIntensity)
+  const rumbleIntensityLatestTarget = useRef<RumbleSaveTarget>({ scope: 'global' })
   const rumbleIntensitySaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const rumbleIntensityStateVersion = useRef(0)
   const rumbleIntensityQueuedVersion = useRef<number | null>(null)
@@ -172,6 +184,28 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     const nextStatus = await getStatus()
     onStatusChange(nextStatus)
   }
+
+  const activeGamePerGameSettings = activeGame ? settings.perGameSettings[activeGame.appid] : undefined
+  const isPerGameSettingsEnabled = activeGamePerGameSettings?.enabled ?? false
+  const isEditingPerGameOverride = Boolean(activeGame && isPerGameSettingsEnabled)
+  const isButtonPromptFixEnabled = activeGamePerGameSettings?.buttonPromptFixEnabled ?? false
+  const activeTrackpadMode = isEditingPerGameOverride
+    ? activeGamePerGameSettings?.trackpadMode ?? settings.trackpadMode
+    : settings.trackpadMode
+  const activeRumbleEnabled = isEditingPerGameOverride
+    ? activeGamePerGameSettings?.rumbleEnabled ?? settings.rumbleEnabled
+    : settings.rumbleEnabled
+  const activeRumbleIntensity = isEditingPerGameOverride
+    ? activeGamePerGameSettings?.rumbleIntensity ?? settings.rumbleIntensity
+    : settings.rumbleIntensity
+  const activeRumbleSaveTarget: RumbleSaveTarget =
+    isEditingPerGameOverride && activeGame
+      ? { scope: 'per_game', appId: activeGame.appid }
+      : { scope: 'global' }
+  const activeRumbleSaveTargetKey =
+    activeRumbleSaveTarget.scope === 'global'
+      ? 'global'
+      : `per_game:${activeRumbleSaveTarget.appId}`
 
   const controllerStatusNotice = getControllerStatusNotice(status)
 
@@ -220,14 +254,19 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   )
 
   useEffect(() => {
-    setRumbleIntensityDraft(settings.rumbleIntensity)
-    rumbleIntensityLatestValue.current = settings.rumbleIntensity
-    rumbleIntensityCommittedValue.current = settings.rumbleIntensity
+    setRumbleIntensityDraft(activeRumbleIntensity)
+    rumbleIntensityLatestValue.current = activeRumbleIntensity
+    rumbleIntensityCommittedValue.current = activeRumbleIntensity
+    rumbleIntensityLatestTarget.current = activeRumbleSaveTarget
     if (!settings.rumbleAvailable) {
       setRumbleMessage(null)
       setRumbleMessageKind(null)
     }
-  }, [settings.rumbleIntensity, settings.rumbleAvailable])
+  }, [
+    activeRumbleIntensity,
+    activeRumbleSaveTargetKey,
+    settings.rumbleAvailable,
+  ])
 
   useEffect(() => {
     return () => {
@@ -296,15 +335,25 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   }
 
   const handleTrackpadModeChange = async (mode: TrackpadMode) => {
+    const appId = activeGame?.appid ?? DEFAULT_APP_ID
+
     setControllerNotice(null)
+    setPerGameNotice(null)
     setSavingTrackpads(true)
     try {
-      const nextSettings = await setTrackpadMode(mode)
+      const nextSettings = isEditingPerGameOverride && activeGame
+        ? await setPerGameTrackpadMode(activeGame.appid, mode)
+        : await setTrackpadMode(mode)
       onSettingsChange(nextSettings)
       setControllerNotice(null)
-      await syncActiveGameTarget(activeGame?.appid ?? DEFAULT_APP_ID)
+      setPerGameNotice(null)
+      await syncActiveGameTarget(appId)
     } catch {
-      setControllerNotice(TRACKPADS_ACTION_FAILED_NOTICE)
+      if (isEditingPerGameOverride && activeGame) {
+        setPerGameNotice(TRACKPADS_ACTION_FAILED_NOTICE)
+      } else {
+        setControllerNotice(TRACKPADS_ACTION_FAILED_NOTICE)
+      }
     } finally {
       setSavingTrackpads(false)
     }
@@ -348,78 +397,18 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
-  const handlePerGameTrackpadModeChange = async (mode: TrackpadMode) => {
-    if (!activeGame || !isPerGameSettingsEnabled) {
-      return
-    }
-
-    setPerGameNotice(null)
-    setSavingPerGameTrackpads(true)
-    try {
-      const nextSettings = await setPerGameTrackpadMode(activeGame.appid, mode)
-      onSettingsChange(nextSettings)
-      setPerGameNotice(null)
-      await syncActiveGameTarget(activeGame.appid)
-    } catch {
-      setPerGameNotice(TRACKPADS_ACTION_FAILED_NOTICE)
-    } finally {
-      setSavingPerGameTrackpads(false)
-    }
-  }
-
-  const handlePerGameM1RemapTargetChange = async (target: PerGameRemapTarget) => {
-    if (!activeGame || !isPerGameSettingsEnabled || !isButtonPromptFixEnabled) {
-      return
-    }
-
-    setPerGameNotice(null)
-    setSavingPerGameRemaps(true)
-    try {
-      const nextSettings = await setPerGameM1RemapTarget(activeGame.appid, target)
-      onSettingsChange(nextSettings)
-      setPerGameNotice(null)
-      await syncActiveGameTarget(activeGame.appid)
-    } catch {
-      setPerGameNotice(PER_GAME_REMAP_ACTION_FAILED_NOTICE)
-    } finally {
-      setSavingPerGameRemaps(false)
-    }
-  }
-
-  const handlePerGameM2RemapTargetChange = async (target: PerGameRemapTarget) => {
-    if (!activeGame || !isPerGameSettingsEnabled || !isButtonPromptFixEnabled) {
-      return
-    }
-
-    setPerGameNotice(null)
-    setSavingPerGameRemaps(true)
-    try {
-      const nextSettings = await setPerGameM2RemapTarget(activeGame.appid, target)
-      onSettingsChange(nextSettings)
-      setPerGameNotice(null)
-      await syncActiveGameTarget(activeGame.appid)
-    } catch {
-      setPerGameNotice(PER_GAME_REMAP_ACTION_FAILED_NOTICE)
-    } finally {
-      setSavingPerGameRemaps(false)
-    }
-  }
-
   const handleRumbleToggleChange = async (enabled: boolean) => {
     rumbleIntensityStateVersion.current += 1
-
-    if (!enabled) {
-      clearPendingRumbleIntensitySave()
-    }
+    clearPendingRumbleIntensitySave()
 
     setRumbleMessage(null)
     setRumbleMessageKind(null)
     setSavingRumble(true)
     try {
-      const nextSettings = await setRumbleEnabled(enabled)
+      const nextSettings = isEditingPerGameOverride && activeGame
+        ? await setPerGameRumbleEnabled(activeGame.appid, enabled)
+        : await setRumbleEnabled(enabled)
       onSettingsChange(nextSettings)
-      setRumbleIntensityDraft(nextSettings.rumbleIntensity)
-      rumbleIntensityLatestValue.current = nextSettings.rumbleIntensity
       setRumbleMessage(null)
       setRumbleMessageKind(null)
     } catch {
@@ -442,21 +431,32 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
-  const saveRumbleIntensity = async (value: number, version: number) => {
+  const saveRumbleIntensity = async (value: number, version: number, target: RumbleSaveTarget) => {
     beginRumbleIntensitySave()
     try {
-      const nextSettings = await setRumbleIntensity(value)
-      if (version === rumbleIntensityStateVersion.current) {
-        rumbleIntensityCommittedValue.current = nextSettings.rumbleIntensity
-        rumbleIntensityLatestValue.current = nextSettings.rumbleIntensity
-        setRumbleIntensityDraft(nextSettings.rumbleIntensity)
+      const nextSettings =
+        target.scope === 'per_game'
+          ? await setPerGameRumbleIntensity(target.appId, value)
+          : await setRumbleIntensity(value)
+      if (
+        version === rumbleIntensityStateVersion.current &&
+        areRumbleSaveTargetsEqual(target, rumbleIntensityLatestTarget.current)
+      ) {
+        rumbleIntensityCommittedValue.current = value
+        rumbleIntensityLatestValue.current = value
+        setRumbleIntensityDraft(value)
         onSettingsChange(nextSettings)
         setRumbleMessage(null)
         setRumbleMessageKind(null)
+      } else {
+        onSettingsChange(nextSettings)
       }
       return true
     } catch {
-      if (version === rumbleIntensityStateVersion.current) {
+      if (
+        version === rumbleIntensityStateVersion.current &&
+        areRumbleSaveTargetsEqual(target, rumbleIntensityLatestTarget.current)
+      ) {
         setRumbleMessage(RUMBLE_ACTION_FAILED_NOTICE)
         setRumbleMessageKind('error')
       }
@@ -466,14 +466,14 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
-  const queueRumbleIntensitySave = (value: number, version: number) => {
+  const queueRumbleIntensitySave = (value: number, version: number, target: RumbleSaveTarget) => {
     if (rumbleIntensityQueuedVersion.current === version && rumbleIntensityQueuedPromise.current) {
       return rumbleIntensityQueuedPromise.current
     }
 
     const nextSave = rumbleIntensitySaveChain.current
       .catch(() => false)
-      .then(() => saveRumbleIntensity(value, version))
+      .then(() => saveRumbleIntensity(value, version, target))
 
     const trackedSave = nextSave.finally(() => {
       if (rumbleIntensityQueuedVersion.current === version) {
@@ -493,12 +493,13 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
 
     const latestValue = rumbleIntensityLatestValue.current
     const latestVersion = rumbleIntensityStateVersion.current
+    const latestTarget = rumbleIntensityLatestTarget.current
 
     if (latestValue === rumbleIntensityCommittedValue.current && !savingRumbleIntensity) {
       return true
     }
 
-    return await queueRumbleIntensitySave(latestValue, latestVersion)
+    return await queueRumbleIntensitySave(latestValue, latestVersion, latestTarget)
   }
 
   const handleRumbleIntensityChange = (value: number) => {
@@ -506,12 +507,13 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     rumbleIntensityStateVersion.current = nextVersion
     setRumbleIntensityDraft(value)
     rumbleIntensityLatestValue.current = value
+    rumbleIntensityLatestTarget.current = activeRumbleSaveTarget
     setRumbleMessage(null)
     setRumbleMessageKind(null)
     clearPendingRumbleIntensitySave()
     rumbleIntensitySaveTimeout.current = setTimeout(() => {
       rumbleIntensitySaveTimeout.current = null
-      void queueRumbleIntensitySave(value, nextVersion)
+      void queueRumbleIntensitySave(value, nextVersion, activeRumbleSaveTarget)
     }, 500)
   }
 
@@ -539,13 +541,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
-  const activeGamePerGameSettings = activeGame ? settings.perGameSettings[activeGame.appid] : undefined
-  const controllerFeaturesEnabled = settings.startupApplyEnabled && isControllerModeConfirmed(settings)
-  const isPerGameSettingsEnabled = activeGamePerGameSettings?.enabled ?? false
-  const isButtonPromptFixEnabled = activeGamePerGameSettings?.buttonPromptFixEnabled ?? false
-  const activeTrackpadMode = activeGamePerGameSettings?.trackpadMode ?? 'mouse'
-  const m1RemapTarget = activeGamePerGameSettings?.m1RemapTarget ?? 'none'
-  const m2RemapTarget = activeGamePerGameSettings?.m2RemapTarget ?? 'none'
+  const controllerModeBlocked = !isControllerModeConfirmed(settings)
 
   useEffect(() => {
     if (!activeGame || !isPerGameSettingsEnabled || !isButtonPromptFixEnabled) {
@@ -630,44 +626,38 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         savingControllerMode={savingControllerMode}
         savingHomeButton={savingHomeButton}
         savingBrightnessDialFix={savingBrightnessDialFix}
-        savingTrackpads={savingTrackpads}
         onStartupToggleChange={(value: boolean) => void handleStartupToggleChange(value)}
         onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
         onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
         onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
-        onTrackpadModeChange={(value: TrackpadMode) => void handleTrackpadModeChange(value)}
       />
-      {controllerFeaturesEnabled && (
-        <RumblePanel
-          settings={settings}
-          savingRumble={savingRumble}
-          savingRumbleIntensity={savingRumbleIntensity}
-          testingRumble={testingRumble}
-          rumbleIntensityDraft={rumbleIntensityDraft}
-          onRumbleToggleChange={(value: boolean) => void handleRumbleToggleChange(value)}
-          onRumbleIntensityChange={handleRumbleIntensityChange}
-          onTestRumble={() => void handleTestRumble()}
-        />
-      )}
       <PerGameSettingsPanel
         activeGame={activeGame}
         inputplumberAvailable={settings.inputplumberAvailable}
         isPerGameSettingsEnabled={isPerGameSettingsEnabled}
         isButtonPromptFixEnabled={isButtonPromptFixEnabled}
         isButtonPromptFixActive={isButtonPromptFixActive}
-        trackpadMode={activeTrackpadMode}
-        m1RemapTarget={m1RemapTarget}
-        m2RemapTarget={m2RemapTarget}
         savingPerGameSettings={savingPerGameSettings}
         savingButtonPromptFix={savingButtonPromptFix}
-        savingPerGameTrackpads={savingPerGameTrackpads}
-        savingPerGameRemaps={savingPerGameRemaps}
         shouldShowSteamInputDisabledWarning={shouldShowSteamInputDisabledWarning}
         onPerGameSettingsToggleChange={(value: boolean) => void handlePerGameSettingsToggleChange(value)}
         onButtonPromptFixToggleChange={(value: boolean) => void handleButtonPromptFixToggleChange(value)}
-        onPerGameTrackpadModeChange={(value: TrackpadMode) => void handlePerGameTrackpadModeChange(value)}
-        onPerGameM1RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM1RemapTargetChange(value)}
-        onPerGameM2RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM2RemapTargetChange(value)}
+      />
+      <RumblePanel
+        inputplumberAvailable={settings.inputplumberAvailable}
+        controllerModeBlocked={controllerModeBlocked}
+        rumbleEnabled={activeRumbleEnabled}
+        rumbleAvailable={settings.rumbleAvailable}
+        savingRumble={savingRumble}
+        savingRumbleIntensity={savingRumbleIntensity}
+        testingRumble={testingRumble}
+        savingTrackpads={savingTrackpads}
+        rumbleIntensityDraft={rumbleIntensityDraft}
+        trackpadMode={activeTrackpadMode}
+        onRumbleToggleChange={(value: boolean) => void handleRumbleToggleChange(value)}
+        onRumbleIntensityChange={handleRumbleIntensityChange}
+        onTestRumble={() => void handleTestRumble()}
+        onTrackpadModeChange={(value: TrackpadMode) => void handleTrackpadModeChange(value)}
       />
     </PanelSection>
   )

@@ -17,6 +17,8 @@ LEGACY_MISSING_GLYPH_FIX_GAMES_KEY = "missingGlyphFixGames"
 ENABLED_KEY = "enabled"
 BUTTON_PROMPT_FIX_ENABLED_KEY = "buttonPromptFixEnabled"
 PER_GAME_TRACKPAD_MODE_KEY = "trackpadMode"
+PER_GAME_RUMBLE_ENABLED_KEY = "rumbleEnabled"
+PER_GAME_RUMBLE_INTENSITY_KEY = "rumbleIntensity"
 LEGACY_DISABLE_TRACKPADS_KEY = "disableTrackpads"
 M1_REMAP_TARGET_KEY = "m1RemapTarget"
 M2_REMAP_TARGET_KEY = "m2RemapTarget"
@@ -72,11 +74,34 @@ def reset_settings():
     return {}
 
 
-def _default_per_game_settings_entry():
+def _normalize_global_trackpad_mode(settings):
+    return trackpad_modes.normalize_trackpad_mode(
+        settings.get(TRACKPAD_MODE_KEY),
+        legacy_disabled=bool(
+            settings.get(
+                LEGACY_TRACKPADS_DISABLED_KEY,
+                trackpad_modes.is_trackpad_mode_disabled(DEFAULT_TRACKPAD_MODE),
+            )
+        ),
+    )
+
+
+def _normalize_global_rumble_enabled(settings):
+    return bool(settings.get(RUMBLE_ENABLED_KEY, DEFAULT_RUMBLE_ENABLED))
+
+
+def _normalize_global_rumble_intensity(settings):
+    return int(settings.get(RUMBLE_INTENSITY_KEY, DEFAULT_RUMBLE_INTENSITY))
+
+
+def _default_per_game_settings_entry(settings=None):
+    settings = settings or _read_settings()
     return {
         ENABLED_KEY: False,
         BUTTON_PROMPT_FIX_ENABLED_KEY: False,
-        PER_GAME_TRACKPAD_MODE_KEY: DEFAULT_TRACKPAD_MODE,
+        PER_GAME_TRACKPAD_MODE_KEY: _normalize_global_trackpad_mode(settings),
+        PER_GAME_RUMBLE_ENABLED_KEY: _normalize_global_rumble_enabled(settings),
+        PER_GAME_RUMBLE_INTENSITY_KEY: _normalize_global_rumble_intensity(settings),
         M1_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
         M2_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
     }
@@ -90,12 +115,14 @@ def _normalize_per_game_remap_target(target):
     return DEFAULT_PER_GAME_REMAP_TARGET
 
 
-def _normalize_legacy_missing_glyph_fix_entry(entry):
+def _normalize_legacy_missing_glyph_fix_entry(entry, settings):
     if entry is True:
         return {
             ENABLED_KEY: True,
             BUTTON_PROMPT_FIX_ENABLED_KEY: True,
             PER_GAME_TRACKPAD_MODE_KEY: trackpad_modes.TRACKPAD_MODE_DISABLED,
+            PER_GAME_RUMBLE_ENABLED_KEY: _normalize_global_rumble_enabled(settings),
+            PER_GAME_RUMBLE_INTENSITY_KEY: _normalize_global_rumble_intensity(settings),
             M1_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
             M2_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
         }
@@ -108,6 +135,18 @@ def _normalize_legacy_missing_glyph_fix_entry(entry):
                 entry.get(PER_GAME_TRACKPAD_MODE_KEY),
                 legacy_disabled=bool(entry.get(LEGACY_DISABLE_TRACKPADS_KEY, True)),
             ),
+            PER_GAME_RUMBLE_ENABLED_KEY: bool(
+                entry.get(
+                    PER_GAME_RUMBLE_ENABLED_KEY,
+                    _normalize_global_rumble_enabled(settings),
+                )
+            ),
+            PER_GAME_RUMBLE_INTENSITY_KEY: int(
+                entry.get(
+                    PER_GAME_RUMBLE_INTENSITY_KEY,
+                    _normalize_global_rumble_intensity(settings),
+                )
+            ),
             M1_REMAP_TARGET_KEY: _normalize_per_game_remap_target(
                 entry.get(M1_REMAP_TARGET_KEY)
             ),
@@ -119,12 +158,12 @@ def _normalize_legacy_missing_glyph_fix_entry(entry):
     return None
 
 
-def _normalize_per_game_settings_entry(entry):
+def _normalize_per_game_settings_entry(entry, settings):
     if not isinstance(entry, dict):
-        return _normalize_legacy_missing_glyph_fix_entry(entry)
+        return _normalize_legacy_missing_glyph_fix_entry(entry, settings)
 
     if ENABLED_KEY not in entry and BUTTON_PROMPT_FIX_ENABLED_KEY not in entry:
-        return _normalize_legacy_missing_glyph_fix_entry(entry)
+        return _normalize_legacy_missing_glyph_fix_entry(entry, settings)
 
     return {
         ENABLED_KEY: bool(entry.get(ENABLED_KEY, False)),
@@ -134,6 +173,18 @@ def _normalize_per_game_settings_entry(entry):
         PER_GAME_TRACKPAD_MODE_KEY: trackpad_modes.normalize_trackpad_mode(
             entry.get(PER_GAME_TRACKPAD_MODE_KEY),
             legacy_disabled=bool(entry.get(LEGACY_DISABLE_TRACKPADS_KEY, False)),
+        ),
+        PER_GAME_RUMBLE_ENABLED_KEY: bool(
+            entry.get(
+                PER_GAME_RUMBLE_ENABLED_KEY,
+                _normalize_global_rumble_enabled(settings),
+            )
+        ),
+        PER_GAME_RUMBLE_INTENSITY_KEY: int(
+            entry.get(
+                PER_GAME_RUMBLE_INTENSITY_KEY,
+                _normalize_global_rumble_intensity(settings),
+            )
         ),
         M1_REMAP_TARGET_KEY: _normalize_per_game_remap_target(
             entry.get(M1_REMAP_TARGET_KEY)
@@ -178,15 +229,7 @@ def set_brightness_dial_fix_enabled(enabled):
 
 def get_trackpad_mode():
     settings = _read_settings()
-    return trackpad_modes.normalize_trackpad_mode(
-        settings.get(TRACKPAD_MODE_KEY),
-        legacy_disabled=bool(
-            settings.get(
-                LEGACY_TRACKPADS_DISABLED_KEY,
-                trackpad_modes.is_trackpad_mode_disabled(DEFAULT_TRACKPAD_MODE),
-            )
-        ),
-    )
+    return _normalize_global_trackpad_mode(settings)
 
 
 def set_trackpad_mode(mode):
@@ -217,7 +260,7 @@ def set_zotac_glyphs_enabled(enabled):
 
 def get_rumble_enabled():
     settings = _read_settings()
-    return bool(settings.get(RUMBLE_ENABLED_KEY, DEFAULT_RUMBLE_ENABLED))
+    return _normalize_global_rumble_enabled(settings)
 
 
 def set_rumble_enabled(enabled):
@@ -227,7 +270,7 @@ def set_rumble_enabled(enabled):
 
 def get_rumble_intensity():
     settings = _read_settings()
-    return int(settings.get(RUMBLE_INTENSITY_KEY, DEFAULT_RUMBLE_INTENSITY))
+    return _normalize_global_rumble_intensity(settings)
 
 
 def set_rumble_intensity(intensity):
@@ -241,7 +284,7 @@ def get_per_game_settings():
     games = settings.get(PER_GAME_SETTINGS_KEY, {})
     if isinstance(games, dict):
         for app_id, entry in games.items():
-            normalized_entry = _normalize_per_game_settings_entry(entry)
+            normalized_entry = _normalize_per_game_settings_entry(entry, settings)
             if normalized_entry is None:
                 continue
 
@@ -254,7 +297,7 @@ def get_per_game_settings():
             if normalized_app_id in normalized_games:
                 continue
 
-            normalized_entry = _normalize_legacy_missing_glyph_fix_entry(entry)
+            normalized_entry = _normalize_legacy_missing_glyph_fix_entry(entry, settings)
             if normalized_entry is None:
                 continue
 
@@ -303,6 +346,28 @@ def get_per_game_trackpads_disabled(app_id):
     return trackpad_modes.is_trackpad_mode_disabled(get_per_game_trackpad_mode(app_id))
 
 
+def get_per_game_rumble_enabled(app_id):
+    if app_id is None:
+        return DEFAULT_RUMBLE_ENABLED
+
+    entry = get_per_game_settings().get(str(app_id))
+    if not entry:
+        return DEFAULT_RUMBLE_ENABLED
+
+    return bool(entry.get(PER_GAME_RUMBLE_ENABLED_KEY, DEFAULT_RUMBLE_ENABLED))
+
+
+def get_per_game_rumble_intensity(app_id):
+    if app_id is None:
+        return DEFAULT_RUMBLE_INTENSITY
+
+    entry = get_per_game_settings().get(str(app_id))
+    if not entry:
+        return DEFAULT_RUMBLE_INTENSITY
+
+    return int(entry.get(PER_GAME_RUMBLE_INTENSITY_KEY, DEFAULT_RUMBLE_INTENSITY))
+
+
 def get_per_game_m1_remap_target(app_id):
     if app_id is None:
         return DEFAULT_PER_GAME_REMAP_TARGET
@@ -334,12 +399,13 @@ def set_per_game_settings_enabled(app_id, enabled):
         return get_per_game_settings()
 
     games = get_per_game_settings()
+    settings = _read_settings()
     app_id = str(app_id)
     entry = games.get(app_id)
     if entry is None and not enabled:
         return get_per_game_settings()
 
-    current_entry = dict(entry or _default_per_game_settings_entry())
+    current_entry = dict(entry or _default_per_game_settings_entry(settings))
     current_entry[ENABLED_KEY] = bool(enabled)
     games[app_id] = current_entry
 
@@ -352,19 +418,15 @@ def set_button_prompt_fix_enabled(app_id, enabled):
         return get_per_game_settings()
 
     games = get_per_game_settings()
+    settings = _read_settings()
     app_id = str(app_id)
     entry = games.get(app_id)
     if entry is None and not enabled:
         return get_per_game_settings()
 
-    entry_exists = entry is not None
-    current_entry = dict(entry or _default_per_game_settings_entry())
+    current_entry = dict(entry or _default_per_game_settings_entry(settings))
     if enabled:
         current_entry[ENABLED_KEY] = True
-        if not entry_exists:
-            current_entry[PER_GAME_TRACKPAD_MODE_KEY] = (
-                trackpad_modes.TRACKPAD_MODE_DISABLED
-            )
     current_entry[BUTTON_PROMPT_FIX_ENABLED_KEY] = bool(enabled)
     games[app_id] = current_entry
 
@@ -397,6 +459,42 @@ def set_per_game_trackpads_disabled(app_id, disabled):
         app_id,
         trackpad_modes.TRACKPAD_MODE_DISABLED if disabled else trackpad_modes.TRACKPAD_MODE_MOUSE,
     )
+
+
+def set_per_game_rumble_enabled(app_id, enabled):
+    if app_id is None:
+        return get_per_game_settings()
+
+    games = get_per_game_settings()
+    app_id = str(app_id)
+    entry = games.get(app_id)
+    if not entry:
+        return get_per_game_settings()
+
+    current_entry = dict(entry)
+    current_entry[PER_GAME_RUMBLE_ENABLED_KEY] = bool(enabled)
+    games[app_id] = current_entry
+
+    _write_setting(PER_GAME_SETTINGS_KEY, games)
+    return get_per_game_settings()
+
+
+def set_per_game_rumble_intensity(app_id, intensity):
+    if app_id is None:
+        return get_per_game_settings()
+
+    games = get_per_game_settings()
+    app_id = str(app_id)
+    entry = games.get(app_id)
+    if not entry:
+        return get_per_game_settings()
+
+    current_entry = dict(entry)
+    current_entry[PER_GAME_RUMBLE_INTENSITY_KEY] = max(0, min(100, int(intensity)))
+    games[app_id] = current_entry
+
+    _write_setting(PER_GAME_SETTINGS_KEY, games)
+    return get_per_game_settings()
 
 
 def set_per_game_m1_remap_target(app_id, target):

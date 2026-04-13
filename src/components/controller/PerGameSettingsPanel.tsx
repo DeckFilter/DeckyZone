@@ -1,6 +1,6 @@
-import { DropdownItem, PanelSectionRow, ToggleField } from '@decky/ui'
+import { PanelSectionRow, ToggleField } from '@decky/ui'
 import type { ReactNode } from 'react'
-import type { ActiveGame, PerGameRemapTarget, TrackpadMode } from '../../types/plugin'
+import type { ActiveGame } from '../../types/plugin'
 import { useDeckyToastNotice } from '../../utils/toasts'
 
 type Props = {
@@ -9,42 +9,16 @@ type Props = {
   isPerGameSettingsEnabled: boolean
   isButtonPromptFixEnabled: boolean
   isButtonPromptFixActive: boolean
-  trackpadMode: TrackpadMode
-  m1RemapTarget: PerGameRemapTarget
-  m2RemapTarget: PerGameRemapTarget
   savingPerGameSettings: boolean
   savingButtonPromptFix: boolean
-  savingPerGameTrackpads: boolean
-  savingPerGameRemaps: boolean
   shouldShowSteamInputDisabledWarning: boolean
   onPerGameSettingsToggleChange: (enabled: boolean) => void
   onButtonPromptFixToggleChange: (enabled: boolean) => void
-  onPerGameTrackpadModeChange: (mode: TrackpadMode) => void
-  onPerGameM1RemapTargetChange: (target: PerGameRemapTarget) => void
-  onPerGameM2RemapTargetChange: (target: PerGameRemapTarget) => void
 }
-type TrackpadModeOption = { data: TrackpadMode; label: string }
 
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
 const NO_ACTIVE_GAME_PER_GAME_SETTINGS_DESCRIPTION = 'Launch a game to enable per-game settings'
 const BUTTON_PROMPT_FIX_DESCRIPTION = 'Fixes button prompts and glyphs'
-const TRACKPAD_MODE_OPTIONS: TrackpadModeOption[] = [
-  { data: 'mouse', label: 'Mouse' },
-  { data: 'disabled', label: 'Disabled' },
-  { data: 'directional_buttons', label: 'Directional Buttons' },
-]
-
-function getTrackpadModeDescription(mode: TrackpadMode) {
-  switch (mode) {
-    case 'disabled':
-      return 'Turns off both trackpads'
-    case 'directional_buttons':
-      return 'Left pad is D-pad, right pad is A/B/X/Y'
-    case 'mouse':
-    default:
-      return 'Left pad scrolls, right pad moves and clicks'
-  }
-}
 // TODO: Re-enable these remap options after M1/M2 remap behavior is fully confirmed on-device.
 // const M1_REMAP_DESCRIPTION = 'Maps M1 while this fix is on'
 // const M2_REMAP_DESCRIPTION = 'Maps M2 while this fix is on'
@@ -121,19 +95,11 @@ const PerGameSettingsPanel = ({
   isPerGameSettingsEnabled,
   isButtonPromptFixEnabled,
   isButtonPromptFixActive,
-  trackpadMode,
-  m1RemapTarget: _m1RemapTarget,
-  m2RemapTarget: _m2RemapTarget,
   savingPerGameSettings,
   savingButtonPromptFix,
-  savingPerGameTrackpads,
-  savingPerGameRemaps: _savingPerGameRemaps,
   shouldShowSteamInputDisabledWarning,
   onPerGameSettingsToggleChange,
   onButtonPromptFixToggleChange,
-  onPerGameTrackpadModeChange,
-  onPerGameM1RemapTargetChange: _onPerGameM1RemapTargetChange,
-  onPerGameM2RemapTargetChange: _onPerGameM2RemapTargetChange,
 }: Props) => {
   // TODO: Re-enable these locals after M1/M2 remap behavior is fully confirmed on-device.
   // const remapDropdownDisabled =
@@ -204,23 +170,6 @@ const PerGameSettingsPanel = ({
           </PanelSectionRow>
           */}
         </>
-      )}
-      {activeGame && isPerGameSettingsEnabled && (
-        <PanelSectionRow>
-          <DropdownItem
-            label="Trackpad Mode"
-            menuLabel="Trackpad Mode"
-            rgOptions={TRACKPAD_MODE_OPTIONS}
-            selectedOption={trackpadMode}
-            disabled={savingPerGameSettings || savingPerGameTrackpads || !inputplumberAvailable}
-            description={
-              inputplumberAvailable
-                ? getTrackpadModeDescription(trackpadMode)
-                : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION
-            }
-            onChange={(option: { data: TrackpadMode }) => onPerGameTrackpadModeChange(option.data)}
-          />
-        </PanelSectionRow>
       )}
     </>
   )
