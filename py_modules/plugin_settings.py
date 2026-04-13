@@ -1,12 +1,14 @@
 import os
 
 from settings import SettingsManager
+import trackpad_modes
 
 
 STARTUP_APPLY_KEY = "startupApplyEnabled"
 HOME_BUTTON_ENABLED_KEY = "homeButtonEnabled"
 BRIGHTNESS_DIAL_FIX_ENABLED_KEY = "brightnessDialFixEnabled"
-TRACKPADS_DISABLED_KEY = "trackpadsDisabled"
+TRACKPAD_MODE_KEY = "trackpadMode"
+LEGACY_TRACKPADS_DISABLED_KEY = "trackpadsDisabled"
 ZOTAC_GLYPHS_ENABLED_KEY = "zotacGlyphsEnabled"
 RUMBLE_ENABLED_KEY = "rumbleEnabled"
 RUMBLE_INTENSITY_KEY = "rumbleIntensity"
@@ -14,13 +16,14 @@ PER_GAME_SETTINGS_KEY = "perGameSettings"
 LEGACY_MISSING_GLYPH_FIX_GAMES_KEY = "missingGlyphFixGames"
 ENABLED_KEY = "enabled"
 BUTTON_PROMPT_FIX_ENABLED_KEY = "buttonPromptFixEnabled"
-DISABLE_TRACKPADS_KEY = "disableTrackpads"
+PER_GAME_TRACKPAD_MODE_KEY = "trackpadMode"
+LEGACY_DISABLE_TRACKPADS_KEY = "disableTrackpads"
 M1_REMAP_TARGET_KEY = "m1RemapTarget"
 M2_REMAP_TARGET_KEY = "m2RemapTarget"
 DEFAULT_STARTUP_APPLY_ENABLED = False
 DEFAULT_HOME_BUTTON_ENABLED = False
 DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED = False
-DEFAULT_TRACKPADS_DISABLED = False
+DEFAULT_TRACKPAD_MODE = trackpad_modes.DEFAULT_TRACKPAD_MODE
 DEFAULT_ZOTAC_GLYPHS_ENABLED = False
 DEFAULT_RUMBLE_ENABLED = False
 DEFAULT_RUMBLE_INTENSITY = 75
@@ -73,7 +76,7 @@ def _default_per_game_settings_entry():
     return {
         ENABLED_KEY: False,
         BUTTON_PROMPT_FIX_ENABLED_KEY: False,
-        DISABLE_TRACKPADS_KEY: False,
+        PER_GAME_TRACKPAD_MODE_KEY: DEFAULT_TRACKPAD_MODE,
         M1_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
         M2_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
     }
@@ -92,7 +95,7 @@ def _normalize_legacy_missing_glyph_fix_entry(entry):
         return {
             ENABLED_KEY: True,
             BUTTON_PROMPT_FIX_ENABLED_KEY: True,
-            DISABLE_TRACKPADS_KEY: True,
+            PER_GAME_TRACKPAD_MODE_KEY: trackpad_modes.TRACKPAD_MODE_DISABLED,
             M1_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
             M2_REMAP_TARGET_KEY: DEFAULT_PER_GAME_REMAP_TARGET,
         }
@@ -101,7 +104,10 @@ def _normalize_legacy_missing_glyph_fix_entry(entry):
         return {
             ENABLED_KEY: True,
             BUTTON_PROMPT_FIX_ENABLED_KEY: True,
-            DISABLE_TRACKPADS_KEY: bool(entry.get(DISABLE_TRACKPADS_KEY, True)),
+            PER_GAME_TRACKPAD_MODE_KEY: trackpad_modes.normalize_trackpad_mode(
+                entry.get(PER_GAME_TRACKPAD_MODE_KEY),
+                legacy_disabled=bool(entry.get(LEGACY_DISABLE_TRACKPADS_KEY, True)),
+            ),
             M1_REMAP_TARGET_KEY: _normalize_per_game_remap_target(
                 entry.get(M1_REMAP_TARGET_KEY)
             ),
@@ -125,7 +131,10 @@ def _normalize_per_game_settings_entry(entry):
         BUTTON_PROMPT_FIX_ENABLED_KEY: bool(
             entry.get(BUTTON_PROMPT_FIX_ENABLED_KEY, False)
         ),
-        DISABLE_TRACKPADS_KEY: bool(entry.get(DISABLE_TRACKPADS_KEY, False)),
+        PER_GAME_TRACKPAD_MODE_KEY: trackpad_modes.normalize_trackpad_mode(
+            entry.get(PER_GAME_TRACKPAD_MODE_KEY),
+            legacy_disabled=bool(entry.get(LEGACY_DISABLE_TRACKPADS_KEY, False)),
+        ),
         M1_REMAP_TARGET_KEY: _normalize_per_game_remap_target(
             entry.get(M1_REMAP_TARGET_KEY)
         ),
@@ -167,14 +176,33 @@ def set_brightness_dial_fix_enabled(enabled):
     return get_brightness_dial_fix_enabled()
 
 
-def get_trackpads_disabled():
+def get_trackpad_mode():
     settings = _read_settings()
-    return bool(settings.get(TRACKPADS_DISABLED_KEY, DEFAULT_TRACKPADS_DISABLED))
+    return trackpad_modes.normalize_trackpad_mode(
+        settings.get(TRACKPAD_MODE_KEY),
+        legacy_disabled=bool(
+            settings.get(
+                LEGACY_TRACKPADS_DISABLED_KEY,
+                trackpad_modes.is_trackpad_mode_disabled(DEFAULT_TRACKPAD_MODE),
+            )
+        ),
+    )
+
+
+def set_trackpad_mode(mode):
+    normalized_mode = trackpad_modes.normalize_trackpad_mode(mode)
+    _write_setting(TRACKPAD_MODE_KEY, normalized_mode)
+    return get_trackpad_mode()
+
+
+def get_trackpads_disabled():
+    return trackpad_modes.is_trackpad_mode_disabled(get_trackpad_mode())
 
 
 def set_trackpads_disabled(disabled):
-    _write_setting(TRACKPADS_DISABLED_KEY, bool(disabled))
-    return get_trackpads_disabled()
+    return set_trackpad_mode(
+        trackpad_modes.TRACKPAD_MODE_DISABLED if disabled else trackpad_modes.TRACKPAD_MODE_MOUSE
+    )
 
 
 def get_zotac_glyphs_enabled():
@@ -257,15 +285,22 @@ def get_button_prompt_fix_enabled(app_id):
     return bool(entry.get(BUTTON_PROMPT_FIX_ENABLED_KEY, False))
 
 
-def get_per_game_trackpads_disabled(app_id):
+def get_per_game_trackpad_mode(app_id):
     if app_id is None:
-        return False
+        return DEFAULT_TRACKPAD_MODE
 
     entry = get_per_game_settings().get(str(app_id))
     if not entry:
-        return False
+        return DEFAULT_TRACKPAD_MODE
 
-    return bool(entry.get(DISABLE_TRACKPADS_KEY, True))
+    return trackpad_modes.normalize_trackpad_mode(
+        entry.get(PER_GAME_TRACKPAD_MODE_KEY),
+        legacy_disabled=bool(entry.get(LEGACY_DISABLE_TRACKPADS_KEY, False)),
+    )
+
+
+def get_per_game_trackpads_disabled(app_id):
+    return trackpad_modes.is_trackpad_mode_disabled(get_per_game_trackpad_mode(app_id))
 
 
 def get_per_game_m1_remap_target(app_id):
@@ -327,7 +362,9 @@ def set_button_prompt_fix_enabled(app_id, enabled):
     if enabled:
         current_entry[ENABLED_KEY] = True
         if not entry_exists:
-            current_entry[DISABLE_TRACKPADS_KEY] = True
+            current_entry[PER_GAME_TRACKPAD_MODE_KEY] = (
+                trackpad_modes.TRACKPAD_MODE_DISABLED
+            )
     current_entry[BUTTON_PROMPT_FIX_ENABLED_KEY] = bool(enabled)
     games[app_id] = current_entry
 
@@ -335,7 +372,7 @@ def set_button_prompt_fix_enabled(app_id, enabled):
     return get_per_game_settings()
 
 
-def set_per_game_trackpads_disabled(app_id, disabled):
+def set_per_game_trackpad_mode(app_id, mode):
     if app_id is None:
         return get_per_game_settings()
 
@@ -346,11 +383,20 @@ def set_per_game_trackpads_disabled(app_id, disabled):
         return get_per_game_settings()
 
     current_entry = dict(entry)
-    current_entry[DISABLE_TRACKPADS_KEY] = bool(disabled)
+    current_entry[PER_GAME_TRACKPAD_MODE_KEY] = trackpad_modes.normalize_trackpad_mode(
+        mode
+    )
     games[app_id] = current_entry
 
     _write_setting(PER_GAME_SETTINGS_KEY, games)
     return get_per_game_settings()
+
+
+def set_per_game_trackpads_disabled(app_id, disabled):
+    return set_per_game_trackpad_mode(
+        app_id,
+        trackpad_modes.TRACKPAD_MODE_DISABLED if disabled else trackpad_modes.TRACKPAD_MODE_MOUSE,
+    )
 
 
 def set_per_game_m1_remap_target(app_id, target):
@@ -396,7 +442,9 @@ def get_missing_glyph_fix_games():
             continue
 
         legacy_games[app_id] = {
-            DISABLE_TRACKPADS_KEY: bool(entry.get(DISABLE_TRACKPADS_KEY, True))
+            LEGACY_DISABLE_TRACKPADS_KEY: trackpad_modes.is_trackpad_mode_disabled(
+                entry.get(PER_GAME_TRACKPAD_MODE_KEY)
+            )
         }
 
     return legacy_games

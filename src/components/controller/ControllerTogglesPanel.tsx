@@ -1,5 +1,5 @@
-import { ButtonItem, Field, PanelSectionRow, ToggleField } from '@decky/ui'
-import type { ControllerMode, PluginSettings } from '../../types/plugin'
+import { ButtonItem, DropdownItem, Field, PanelSectionRow, ToggleField } from '@decky/ui'
+import type { ControllerMode, PluginSettings, TrackpadMode } from '../../types/plugin'
 
 type Props = {
   settings: PluginSettings
@@ -12,8 +12,9 @@ type Props = {
   onControllerModeChange: (mode: ControllerMode) => void
   onHomeButtonToggleChange: (enabled: boolean) => void
   onBrightnessDialFixToggleChange: (enabled: boolean) => void
-  onTrackpadsToggleChange: (disabled: boolean) => void
+  onTrackpadModeChange: (mode: TrackpadMode) => void
 }
+type TrackpadModeOption = { data: TrackpadMode; label: string }
 
 const CONTROLLER_FEATURES_DESCRIPTION = 'Turns on controller features'
 const NO_GAMEPAD_MODE_DESCRIPTION = 'No Gamepad mode detected'
@@ -25,8 +26,36 @@ const CONTROLLER_MODE_SWITCH_BUTTON = 'Switch to Gamepad'
 const CONTROLLER_MODE_SWITCH_BUTTON_PENDING = 'Switching to Gamepad...'
 const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Navigates to Home'
 const BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Controls screen brightness with the right dial'
-const TRACKPADS_DISABLED_DESCRIPTION = 'Turns off the trackpads'
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
+const TRACKPAD_MODE_OPTIONS: TrackpadModeOption[] = [
+  { data: 'mouse', label: 'Mouse' },
+  { data: 'disabled', label: 'Disabled' },
+  { data: 'directional_buttons', label: 'Directional Buttons' },
+]
+
+function getTrackpadModeDescription(mode: TrackpadMode) {
+  switch (mode) {
+    case 'disabled':
+      return 'Turns off both trackpads'
+    case 'directional_buttons':
+      return 'Left pad is D-pad, right pad is A/B/X/Y'
+    case 'mouse':
+    default:
+      return 'Left pad scrolls, right pad moves and clicks'
+  }
+}
+
+function getTrackpadModeFieldDescription(settings: PluginSettings, controllerModeBlocked: boolean) {
+  if (!settings.inputplumberAvailable) {
+    return INPUTPLUMBER_UNAVAILABLE_DESCRIPTION
+  }
+
+  if (controllerModeBlocked) {
+    return NO_GAMEPAD_MODE_DESCRIPTION
+  }
+
+  return getTrackpadModeDescription(settings.trackpadMode)
+}
 
 function isControllerModeConfirmed(settings: PluginSettings) {
   return settings.controllerModeAvailable && settings.controllerMode === 'gamepad'
@@ -83,7 +112,7 @@ const ControllerTogglesPanel = ({
   onControllerModeChange,
   onHomeButtonToggleChange,
   onBrightnessDialFixToggleChange,
-  onTrackpadsToggleChange,
+  onTrackpadModeChange,
 }: Props) => {
   const controllerModeConfirmed = isControllerModeConfirmed(settings)
   const controllerModeBlocked = !controllerModeConfirmed
@@ -119,6 +148,17 @@ const ControllerTogglesPanel = ({
           )}
         </>
       )}
+      <PanelSectionRow>
+        <DropdownItem
+          label="Trackpad Mode"
+          menuLabel="Trackpad Mode"
+          rgOptions={TRACKPAD_MODE_OPTIONS}
+          selectedOption={settings.trackpadMode}
+          disabled={savingTrackpads || !settings.inputplumberAvailable || controllerModeBlocked}
+          description={getTrackpadModeFieldDescription(settings, controllerModeBlocked)}
+          onChange={(option: { data: TrackpadMode }) => onTrackpadModeChange(option.data)}
+        />
+      </PanelSectionRow>
       {showControllerFeatureControls && (
         <>
           <PanelSectionRow>
@@ -137,15 +177,6 @@ const ControllerTogglesPanel = ({
               onChange={(value: boolean) => onBrightnessDialFixToggleChange(value)}
               disabled={savingBrightnessDialFix || !settings.inputplumberAvailable}
               description={settings.inputplumberAvailable ? BRIGHTNESS_DIAL_FIX_DESCRIPTION : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
-            />
-          </PanelSectionRow>
-          <PanelSectionRow>
-            <ToggleField
-              label="Disable Trackpads"
-              checked={settings.trackpadsDisabled}
-              onChange={(value: boolean) => onTrackpadsToggleChange(value)}
-              disabled={savingTrackpads || !settings.inputplumberAvailable}
-              description={settings.inputplumberAvailable ? TRACKPADS_DISABLED_DESCRIPTION : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
             />
           </PanelSectionRow>
         </>

@@ -4,6 +4,7 @@ export type PluginStatus = {
 }
 
 export type ControllerMode = 'gamepad' | 'desktop'
+export type TrackpadMode = 'mouse' | 'disabled' | 'directional_buttons'
 
 export type PerGameRemapTarget =
   | 'none'
@@ -86,7 +87,7 @@ export type DebugInfoSnapshot = {
 export type PerGameSettings = {
   enabled: boolean
   buttonPromptFixEnabled: boolean
-  disableTrackpads: boolean
+  trackpadMode: TrackpadMode
   m1RemapTarget: PerGameRemapTarget
   m2RemapTarget: PerGameRemapTarget
 }
@@ -106,7 +107,7 @@ export type PluginSettings = {
   controllerModeAvailable: boolean
   homeButtonEnabled: boolean
   brightnessDialFixEnabled: boolean
-  trackpadsDisabled: boolean
+  trackpadMode: TrackpadMode
   zotacGlyphsEnabled: boolean
   gamescopeZotacProfileBuiltIn: boolean
   gamescopeZotacProfileInstalled: boolean

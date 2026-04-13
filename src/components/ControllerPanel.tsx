@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
-import type { ActiveGame, ControllerMode, PerGameRemapTarget, PluginSettings, PluginStatus } from '../types/plugin'
+import type { ActiveGame, ControllerMode, PerGameRemapTarget, PluginSettings, PluginStatus, TrackpadMode } from '../types/plugin'
 import { useDeckyToastNotice } from '../utils/toasts'
 
 type SteamInputDiagnosticAppDetails = {
@@ -37,10 +37,10 @@ const setStartupApplyEnabled = callable<[boolean], PluginSettings>('set_startup_
 const setControllerMode = callable<[ControllerMode], PluginSettings>('set_controller_mode')
 const setHomeButtonEnabled = callable<[boolean], PluginSettings>('set_home_button_enabled')
 const setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>('set_brightness_dial_fix_enabled')
-const setTrackpadsDisabled = callable<[boolean], PluginSettings>('set_trackpads_disabled')
+const setTrackpadMode = callable<[TrackpadMode], PluginSettings>('set_trackpad_mode')
 const setPerGameSettingsEnabled = callable<[string, boolean], PluginSettings>('set_per_game_settings_enabled')
 const setButtonPromptFixEnabled = callable<[string, boolean], PluginSettings>('set_button_prompt_fix_enabled')
-const setPerGameTrackpadsDisabled = callable<[string, boolean], PluginSettings>('set_per_game_trackpads_disabled')
+const setPerGameTrackpadMode = callable<[string, TrackpadMode], PluginSettings>('set_per_game_trackpad_mode')
 const setPerGameM1RemapTarget = callable<[string, PerGameRemapTarget], PluginSettings>('set_per_game_m1_remap_target')
 const setPerGameM2RemapTarget = callable<[string, PerGameRemapTarget], PluginSettings>('set_per_game_m2_remap_target')
 const syncPerGameTarget = callable<[string], boolean>('sync_per_game_target')
@@ -295,11 +295,11 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
-  const handleTrackpadsToggleChange = async (disabled: boolean) => {
+  const handleTrackpadModeChange = async (mode: TrackpadMode) => {
     setControllerNotice(null)
     setSavingTrackpads(true)
     try {
-      const nextSettings = await setTrackpadsDisabled(disabled)
+      const nextSettings = await setTrackpadMode(mode)
       onSettingsChange(nextSettings)
       setControllerNotice(null)
       await syncActiveGameTarget(activeGame?.appid ?? DEFAULT_APP_ID)
@@ -348,7 +348,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
-  const handlePerGameTrackpadsChange = async (disabled: boolean) => {
+  const handlePerGameTrackpadModeChange = async (mode: TrackpadMode) => {
     if (!activeGame || !isPerGameSettingsEnabled) {
       return
     }
@@ -356,7 +356,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     setPerGameNotice(null)
     setSavingPerGameTrackpads(true)
     try {
-      const nextSettings = await setPerGameTrackpadsDisabled(activeGame.appid, disabled)
+      const nextSettings = await setPerGameTrackpadMode(activeGame.appid, mode)
       onSettingsChange(nextSettings)
       setPerGameNotice(null)
       await syncActiveGameTarget(activeGame.appid)
@@ -543,7 +543,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const controllerFeaturesEnabled = settings.startupApplyEnabled && isControllerModeConfirmed(settings)
   const isPerGameSettingsEnabled = activeGamePerGameSettings?.enabled ?? false
   const isButtonPromptFixEnabled = activeGamePerGameSettings?.buttonPromptFixEnabled ?? false
-  const isTrackpadsDisabled = activeGamePerGameSettings?.disableTrackpads ?? false
+  const activeTrackpadMode = activeGamePerGameSettings?.trackpadMode ?? 'mouse'
   const m1RemapTarget = activeGamePerGameSettings?.m1RemapTarget ?? 'none'
   const m2RemapTarget = activeGamePerGameSettings?.m2RemapTarget ?? 'none'
 
@@ -635,42 +635,40 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
         onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
         onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
-        onTrackpadsToggleChange={(value: boolean) => void handleTrackpadsToggleChange(value)}
+        onTrackpadModeChange={(value: TrackpadMode) => void handleTrackpadModeChange(value)}
       />
       {controllerFeaturesEnabled && (
-        <>
-          <RumblePanel
-            settings={settings}
-            savingRumble={savingRumble}
-            savingRumbleIntensity={savingRumbleIntensity}
-            testingRumble={testingRumble}
-            rumbleIntensityDraft={rumbleIntensityDraft}
-            onRumbleToggleChange={(value: boolean) => void handleRumbleToggleChange(value)}
-            onRumbleIntensityChange={handleRumbleIntensityChange}
-            onTestRumble={() => void handleTestRumble()}
-          />
-          <PerGameSettingsPanel
-            activeGame={activeGame}
-            inputplumberAvailable={settings.inputplumberAvailable}
-            isPerGameSettingsEnabled={isPerGameSettingsEnabled}
-            isButtonPromptFixEnabled={isButtonPromptFixEnabled}
-            isButtonPromptFixActive={isButtonPromptFixActive}
-            isTrackpadsDisabled={isTrackpadsDisabled}
-            m1RemapTarget={m1RemapTarget}
-            m2RemapTarget={m2RemapTarget}
-            savingPerGameSettings={savingPerGameSettings}
-            savingButtonPromptFix={savingButtonPromptFix}
-            savingPerGameTrackpads={savingPerGameTrackpads}
-            savingPerGameRemaps={savingPerGameRemaps}
-            shouldShowSteamInputDisabledWarning={shouldShowSteamInputDisabledWarning}
-            onPerGameSettingsToggleChange={(value: boolean) => void handlePerGameSettingsToggleChange(value)}
-            onButtonPromptFixToggleChange={(value: boolean) => void handleButtonPromptFixToggleChange(value)}
-            onPerGameTrackpadsChange={(value: boolean) => void handlePerGameTrackpadsChange(value)}
-            onPerGameM1RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM1RemapTargetChange(value)}
-            onPerGameM2RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM2RemapTargetChange(value)}
-          />
-        </>
+        <RumblePanel
+          settings={settings}
+          savingRumble={savingRumble}
+          savingRumbleIntensity={savingRumbleIntensity}
+          testingRumble={testingRumble}
+          rumbleIntensityDraft={rumbleIntensityDraft}
+          onRumbleToggleChange={(value: boolean) => void handleRumbleToggleChange(value)}
+          onRumbleIntensityChange={handleRumbleIntensityChange}
+          onTestRumble={() => void handleTestRumble()}
+        />
       )}
+      <PerGameSettingsPanel
+        activeGame={activeGame}
+        inputplumberAvailable={settings.inputplumberAvailable}
+        isPerGameSettingsEnabled={isPerGameSettingsEnabled}
+        isButtonPromptFixEnabled={isButtonPromptFixEnabled}
+        isButtonPromptFixActive={isButtonPromptFixActive}
+        trackpadMode={activeTrackpadMode}
+        m1RemapTarget={m1RemapTarget}
+        m2RemapTarget={m2RemapTarget}
+        savingPerGameSettings={savingPerGameSettings}
+        savingButtonPromptFix={savingButtonPromptFix}
+        savingPerGameTrackpads={savingPerGameTrackpads}
+        savingPerGameRemaps={savingPerGameRemaps}
+        shouldShowSteamInputDisabledWarning={shouldShowSteamInputDisabledWarning}
+        onPerGameSettingsToggleChange={(value: boolean) => void handlePerGameSettingsToggleChange(value)}
+        onButtonPromptFixToggleChange={(value: boolean) => void handleButtonPromptFixToggleChange(value)}
+        onPerGameTrackpadModeChange={(value: TrackpadMode) => void handlePerGameTrackpadModeChange(value)}
+        onPerGameM1RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM1RemapTargetChange(value)}
+        onPerGameM2RemapTargetChange={(value: PerGameRemapTarget) => void handlePerGameM2RemapTargetChange(value)}
+      />
     </PanelSection>
   )
 }

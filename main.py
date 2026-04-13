@@ -2,10 +2,12 @@ import asyncio
 import ctypes
 import ctypes.util
 import errno
+import json
 import os
 import select
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import decky
@@ -15,6 +17,7 @@ import inputplumber_target_sync
 import plugin_update
 import plugin_settings
 import runtime_profile_utils
+import trackpad_modes
 
 gamescope_display_profiles = gamescope_display_profiles_module
 
@@ -44,6 +47,8 @@ ZOTAC_CONTROLLER_INTERFACE_NUM = "03"
 ZOTAC_RAW_REPORT_SIZE = 64
 ZOTAC_RAW_HEADER_TAG = 0xE1
 ZOTAC_RAW_PAYLOAD_SIZE = 0x3C
+ZOTAC_RAW_CMD_SET_BUTTON_MAPPING = 0xA1
+ZOTAC_RAW_CMD_GET_BUTTON_MAPPING = 0xA2
 ZOTAC_RAW_CMD_SET_PROFILE = 0xB1
 ZOTAC_RAW_CMD_GET_PROFILE = 0xB2
 ZOTAC_CONTROLLER_MODE_GAMEPAD = "gamepad"
@@ -101,6 +106,13 @@ RUNTIME_PROFILE_M2_MAPPING_NAME = "DeckyZone M2 Remap"
 DEFAULT_INPUTPLUMBER_PROFILE_PATH = "/usr/share/inputplumber/profiles/default.yaml"
 RUNTIME_INPUTPLUMBER_PROFILE_FILENAME = "inputplumber-runtime-profile.yaml"
 HOME_BUTTON_OVERRIDE_PROFILE_FILENAME = "inputplumber-home-button-profile.yaml"
+MANAGED_INPUTPLUMBER_CAPABILITY_MAPS_DIR = Path("/etc/inputplumber/capability_maps.d")
+MANAGED_INPUTPLUMBER_DEVICES_DIR = Path("/etc/inputplumber/devices.d")
+MANAGED_DIRECTIONAL_TRACKPAD_CAPABILITY_MAP_FILENAME = (
+    "50-deckyzone-zone-trackpad-directional.yaml"
+)
+MANAGED_DIRECTIONAL_TRACKPAD_DEVICE_OVERRIDE_FILENAME = "50-zotac-zone.yaml"
+DIRECTIONAL_TRACKPAD_BACKUP_FILENAME = "directional-trackpad-backup.json"
 ZOTAC_MOUSE_DEVICE_NAME = "ZOTAC Gaming Zone Mouse"
 ZOTAC_KEYBOARD_DEVICE_NAME = "ZOTAC Gaming Zone Keyboard"
 ZOTAC_DIALS_DEVICE_NAME = "ZOTAC Gaming Zone Dials"
@@ -236,6 +248,7 @@ class DeckyZoneService:
         self._rumble_running = False
         self._controller_mode_monitor_task = None
         self._controller_mode_monitor_running = False
+        self._directional_trackpad_backup = None
         self._zotac_raw_command_seq = 0
         self._libc = ctypes.CDLL(ctypes.util.find_library("c") or None, use_errno=True)
 
@@ -585,7 +598,7 @@ class DeckyZoneService:
             "controllerModeAvailable": controller_mode_snapshot["available"],
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
             "brightnessDialFixEnabled": self.settings_store.get_brightness_dial_fix_enabled(),
-            "trackpadsDisabled": self.settings_store.get_trackpads_disabled(),
+            "trackpadMode": self.settings_store.get_trackpad_mode(),
             "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
             "gamescopeZotacProfileBuiltIn": display_profile_settings["gamescopeZotacProfileBuiltIn"],
             "gamescopeZotacProfileInstalled": display_profile_settings["gamescopeZotacProfileInstalled"],
@@ -798,6 +811,133 @@ class DeckyZoneService:
         profile_path.parent.mkdir(parents=True, exist_ok=True)
         profile_path.write_text(profile_yaml, encoding="utf-8")
         return str(profile_path)
+
+    def _write_managed_inputplumber_file(self, directory_path, filename, content):
+        path = Path(directory_path) / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        current_content = None
+        try:
+            current_content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            current_content = None
+
+        if current_content == content:
+            return False
+
+        path.write_text(content, encoding="utf-8")
+        return True
+
+    def _remove_managed_inputplumber_file(self, directory_path, filename):
+        path = Path(directory_path) / filename
+        if not path.exists():
+            return False
+
+        path.unlink()
+        return True
+
+    def _get_effective_trackpad_mode(self, app_id=None):
+        app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
+        global_mode = self.settings_store.get_trackpad_mode()
+
+        if app_id == DEFAULT_APP_ID:
+            return global_mode
+
+        if not self.settings_store.get_per_game_settings_enabled(app_id):
+            return global_mode
+
+        return self.settings_store.get_per_game_trackpad_mode(app_id)
+
+    def _should_disable_trackpads(self, app_id=None):
+        return trackpad_modes.is_trackpad_mode_disabled(
+            self._get_effective_trackpad_mode(app_id)
+        )
+
+    def _should_enable_directional_trackpads(self, app_id=None):
+        return trackpad_modes.is_trackpad_mode_directional(
+            self._get_effective_trackpad_mode(app_id)
+        )
+
+    def _should_include_mouse_target(self, app_id=None):
+        return not self._should_enable_directional_trackpads(app_id)
+
+    def _remove_directional_trackpad_capability_map(self):
+        return self._remove_managed_inputplumber_file(
+            MANAGED_INPUTPLUMBER_CAPABILITY_MAPS_DIR,
+            MANAGED_DIRECTIONAL_TRACKPAD_CAPABILITY_MAP_FILENAME,
+        )
+
+    def _remove_directional_trackpad_device_override(self):
+        return self._remove_managed_inputplumber_file(
+            MANAGED_INPUTPLUMBER_DEVICES_DIR,
+            MANAGED_DIRECTIONAL_TRACKPAD_DEVICE_OVERRIDE_FILENAME,
+        )
+
+    def _sync_directional_trackpad_source_files(self, app_id=None):
+        del app_id
+        return self._disable_directional_trackpad_source_files()
+
+    def _disable_directional_trackpad_source_files(self):
+        device_override_changed = self._remove_directional_trackpad_device_override()
+        capability_map_changed = self._remove_directional_trackpad_capability_map()
+        return capability_map_changed or device_override_changed
+
+    def _get_directional_trackpad_backup_path(self):
+        return Path(decky.DECKY_PLUGIN_RUNTIME_DIR) / DIRECTIONAL_TRACKPAD_BACKUP_FILENAME
+
+    def _load_directional_trackpad_backup(self):
+        if self._directional_trackpad_backup is not None:
+            return dict(self._directional_trackpad_backup)
+
+        backup_path = self._get_directional_trackpad_backup_path()
+        if not backup_path.is_file():
+            return None
+
+        try:
+            payload = json.loads(backup_path.read_text(encoding="utf-8"))
+            mappings = {}
+            for entry in payload.get("mappings", []):
+                button_id = int(entry["buttonId"])
+                mapping_payload = bytes(entry["payload"])
+                if (
+                    len(mapping_payload)
+                    != trackpad_modes.ZOTAC_BUTTON_MAPPING_PAYLOAD_SIZE
+                ):
+                    raise ValueError(
+                        f"Unexpected mapping payload length for button 0x{button_id:02x}"
+                    )
+                mappings[button_id] = mapping_payload
+        except Exception as error:
+            self.logger.warning(
+                f"Failed to load directional trackpad backup mappings: {error}"
+            )
+            return None
+
+        self._directional_trackpad_backup = dict(mappings)
+        return dict(mappings)
+
+    def _store_directional_trackpad_backup(self, mappings):
+        serializable = {
+            "mappings": [
+                {
+                    "buttonId": button_id,
+                    "payload": list(mapping_payload),
+                }
+                for button_id, mapping_payload in sorted(mappings.items())
+            ]
+        }
+        backup_path = self._get_directional_trackpad_backup_path()
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        backup_path.write_text(
+            json.dumps(serializable, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self._directional_trackpad_backup = dict(mappings)
+
+    def _clear_directional_trackpad_backup(self):
+        backup_path = self._get_directional_trackpad_backup_path()
+        if backup_path.exists():
+            backup_path.unlink()
+        self._directional_trackpad_backup = None
 
     def _get_runtime_inputplumber_profile_path(self):
         return Path(decky.DECKY_PLUGIN_RUNTIME_DIR) / RUNTIME_INPUTPLUMBER_PROFILE_FILENAME
@@ -1048,6 +1188,72 @@ class DeckyZoneService:
         self._runtime_input_profile_original_profile_path = None
         self._runtime_input_profile_original_profile_yaml = None
 
+    def _reset_inputplumber_profile_state(self):
+        self._reset_home_button_override_state()
+        self._reset_runtime_input_profile_state()
+
+    async def _restart_inputplumber_after_trackpad_source_update(self):
+        try:
+            self._release_zotac_mouse_device()
+            self._startup_target_active = False
+            self._temporary_target_mode = None
+            self._reset_inputplumber_profile_state()
+            self._restart_inputplumber()
+        except subprocess.CalledProcessError as error:
+            detail = (error.stderr or error.stdout or str(error)).strip()
+            self.logger.warning(
+                f"Failed to restart InputPlumber after trackpad source update: {detail}"
+            )
+            return False
+        except Exception as error:
+            self.logger.warning(
+                "Failed to restart InputPlumber after trackpad source update: "
+                f"{error}"
+            )
+            return False
+
+        return await self.wait_for_inputplumber_dbus_silently()
+
+    async def _sync_directional_trackpad_source_runtime(self, app_id=None):
+        try:
+            changed = self._sync_directional_trackpad_source_files(app_id)
+        except Exception as error:
+            self.logger.warning(
+                f"Failed to update directional trackpad source files: {error}"
+            )
+            return False
+
+        if not changed:
+            return self._sync_directional_trackpad_button_runtime(app_id)
+
+        if not await self._restart_inputplumber_after_trackpad_source_update():
+            return False
+
+        return self._sync_directional_trackpad_button_runtime(app_id)
+
+    async def _disable_directional_trackpad_source_runtime(self):
+        try:
+            changed = self._disable_directional_trackpad_source_files()
+        except Exception as error:
+            self.logger.warning(
+                f"Failed to remove directional trackpad source files: {error}"
+            )
+            return False
+
+        if not changed:
+            return self._restore_directional_trackpad_button_mappings()
+
+        if not await self._restart_inputplumber_after_trackpad_source_update():
+            return False
+
+        return self._restore_directional_trackpad_button_mappings()
+
+    def _sync_directional_trackpad_button_runtime(self, app_id=None):
+        if self._should_enable_directional_trackpads(app_id):
+            return self._apply_directional_trackpad_button_mappings()
+
+        return self._restore_directional_trackpad_button_mappings()
+
     def _should_enable_runtime_input_profile(self, app_id=None):
         return bool(self._get_active_per_game_runtime_mappings(app_id))
 
@@ -1251,7 +1457,10 @@ class DeckyZoneService:
         )
 
     async def _apply_verified_startup_target(self):
-        if not await self._apply_target_devices_with_retries(STARTUP_MODE):
+        if not await self._apply_target_devices_with_retries(
+            STARTUP_MODE,
+            include_mouse=self._should_include_mouse_target(),
+        ):
             self._restart_inputplumber()
             self._startup_target_active = False
             return "InputPlumber target devices did not settle after retries."
@@ -1301,7 +1510,12 @@ class DeckyZoneService:
             self._inputplumber_available = False
             return False
 
-        if len(target_paths) < len(controller_targets.build_target_devices(STARTUP_MODE)):
+        if len(target_paths) < len(
+            controller_targets.build_target_devices(
+                STARTUP_MODE,
+                include_mouse=self._should_include_mouse_target(),
+            )
+        ):
             return False
 
         if not self._resolve_startup_gamepad_device_path():
@@ -1345,6 +1559,11 @@ class DeckyZoneService:
         await self._sync_home_button_navigation_state()
 
     async def _apply_startup_runtime_once(self):
+        if not await self._sync_directional_trackpad_source_runtime(
+            self._active_per_game_app_id
+        ):
+            return "Directional trackpad source state did not apply."
+
         detail = await self._apply_verified_startup_target()
         if detail is not None:
             return detail
@@ -1590,21 +1809,8 @@ class DeckyZoneService:
     async def sync_brightness_dial_fixer_state(self):
         return await self._sync_brightness_dial_fixer_state()
 
-    def _should_disable_trackpads(self, app_id=None):
-        if self.settings_store.get_trackpads_disabled():
-            return True
-
-        app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
-        if app_id == DEFAULT_APP_ID:
-            return False
-
-        if not self.settings_store.get_per_game_settings_enabled(app_id):
-            return False
-
-        return self.settings_store.get_per_game_trackpads_disabled(app_id)
-
     def _sync_trackpad_suppression_state(self, app_id=None):
-        if self._should_disable_trackpads(app_id):
+        if self._should_disable_trackpads(app_id) or self._should_enable_directional_trackpads(app_id):
             return self._grab_zotac_mouse_device()
 
         return self._release_zotac_mouse_device()
@@ -1699,6 +1905,20 @@ class DeckyZoneService:
         self.settings_store.set_per_game_trackpads_disabled(app_id, disabled)
         return self._current_settings()
 
+    def set_per_game_trackpad_mode(self, app_id, mode):
+        if app_id in (None, "", DEFAULT_APP_ID):
+            return self._current_settings()
+
+        normalized_mode = trackpad_modes.normalize_trackpad_mode(mode)
+        if (
+            normalized_mode != trackpad_modes.TRACKPAD_MODE_MOUSE
+            and not self.probe_inputplumber_available()
+        ):
+            return self._current_settings()
+
+        self.settings_store.set_per_game_trackpad_mode(app_id, normalized_mode)
+        return self._current_settings()
+
     async def sync_per_game_target(self, app_id):
         app_id = str(app_id or DEFAULT_APP_ID)
         self._active_per_game_app_id = app_id
@@ -1710,22 +1930,22 @@ class DeckyZoneService:
         if not self._is_controller_mode_snapshot_safe(controller_mode_snapshot):
             await self._reconcile_controller_mode_runtime(controller_mode_snapshot)
             return False
+        if not await self._sync_directional_trackpad_source_runtime(app_id):
+            return False
         button_prompt_fix_enabled = (
             per_game_settings_enabled
             and self.settings_store.get_button_prompt_fix_enabled(app_id)
         )
+        include_mouse = self._should_include_mouse_target(app_id)
         trackpad_result = self._sync_trackpad_suppression_state(app_id)
 
         if button_prompt_fix_enabled:
-            if self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET:
-                profile_result = await self._sync_home_button_navigation_state()
-                return trackpad_result and profile_result
-
             try:
                 if not await self.wait_for_inputplumber_dbus_silently():
                     return False
                 if not await self._apply_target_devices_with_retries(
-                    MISSING_GLYPH_FIX_TARGET
+                    MISSING_GLYPH_FIX_TARGET,
+                    include_mouse=include_mouse,
                 ):
                     return False
                 self._temporary_target_mode = MISSING_GLYPH_FIX_TARGET
@@ -1741,6 +1961,28 @@ class DeckyZoneService:
                 return False
 
         if self._temporary_target_mode != MISSING_GLYPH_FIX_TARGET:
+            if self.settings_store.get_startup_apply_enabled() and not self._startup_target_active:
+                try:
+                    if not await self.wait_for_inputplumber_dbus_silently():
+                        return False
+                    detail = await self._apply_startup_runtime_with_retries()
+                    if detail is not None:
+                        self.logger.warning(
+                            f"Failed to restore inherited controller target: {detail}"
+                        )
+                        return False
+                except subprocess.CalledProcessError as error:
+                    detail = (error.stderr or error.stdout or str(error)).strip()
+                    self.logger.warning(
+                        f"Failed to restore inherited controller target: {detail}"
+                    )
+                    return False
+                except Exception as error:
+                    self.logger.warning(
+                        f"Failed to restore inherited controller target: {error}"
+                    )
+                    return False
+
             profile_result = await self._sync_home_button_navigation_state()
             return trackpad_result and profile_result
 
@@ -1908,6 +2150,9 @@ class DeckyZoneService:
 
         return None
 
+    def _resolve_zotac_command_hidraw_path(self):
+        return self._resolve_zotac_controller_hidraw_path()
+
     def _zotac_calc_crc(self, buffer):
         crc = 0
         for value in buffer[4:0x3E]:
@@ -1942,20 +2187,161 @@ class DeckyZoneService:
             return raw_reply[:ZOTAC_RAW_REPORT_SIZE]
         raise RuntimeError("Unexpected Zotac HID reply.")
 
-    def _send_zotac_raw_command(self, device_path, command, data=b""):
+    def _read_zotac_raw_reply(self, fd, seq, expected_command=None):
+        deadline = time.monotonic() + ZOTAC_RAW_REPLY_TIMEOUT_SECONDS
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("Timed out waiting for Zotac HID reply.")
+
+            readable, _, _ = select.select([fd], [], [], remaining)
+            if not readable:
+                raise RuntimeError("Timed out waiting for Zotac HID reply.")
+
+            reply = self._normalize_zotac_reply(os.read(fd, 65))
+            if reply[2] != (seq & 0xFF):
+                continue
+            if expected_command is not None and reply[4] != expected_command:
+                continue
+            return reply
+
+    def _send_zotac_raw_command(self, device_path, command, data=b"", expected_command=None):
         fd = os.open(device_path, os.O_RDWR)
         seq = self._zotac_raw_command_seq & 0xFF
         self._zotac_raw_command_seq = (self._zotac_raw_command_seq + 1) & 0xFF
         try:
             packet = self._zotac_make_packet(seq, command, data)
             os.write(fd, b"\x00" + packet)
-            readable, _, _ = select.select([fd], [], [], ZOTAC_RAW_REPLY_TIMEOUT_SECONDS)
-            if not readable:
-                raise RuntimeError("Timed out waiting for Zotac HID reply.")
-
-            return self._normalize_zotac_reply(os.read(fd, 65))
+            return self._read_zotac_raw_reply(
+                fd,
+                seq,
+                expected_command=expected_command if expected_command is not None else command,
+            )
         finally:
             os.close(fd)
+
+    def _get_zotac_button_mapping(self, device_path, button_id):
+        reply = self._send_zotac_raw_command(
+            device_path,
+            ZOTAC_RAW_CMD_GET_BUTTON_MAPPING,
+            bytes([button_id]),
+            expected_command=ZOTAC_RAW_CMD_GET_BUTTON_MAPPING,
+        )
+        mapping_payload = bytes(
+            reply[5:5 + trackpad_modes.ZOTAC_BUTTON_MAPPING_PAYLOAD_SIZE]
+        )
+        if len(mapping_payload) != trackpad_modes.ZOTAC_BUTTON_MAPPING_PAYLOAD_SIZE:
+            raise RuntimeError(
+                f"Incomplete trackpad mapping reply for button 0x{button_id:02x}"
+            )
+        if mapping_payload[trackpad_modes.ZOTAC_BUTTON_MAPPING_SOURCE_INDEX] != button_id:
+            raise RuntimeError(
+                f"Unexpected trackpad mapping source id for button 0x{button_id:02x}"
+            )
+        return mapping_payload
+
+    def _set_zotac_button_mapping(self, device_path, mapping_payload):
+        if (
+            len(mapping_payload)
+            != trackpad_modes.ZOTAC_BUTTON_MAPPING_PAYLOAD_SIZE
+        ):
+            raise RuntimeError("Unexpected Zotac trackpad mapping payload size.")
+
+        reply = self._send_zotac_raw_command(
+            device_path,
+            ZOTAC_RAW_CMD_SET_BUTTON_MAPPING,
+            mapping_payload,
+            expected_command=ZOTAC_RAW_CMD_SET_BUTTON_MAPPING,
+        )
+        if len(reply) <= 6:
+            raise RuntimeError("Incomplete Zotac trackpad mapping set reply.")
+        if reply[6] != 0:
+            raise RuntimeError(
+                f"Trackpad mapping update rejected: 0x{reply[6]:02x}"
+            )
+
+    def _get_touch_button_mappings(self, device_path):
+        button_ids = trackpad_modes.build_directional_trackpad_button_payloads().keys()
+        return {
+            button_id: self._get_zotac_button_mapping(device_path, button_id)
+            for button_id in button_ids
+        }
+
+    def _apply_directional_trackpad_button_mappings(self):
+        device_path = self._resolve_zotac_command_hidraw_path()
+        if not device_path:
+            self.logger.warning(
+                "Unable to locate Zotac command HID node for directional trackpad mode."
+            )
+            return False
+
+        desired_mappings = trackpad_modes.build_directional_trackpad_button_payloads()
+
+        try:
+            current_mappings = self._get_touch_button_mappings(device_path)
+        except Exception as error:
+            self.logger.warning(
+                f"Failed to read current directional trackpad mappings: {error}"
+            )
+            return False
+
+        backup_mappings = self._load_directional_trackpad_backup()
+        if backup_mappings is None:
+            if current_mappings == desired_mappings:
+                backup_mappings = trackpad_modes.build_default_trackpad_button_payloads()
+                self.logger.warning(
+                    "Directional trackpad mappings were already active without a backup; "
+                    "using the observed Zotac defaults for restoration."
+                )
+            else:
+                backup_mappings = current_mappings
+            try:
+                self._store_directional_trackpad_backup(backup_mappings)
+            except Exception as error:
+                self.logger.warning(
+                    f"Failed to store directional trackpad backup mappings: {error}"
+                )
+                return False
+
+        try:
+            for button_id, mapping_payload in desired_mappings.items():
+                if current_mappings.get(button_id) == mapping_payload:
+                    continue
+                self._set_zotac_button_mapping(device_path, mapping_payload)
+        except Exception as error:
+            self.logger.warning(
+                f"Failed to apply directional trackpad mappings: {error}"
+            )
+            return False
+
+        return True
+
+    def _restore_directional_trackpad_button_mappings(self):
+        backup_mappings = self._load_directional_trackpad_backup()
+        if not backup_mappings:
+            return True
+
+        device_path = self._resolve_zotac_command_hidraw_path()
+        if not device_path:
+            self.logger.warning(
+                "Unable to locate Zotac command HID node while restoring trackpad mappings."
+            )
+            return False
+
+        try:
+            current_mappings = self._get_touch_button_mappings(device_path)
+            for button_id, mapping_payload in backup_mappings.items():
+                if current_mappings.get(button_id) == mapping_payload:
+                    continue
+                self._set_zotac_button_mapping(device_path, mapping_payload)
+            self._clear_directional_trackpad_backup()
+        except Exception as error:
+            self.logger.warning(
+                f"Failed to restore directional trackpad mappings: {error}"
+            )
+            return False
+
+        return True
 
     def _get_controller_mode(self, device_path=None):
         if device_path is None:
@@ -2014,21 +2400,12 @@ class DeckyZoneService:
 
         brightness_result = await self._sync_brightness_dial_fixer_state()
         profile_result = await self._sync_home_button_navigation_state()
+        directional_result = await self._disable_directional_trackpad_source_runtime()
 
         if not had_active_controller_target:
-            return brightness_result and profile_result
+            return brightness_result and profile_result and directional_result
 
-        try:
-            self._restart_inputplumber()
-        except subprocess.CalledProcessError as error:
-            detail = (error.stderr or error.stdout or str(error)).strip()
-            self.logger.warning(f"Failed to restore inherited controller target: {detail}")
-            return False
-        except Exception as error:
-            self.logger.warning(f"Failed to restore inherited controller target: {error}")
-            return False
-
-        return brightness_result and profile_result
+        return brightness_result and profile_result and directional_result
 
     async def _reconcile_controller_mode_runtime(
         self,
@@ -2264,7 +2641,12 @@ class DeckyZoneService:
         try:
             await self._sync_brightness_dial_fixer_state()
             await self._sync_home_button_navigation_state()
+            if not await self._disable_directional_trackpad_source_runtime():
+                return False
+            self._reset_inputplumber_profile_state()
             self._restart_inputplumber()
+            if not await self.wait_for_inputplumber_dbus_silently():
+                return False
             self._set_status("disabled", DISABLED_MESSAGE)
             return True
         except subprocess.CalledProcessError as error:
@@ -2356,12 +2738,23 @@ class DeckyZoneService:
 
         return self._current_settings()
 
-    def set_trackpads_disabled(self, disabled):
-        if disabled and not self.probe_inputplumber_available():
+    def set_trackpad_mode(self, mode):
+        normalized_mode = trackpad_modes.normalize_trackpad_mode(mode)
+        if (
+            normalized_mode != trackpad_modes.TRACKPAD_MODE_MOUSE
+            and not self.probe_inputplumber_available()
+        ):
             return self._current_settings()
 
-        self.settings_store.set_trackpads_disabled(disabled)
+        self.settings_store.set_trackpad_mode(normalized_mode)
         return self._current_settings()
+
+    def set_trackpads_disabled(self, disabled):
+        return self.set_trackpad_mode(
+            trackpad_modes.TRACKPAD_MODE_DISABLED
+            if disabled
+            else trackpad_modes.TRACKPAD_MODE_MOUSE
+        )
 
     async def set_zotac_glyphs_enabled(self, enabled):
         self.settings_store.set_zotac_glyphs_enabled(enabled)
@@ -2605,9 +2998,11 @@ class DeckyZoneService:
         await self.stop_controller_mode_monitor()
         self._startup_target_active = False
         self._temporary_target_mode = None
+        self._active_per_game_app_id = DEFAULT_APP_ID
         await self._sync_home_button_navigation_state()
         await self.stop_brightness_dial_fixer()
         self._release_zotac_mouse_device()
+        await self._disable_directional_trackpad_source_runtime()
         await self.stop_rumble_fixer()
 
 
@@ -2659,6 +3054,9 @@ class Plugin:
     async def set_brightness_dial_fix_enabled(self, enabled):
         return await self.service.set_brightness_dial_fix_enabled(enabled)
 
+    async def set_trackpad_mode(self, mode):
+        return self.service.set_trackpad_mode(mode)
+
     async def set_trackpads_disabled(self, disabled):
         return self.service.set_trackpads_disabled(disabled)
 
@@ -2676,6 +3074,9 @@ class Plugin:
 
     async def set_button_prompt_fix_enabled(self, app_id, enabled):
         return self.service.set_button_prompt_fix_enabled(app_id, enabled)
+
+    async def set_per_game_trackpad_mode(self, app_id, mode):
+        return self.service.set_per_game_trackpad_mode(app_id, mode)
 
     async def set_per_game_trackpads_disabled(self, app_id, disabled):
         return self.service.set_per_game_trackpads_disabled(app_id, disabled)
