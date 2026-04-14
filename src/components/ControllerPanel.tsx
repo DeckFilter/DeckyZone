@@ -676,6 +676,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         onButtonPromptFixToggleChange={(value: boolean) => void handleButtonPromptFixToggleChange(value)}
       />
       <RumblePanel
+        inputplumberAvailable={settings.inputplumberAvailable}
         rumbleEnabled={activeRumbleEnabled}
         rumbleAvailable={settings.rumbleAvailable}
         savingRumble={savingRumble}

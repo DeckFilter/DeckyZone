@@ -1,6 +1,7 @@
 import { ButtonItem, PanelSectionRow, SliderField, ToggleField } from '@decky/ui'
 
 type Props = {
+  inputplumberAvailable: boolean
   rumbleEnabled: boolean
   rumbleAvailable: boolean
   savingRumble: boolean
@@ -25,6 +26,7 @@ function getRumbleDescription(rumbleAvailable: boolean) {
 }
 
 const RumblePanel = ({
+  inputplumberAvailable,
   rumbleEnabled,
   rumbleAvailable,
   savingRumble,
