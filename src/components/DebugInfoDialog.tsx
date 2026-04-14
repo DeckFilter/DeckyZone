@@ -1,13 +1,5 @@
 import { callable } from '@decky/api'
-import {
-  DialogBody,
-  DialogControlsSection,
-  Field,
-  ModalRoot,
-  SteamSpinner,
-  Tabs,
-  gamepadDialogClasses,
-} from '@decky/ui'
+import { DialogBody, DialogControlsSection, Field, ModalRoot, SteamSpinner, Tabs, gamepadDialogClasses } from '@decky/ui'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { DebugInfoSnapshot } from '../types/plugin'
 
@@ -32,7 +24,7 @@ const bodyStyle = {
   display: 'flex',
   flexDirection: 'column' as const,
   gap: '8px',
-  padding: '0 10px 0',
+  padding: '0 6px 0',
 }
 
 const tabsHostStyle = {
@@ -46,8 +38,20 @@ const tabContentStyle = {
   boxSizing: 'border-box' as const,
   height: '100%',
   overflowY: 'auto' as const,
-  padding: '0 2px 0 0',
+  padding: '0 6px 0 0',
+  paddingBottom: 0,
 }
+
+const dialogControlsSectionStyle = {
+  marginBottom: 0,
+  paddingBottom: 0,
+}
+
+const tabsPanelOverrideStyle = `
+  .deckyzone-debug-dialog [role="tabpanel"] {
+    padding-bottom: 0 !important;
+  }
+`
 
 const pathListStyle = {
   display: 'grid',
@@ -167,46 +171,25 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
         {isLoading && !snapshot && <SteamSpinner />}
         {error && <div style={{ color: 'red', marginBottom: snapshot ? '12px' : 0 }}>{error}</div>}
         {snapshot && (
-          <div style={tabsHostStyle}>
+          <div style={tabsHostStyle} className="deckyzone-debug-dialog">
+            <style>{tabsPanelOverrideStyle}</style>
             <Tabs
               activeTab={activeTab}
               onShowTab={setActiveTab}
-              autoFocusContents
               tabs={[
                 {
                   id: 'overview',
                   title: 'Overview',
                   content: (
                     <TabContent>
-                      <DialogControlsSection>
-                        <SnapshotRow
-                          label="Product"
-                          value={formatValue(snapshot.deviceIdentity.productName)}
-                        />
-                        <SnapshotRow
-                          label="Board"
-                          value={formatValue(snapshot.deviceIdentity.boardName)}
-                        />
-                        <SnapshotRow
-                          label="Distro"
-                          value={formatValue(snapshot.osContext.prettyName)}
-                        />
-                        <SnapshotRow
-                          label="Kernel"
-                          value={formatValue(snapshot.osContext.kernelRelease)}
-                        />
-                        <SnapshotRow
-                          label="InputPlumber Version"
-                          value={formatValue(snapshot.inputPlumber.version)}
-                        />
-                        <SnapshotRow
-                          label="Gamescope Version"
-                          value={formatValue(snapshot.gamescope.version)}
-                        />
-                        <SnapshotRow
-                          label="Controller Runtime State"
-                          value={formatValue(snapshot.inputPlumber.controllerRuntimeState)}
-                        />
+                      <DialogControlsSection style={dialogControlsSectionStyle}>
+                        <SnapshotRow label="Product" value={formatValue(snapshot.deviceIdentity.productName)} />
+                        <SnapshotRow label="Board" value={formatValue(snapshot.deviceIdentity.boardName)} />
+                        <SnapshotRow label="Distro" value={formatValue(snapshot.osContext.prettyName)} />
+                        <SnapshotRow label="Kernel" value={formatValue(snapshot.osContext.kernelRelease)} />
+                        <SnapshotRow label="InputPlumber Version" value={formatValue(snapshot.inputPlumber.version)} />
+                        <SnapshotRow label="Gamescope Version" value={formatValue(snapshot.gamescope.version)} />
+                        <SnapshotRow label="Controller Runtime State" value={formatValue(snapshot.inputPlumber.controllerRuntimeState)} />
                         <SnapshotRow
                           label="DeckyZone Status"
                           value={formatValue(snapshot.deckyZoneStatus.message)}
@@ -221,7 +204,7 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
                   title: 'Input',
                   content: (
                     <TabContent>
-                      <DialogControlsSection>
+                      <DialogControlsSection style={dialogControlsSectionStyle}>
                         <SnapshotRow label="Available" value={formatBoolean(snapshot.inputPlumber.available)} />
                         <SnapshotRow
                           label="Profile Name"
@@ -230,10 +213,7 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
                         />
                         <SnapshotRow
                           label="Controller Mode"
-                          value={formatControllerMode(
-                            snapshot.inputPlumber.controllerMode,
-                            snapshot.inputPlumber.controllerModeAvailable,
-                          )}
+                          value={formatControllerMode(snapshot.inputPlumber.controllerMode, snapshot.inputPlumber.controllerModeAvailable)}
                         />
                         <SnapshotRow
                           label="Mode Interface Available"
@@ -278,7 +258,7 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
                   title: 'Display',
                   content: (
                     <TabContent>
-                      <DialogControlsSection>
+                      <DialogControlsSection style={dialogControlsSectionStyle}>
                         <SnapshotRow
                           label="Built-in Profile"
                           value={formatBoolean(snapshot.gamescope.builtInAvailable)}
@@ -297,10 +277,7 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
                             ) : undefined
                           }
                         />
-                        <SnapshotRow
-                          label="Green Tint Fix"
-                          value={formatBoolean(snapshot.gamescope.greenTintFixEnabled)}
-                        />
+                        <SnapshotRow label="Green Tint Fix" value={formatBoolean(snapshot.gamescope.greenTintFixEnabled)} />
                         <SnapshotRow
                           label="Verification State"
                           value={formatValue(snapshot.gamescope.verificationState)}
