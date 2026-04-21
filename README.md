@@ -8,26 +8,49 @@ DeckyZone is a Decky plugin for the Zotac Gaming Zone that aims to bridge the mo
 
 ![screenshot](./img/DeckyZone.jpg)
 
+## Installation
+
+Run the following in terminal:
+
+```bash
+curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh | sh
+```
+
 ## Current Features
+
+Status key: ✅ tested/working, ❌ not currently working in my testing, ❓ untested or unknown.
 
 ### Controller
 
-| Feature                      | SteamOS `main` | Bazzite | Nobara | CachyOS |
-| ---------------------------- | -------------- | ------- | ------ | ------- |
-| Enable Controller Features   | ✅             | ❌      | ❓     | ❓      |
-| Enable Home Button           | ✅             | ❌      | ❓     | ❓      |
-| Enable Brightness Dial       | ✅             | ❌      | ❓     | ❓      |
-| Vibration / Rumble Intensity | ✅             | ✅      | ❓     | ❓      |
-| Test Rumble                  | ✅             | ❌      | ❓     | ❓      |
-| Enable Per-Game Settings     | ✅             | ❌      | ❓     | ❓      |
-| Button Prompt Fix            | ✅             | ❌      | ❓     | ❓      |
-| Disable Trackpads            | ✅             | ❌      | ❓     | ❓      |
+| Feature                               | SteamOS `main` | Bazzite | Nobara | CachyOS |
+| ------------------------------------- | -------------- | ------- | ------ | ------- |
+| Enable Controller Features            | ✅             | ❌      | ❓     | ❓      |
+| Controller Mode status and recovery   | ✅             | ❌      | ❓     | ❓      |
+| Home Button navigation                | ✅             | ❌      | ❓     | ❓      |
+| Brightness Dial control               | ✅             | ❌      | ❓     | ❓      |
+| Trackpad Mode: Default                | ✅             | ❌      | ❓     | ❓      |
+| Trackpad Mode: Disabled               | ✅             | ❌      | ❓     | ❓      |
+| Trackpad Mode: Directional Buttons    | ✅             | ❌      | ❓     | ❓      |
+| Vibration / Rumble Intensity          | ✅             | ✅      | ❓     | ❓      |
+| Test Rumble                           | ✅             | ❌      | ❓     | ❓      |
+| Per-game Trackpad and Rumble settings | ✅             | ❌      | ❓     | ❓      |
+| Per-game Button Prompt Fix            | ✅             | ❌      | ❓     | ❓      |
+
+Controller Features is the master switch for the InputPlumber-based controller runtime. Home Button and Brightness Dial are dependent toggles: disabling Controller Features also turns both of them off.
+
+Trackpad modes:
+
+- `Default`: normal controller behavior with mouse available.
+- `Disabled`: turns off both trackpads.
+- `Directional Buttons`: left trackpad is D-pad, right trackpad is A/B/X/Y.
 
 ### Interface
 
 | Feature             | SteamOS `main` | Bazzite | Nobara | CachyOS |
 | ------------------- | -------------- | ------- | ------ | ------- |
 | Enable Zotac Glyphs | ✅             | ❓      | ❓     | ❓      |
+
+Zotac Glyphs applies Zotac controller button glyphs and controller images in Steam UI.
 
 ### Display
 
@@ -36,9 +59,11 @@ DeckyZone is a Decky plugin for the Zotac Gaming Zone that aims to bridge the mo
 | Enable Zotac OLED Profile | Built in       | ✅      | ❓     | ❓      |
 | Enable Green Tint Fix     | ✅             | ✅      | ❓     | ❓      |
 
-`HDR / Washed out colors` is fixed out of the box on the latest SteamOS `main` and on the `SteamOS 3.8.1 Preview`. Was also fine on Bazzite, Nobara and CachyOS.
+Display changes require a reboot after toggling them. `HDR / Washed out colors` was fixed out of the box in my SteamOS `main`, SteamOS 3.8.1 Preview, Bazzite, Nobara, and CachyOS testing.
 
-Controller features rely on InputPlumber. Bazzite will soon switch to InputPlumber. Nobara did not work with Decky Loader but it has InputPlumber ootb and CachyOS needs to install InputPlumber manually.
+## Compatibility Notes
+
+Controller features rely on InputPlumber and Zotac input/HID support. Non-SteamOS compatibility depends on what that OS image currently ships and exposes to Decky Loader.
 
 ## Related Plugins
 
@@ -46,21 +71,13 @@ Controller features rely on InputPlumber. Bazzite will soon switch to InputPlumb
 
 - [PowerControl](https://github.com/mengmeet/PowerControl)
 
-I already contributed patches there and it's included in the latest release. It was much faster to extend these fantastic plugin than to integrate the same functionality into DeckyZone itself.
+I already contributed patches there and it's included in the latest release. It was much faster to extend this plugin than to integrate the same functionality into DeckyZone itself.
 
 ### RGB Control
 
 - [HueSync](https://github.com/honjow/HueSync)
 
-I already contributed patches there and it's hopefully soon released. It was again much faster to extend these fantastic plugin than to integrate the same functionality into DeckyZone itself.
-
-## Installation
-
-Run the following in terminal:
-
-```bash
-curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh | sh
-```
+I already contributed patches there. It was again much faster to extend this plugin than to integrate the same functionality into DeckyZone itself.
 
 ## Feedback
 
@@ -81,8 +98,7 @@ These are ideas, not promised features.
 ### Troubleshooting / Tips & Tricks
 
 - Camera detected status
-- System info with EC and display firmware
-- Model and board name details
+- EC and display firmware details
 - Battery warning to help prevent BIOS reset
 
 ## Credits
