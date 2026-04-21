@@ -244,7 +244,7 @@ def get_trackpads_disabled():
 
 def set_trackpads_disabled(disabled):
     return set_trackpad_mode(
-        trackpad_modes.TRACKPAD_MODE_DISABLED if disabled else trackpad_modes.TRACKPAD_MODE_MOUSE
+        trackpad_modes.TRACKPAD_MODE_DISABLED if disabled else trackpad_modes.TRACKPAD_MODE_DEFAULT
     )
 
 
@@ -457,7 +457,7 @@ def set_per_game_trackpad_mode(app_id, mode):
 def set_per_game_trackpads_disabled(app_id, disabled):
     return set_per_game_trackpad_mode(
         app_id,
-        trackpad_modes.TRACKPAD_MODE_DISABLED if disabled else trackpad_modes.TRACKPAD_MODE_MOUSE,
+        trackpad_modes.TRACKPAD_MODE_DISABLED if disabled else trackpad_modes.TRACKPAD_MODE_DEFAULT,
     )
 
 

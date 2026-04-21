@@ -15,7 +15,7 @@ type TrackpadModeOption = { data: TrackpadMode; label: string }
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
 const NO_GAMEPAD_MODE_DESCRIPTION = 'No Gamepad mode detected'
 const TRACKPAD_MODE_OPTIONS: TrackpadModeOption[] = [
-  { data: 'mouse', label: 'Mouse' },
+  { data: 'default', label: 'Default' },
   { data: 'disabled', label: 'Disabled' },
   { data: 'directional_buttons', label: 'Directional Buttons' },
 ]
@@ -26,9 +26,9 @@ function getTrackpadModeDescription(mode: TrackpadMode) {
       return 'Turns off both trackpads'
     case 'directional_buttons':
       return 'Left pad is D-pad, right pad is A/B/X/Y'
-    case 'mouse':
+    case 'default':
     default:
-      return 'Left pad scrolls, right pad moves and clicks'
+      return 'Normal controller behavior with mouse available'
   }
 }
 
@@ -71,7 +71,7 @@ const TrackpadPanel = ({
         label="Trackpad Mode"
         menuLabel="Trackpad Mode"
         rgOptions={trackpadOptions}
-        strDefaultLabel={selectedTrackpadOption?.label ?? 'Mouse'}
+        strDefaultLabel={selectedTrackpadOption?.label ?? 'Default'}
         selectedOption={selectedTrackpadOption?.data ?? trackpadModeValue}
         disabled={savingTrackpads || !inputplumberAvailable || controllerModeBlocked}
         description={getTrackpadDescription(inputplumberAvailable, controllerModeBlocked, trackpadModeValue)}

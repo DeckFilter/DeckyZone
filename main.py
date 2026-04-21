@@ -1962,7 +1962,7 @@ class DeckyZoneService:
 
         normalized_mode = trackpad_modes.normalize_trackpad_mode(mode)
         if (
-            normalized_mode != trackpad_modes.TRACKPAD_MODE_MOUSE
+            normalized_mode != trackpad_modes.TRACKPAD_MODE_DEFAULT
             and not self.probe_inputplumber_available()
         ):
             return self._current_settings()
@@ -2390,8 +2390,7 @@ class DeckyZoneService:
 
     def _restore_directional_trackpad_button_mappings(self):
         backup_mappings = self._load_directional_trackpad_backup()
-        if not backup_mappings:
-            return True
+        desired_mappings = backup_mappings or trackpad_modes.build_default_trackpad_button_payloads()
 
         device_path = self._resolve_zotac_command_hidraw_path()
         if not device_path:
@@ -2402,11 +2401,16 @@ class DeckyZoneService:
 
         try:
             current_mappings = self._get_touch_button_mappings(device_path)
-            for button_id, mapping_payload in backup_mappings.items():
+            if not backup_mappings and current_mappings != desired_mappings:
+                self.logger.warning(
+                    "Directional trackpad backup is missing; restoring observed Zotac defaults."
+                )
+            for button_id, mapping_payload in desired_mappings.items():
                 if current_mappings.get(button_id) == mapping_payload:
                     continue
                 self._set_zotac_button_mapping(device_path, mapping_payload)
-            self._clear_directional_trackpad_backup()
+            if backup_mappings:
+                self._clear_directional_trackpad_backup()
         except Exception as error:
             self.logger.warning(
                 f"Failed to restore directional trackpad mappings: {error}"
@@ -2813,7 +2817,7 @@ class DeckyZoneService:
     def set_trackpad_mode(self, mode):
         normalized_mode = trackpad_modes.normalize_trackpad_mode(mode)
         if (
-            normalized_mode != trackpad_modes.TRACKPAD_MODE_MOUSE
+            normalized_mode != trackpad_modes.TRACKPAD_MODE_DEFAULT
             and not self.probe_inputplumber_available()
         ):
             return self._current_settings()
@@ -2825,7 +2829,7 @@ class DeckyZoneService:
         return self.set_trackpad_mode(
             trackpad_modes.TRACKPAD_MODE_DISABLED
             if disabled
-            else trackpad_modes.TRACKPAD_MODE_MOUSE
+            else trackpad_modes.TRACKPAD_MODE_DEFAULT
         )
 
     async def set_zotac_glyphs_enabled(self, enabled):

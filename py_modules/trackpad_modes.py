@@ -1,10 +1,11 @@
-TRACKPAD_MODE_MOUSE = "mouse"
+TRACKPAD_MODE_DEFAULT = "default"
+LEGACY_TRACKPAD_MODE_MOUSE = "mouse"
 TRACKPAD_MODE_DISABLED = "disabled"
 TRACKPAD_MODE_DIRECTIONAL_BUTTONS = "directional_buttons"
 
-DEFAULT_TRACKPAD_MODE = TRACKPAD_MODE_MOUSE
+DEFAULT_TRACKPAD_MODE = TRACKPAD_MODE_DEFAULT
 VALID_TRACKPAD_MODES = {
-    TRACKPAD_MODE_MOUSE,
+    TRACKPAD_MODE_DEFAULT,
     TRACKPAD_MODE_DISABLED,
     TRACKPAD_MODE_DIRECTIONAL_BUTTONS,
 }
@@ -72,6 +73,8 @@ ZOTAC_MOUSE_BUTTON_BITS = {
 def normalize_trackpad_mode(value, legacy_disabled=False):
     if isinstance(value, str):
         normalized_value = value.strip().lower()
+        if normalized_value == LEGACY_TRACKPAD_MODE_MOUSE:
+            return TRACKPAD_MODE_DEFAULT
         if normalized_value in VALID_TRACKPAD_MODES:
             return normalized_value
 
