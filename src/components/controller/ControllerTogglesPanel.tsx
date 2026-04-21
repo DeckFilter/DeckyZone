@@ -85,7 +85,7 @@ const ControllerTogglesPanel = ({
   const controllerModeDisplay = getControllerModeDisplay(settings)
   const showControllerModeStatus = controllerModeBlocked
   const showControllerModeSwitchButton = settings.controllerModeAvailable && settings.controllerMode !== 'gamepad'
-  const showControllerFeatureControls = controllerModeConfirmed
+  const showControllerFeatureControls = settings.startupApplyEnabled && controllerModeConfirmed
 
   return (
     <>

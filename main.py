@@ -2806,6 +2806,9 @@ class DeckyZoneService:
             return False
 
     async def set_home_button_enabled(self, enabled):
+        if enabled and not self.settings_store.get_startup_apply_enabled():
+            return self._current_settings()
+
         if enabled and not self.probe_inputplumber_available():
             return self._current_settings()
 
@@ -2878,6 +2881,9 @@ class DeckyZoneService:
         return True
 
     async def set_brightness_dial_fix_enabled(self, enabled):
+        if enabled and not self.settings_store.get_startup_apply_enabled():
+            return self._current_settings()
+
         if enabled and not self.probe_inputplumber_available():
             return self._current_settings()
 

@@ -201,7 +201,13 @@ def get_startup_apply_enabled():
 
 
 def set_startup_apply_enabled(enabled):
-    _write_setting(STARTUP_APPLY_KEY, bool(enabled))
+    enabled = bool(enabled)
+    setting_file.read()
+    setting_file.setSetting(STARTUP_APPLY_KEY, enabled)
+    if not enabled:
+        setting_file.setSetting(HOME_BUTTON_ENABLED_KEY, False)
+        setting_file.setSetting(BRIGHTNESS_DIAL_FIX_ENABLED_KEY, False)
+    setting_file.commit()
     return get_startup_apply_enabled()
 
 
