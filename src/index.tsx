@@ -6,7 +6,7 @@ import {
   SteamSpinner,
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener } from '@decky/api'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import ControllerPanel from "./components/ControllerPanel"
 import DisplayPanel from "./components/DisplayPanel"
 import ErrorBoundary from "./components/ErrorBoundary"
@@ -16,7 +16,7 @@ import TroubleshootingPanel from "./components/TroubleshootingPanel"
 import UpdatesPanel from "./components/UpdatesPanel"
 import ZotacIcon from "./components/ZotacIcon"
 import { cleanupZotacGlyphsRuntime, syncStoredZotacGlyphsRuntimeEnabled } from "./glyphs/zotacGlyphRuntime"
-import type { ActiveGame, PluginSettings, PluginStatus } from "./types/plugin"
+import type { ActiveGame, PluginResetResult, PluginSettings, PluginStatus } from "./types/plugin"
 
 type BrightnessDialDirection = 'up' | 'down'
 type ActiveGameChangedHandler = (newGame: ActiveGame | null, oldGame: ActiveGame | null) => void
@@ -29,6 +29,7 @@ type BootstrapState = { state: 'loading' } | { state: 'ready'; snapshot: Bootstr
 
 const getStatus = callable<[], PluginStatus>('get_status')
 const getSettings = callable<[], PluginSettings>('get_settings')
+const resetPlugin = callable<[], PluginResetResult>('reset_plugin')
 const syncPerGameTarget = callable<[string], boolean>('sync_per_game_target')
 
 const DEFAULT_APP_ID = '0'
@@ -291,6 +292,7 @@ function Content() {
   const [status, setStatus] = useState<PluginStatus | null>(() => getBootstrapStatus())
   const [settings, setSettings] = useState<PluginSettings | null>(() => getBootstrapSettings())
   const [activeGame, setActiveGame] = useState<ActiveGame | null>(getActiveGame())
+  const [uiRevision, setUiRevision] = useState(0)
 
   const applySettingsUpdate = (nextSettings: PluginSettings) => {
     cacheBootstrapSettings(nextSettings)
@@ -302,6 +304,41 @@ function Content() {
     cacheBootstrapStatus(nextStatus)
     setBootstrap(getBootstrapState())
     setStatus(nextStatus)
+  }
+
+  const applySnapshotUpdate = (nextStatus: PluginStatus, nextSettings: PluginSettings) => {
+    setBootstrapSnapshot(nextStatus, nextSettings)
+    setBootstrap(getBootstrapState())
+    setStatus(nextStatus)
+    setSettings(nextSettings)
+  }
+
+  const handleResetPlugin = async () => {
+    let glyphCleanupFailed = false
+
+    try {
+      await cleanupZotacGlyphsRuntime()
+    } catch {
+      glyphCleanupFailed = true
+    }
+
+    const result = await resetPlugin()
+    let nextStatus = result.status
+    let nextSettings = result.settings
+
+    try {
+      ;[nextStatus, nextSettings] = await Promise.all([getStatus(), getSettings()])
+    } catch (error) {
+      console.error('Failed to refresh DeckyZone state after reset', error)
+    }
+
+    applySnapshotUpdate(nextStatus, nextSettings)
+    setUiRevision((revision) => revision + 1)
+
+    return {
+      result,
+      glyphCleanupFailed,
+    }
   }
 
   useEffect(() => {
@@ -364,7 +401,7 @@ function Content() {
   }
 
   return (
-    <>
+    <Fragment key={`deckyzone-ui:${uiRevision}`}>
       <ErrorBoundary title="Controller">
         <ControllerPanel
           activeGame={activeGame}
@@ -388,8 +425,7 @@ function Content() {
       </ErrorBoundary>
       <ErrorBoundary title="Troubleshooting">
         <TroubleshootingPanel
-          onSettingsChange={applySettingsUpdate}
-          onStatusChange={applyStatusUpdate}
+          onResetPlugin={handleResetPlugin}
         />
       </ErrorBoundary>
       <ErrorBoundary title="Updates">
@@ -397,7 +433,7 @@ function Content() {
           installedVersionNum={settings.pluginVersionNum ?? ''}
         />
       </ErrorBoundary>
-    </>
+    </Fragment>
   )
 }
 

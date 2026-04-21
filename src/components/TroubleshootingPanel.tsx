@@ -1,20 +1,20 @@
-import { callable } from '@decky/api'
-import { ButtonItem, ConfirmModal, PanelSection, PanelSectionRow, Spinner, showModal } from '@decky/ui'
+import { ButtonItem, ConfirmModal, Navigation, PanelSection, PanelSectionRow, Spinner, showModal } from '@decky/ui'
 import { useState } from 'react'
-import { cleanupZotacGlyphsRuntime } from '../glyphs/zotacGlyphRuntime'
-import type { PluginResetResult, PluginSettings, PluginStatus } from '../types/plugin'
+import type { PluginResetResult } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
 
 type Props = {
-  onSettingsChange: (nextSettings: PluginSettings) => void
-  onStatusChange: (nextStatus: PluginStatus) => void
+  onResetPlugin: () => Promise<ResetPluginOutcome>
 }
 
 type ResetPluginConfirmModalProps = Props & {
   closeModal?: () => void
 }
 
-const resetPlugin = callable<[], PluginResetResult>('reset_plugin')
+type ResetPluginOutcome = {
+  result: PluginResetResult
+  glyphCleanupFailed: boolean
+}
 
 const RESET_FAILED_NOTICE = 'Reset failed.'
 const RESET_COMPLETE_NOTICE = 'Plugin reset complete.'
@@ -45,26 +45,16 @@ function getPartialResetNotice(result: PluginResetResult, glyphCleanupFailed: bo
 
 const ResetPluginConfirmModal = ({
   closeModal,
-  onSettingsChange,
-  onStatusChange,
+  onResetPlugin,
 }: ResetPluginConfirmModalProps) => {
   const [resetting, setResetting] = useState(false)
 
   const handleReset = async () => {
     setResetting(true)
-    let glyphCleanupFailed = false
     let shouldClose = false
 
     try {
-      try {
-        await cleanupZotacGlyphsRuntime()
-      } catch {
-        glyphCleanupFailed = true
-      }
-
-      const result = await resetPlugin()
-      onSettingsChange(result.settings)
-      onStatusChange(result.status)
+      const { result, glyphCleanupFailed } = await onResetPlugin()
 
       if (result.ok && !glyphCleanupFailed) {
         showDeckyToast({
@@ -91,6 +81,7 @@ const ResetPluginConfirmModal = ({
       setResetting(false)
       if (shouldClose) {
         closeModal?.()
+        Navigation.CloseSideMenus()
       }
     }
   }
@@ -114,7 +105,7 @@ const ResetPluginConfirmModal = ({
   )
 }
 
-const TroubleshootingPanel = ({ onSettingsChange, onStatusChange }: Props) => {
+const TroubleshootingPanel = ({ onResetPlugin }: Props) => {
   return (
     <PanelSection title="Troubleshooting">
       <PanelSectionRow>
@@ -123,8 +114,7 @@ const TroubleshootingPanel = ({ onSettingsChange, onStatusChange }: Props) => {
           onClick={() => {
             showModal(
               <ResetPluginConfirmModal
-                onSettingsChange={onSettingsChange}
-                onStatusChange={onStatusChange}
+                onResetPlugin={onResetPlugin}
               />,
             )
           }}
