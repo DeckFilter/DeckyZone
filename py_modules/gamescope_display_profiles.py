@@ -247,6 +247,9 @@ class GamescopeDisplayProfiles:
     def set_zotac_profile_enabled(self, enabled):
         self._migrate_legacy_managed_profiles()
         if enabled:
+            if not self._is_asset_available(self.base_profile_asset_path):
+                return self.get_state()
+
             self._write_managed_profile(
                 self.managed_profile_path,
                 self._expected_base_profile_text(),
@@ -260,7 +263,10 @@ class GamescopeDisplayProfiles:
     def set_green_tint_fix_enabled(self, enabled):
         self._migrate_legacy_managed_profiles()
         if enabled:
-            if not self.is_base_profile_available():
+            if (
+                not self.is_base_profile_available()
+                or not self._is_asset_available(self.green_profile_asset_path)
+            ):
                 return self.get_state()
 
             self._write_managed_profile(
@@ -272,6 +278,9 @@ class GamescopeDisplayProfiles:
         if self.is_builtin_profile_available():
             self._remove_managed_profile(self.managed_profile_path)
         elif self.managed_profile_path.is_file():
+            if not self._is_asset_available(self.base_profile_asset_path):
+                return self.get_state()
+
             self._write_managed_profile(
                 self.managed_profile_path,
                 self._expected_base_profile_text(),

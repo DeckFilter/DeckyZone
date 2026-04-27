@@ -39,6 +39,8 @@ jobs:
           mkdir -p "${stage_dir}/DeckyZone"
 
           cp -R dist py_modules "${stage_dir}/DeckyZone/"
+          mkdir -p "${stage_dir}/DeckyZone/assets"
+          cp -R assets/gamescope "${stage_dir}/DeckyZone/assets/"
           cp main.py package.json plugin.json README.md LICENSE "${stage_dir}/DeckyZone/"
 
           tar -czf DeckyZone.tar.gz -C "${stage_dir}" DeckyZone
@@ -54,6 +56,18 @@ jobs:
           echo ""
           echo "=== zip contents ==="
           unzip -l DeckyZone.zip
+
+      - name: Verify packaged files
+        run: |
+          required_files=(
+            "DeckyZone/assets/gamescope/zotac.zone.oled.lua"
+            "DeckyZone/assets/gamescope/zotac.zone.green-tint.lua"
+          )
+
+          for required_file in "${required_files[@]}"; do
+            tar -tzf DeckyZone.tar.gz | grep -Fx "$required_file"
+            unzip -Z1 DeckyZone.zip | grep -Fx "$required_file"
+          done
 
       - name: Publish Artifacts
         uses: actions/upload-artifact@v4
