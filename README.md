@@ -51,7 +51,7 @@ Trackpad modes:
 
 | Feature             | SteamOS `main` | Bazzite | Nobara | CachyOS |
 | ------------------- | -------------- | ------- | ------ | ------- |
-| Enable Zotac Glyphs | ✅             | ❓      | ❓     | ❓      |
+| Enable Zotac Glyphs | ✅             | ✅      | ❓     | ❓      |
 
 Zotac Glyphs applies Zotac controller button glyphs and controller images in Steam UI.
 
