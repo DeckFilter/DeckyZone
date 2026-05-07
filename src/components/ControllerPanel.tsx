@@ -1,5 +1,5 @@
 import { callable } from '@decky/api'
-import { PanelSection } from '@decky/ui'
+import { PanelSection, PanelSectionRow, ToggleField } from '@decky/ui'
 import { useEffect, useRef, useState } from 'react'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
@@ -45,6 +45,10 @@ const TRACKPADS_ACTION_FAILED_NOTICE = "Couldn't update trackpad setting."
 const GYRO_MOUNT_MATRIX_FIX_ACTION_FAILED_NOTICE = "Couldn't update gyro orientation fix."
 const RUMBLE_ACTION_FAILED_NOTICE = "Couldn't update vibration."
 const RUMBLE_TEST_FAILED_NOTICE = "Couldn't send vibration test."
+const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
+const GYRO_MOUNT_MATRIX_FIX_AVAILABLE_DESCRIPTION = 'Corrects gyro axes; restarts InputPlumber'
+const GYRO_MOUNT_MATRIX_FIX_ENABLED_DESCRIPTION = 'Temporary override is active'
+const GYRO_MOUNT_MATRIX_FIX_BUILT_IN_DESCRIPTION = 'Built in now; turn off to remove override'
 
 function getControllerStatusNotice(status: PluginStatus) {
   if (status.state === 'unsupported') {
@@ -60,6 +64,27 @@ function getControllerStatusNotice(status: PluginStatus) {
 
 function isControllerModeConfirmed(settings: PluginSettings) {
   return settings.controllerModeAvailable && settings.controllerMode === 'gamepad'
+}
+
+function getGyroMountMatrixFixDescription(settings: PluginSettings) {
+  const state = settings.gyroMountMatrixFix
+  if (state.blockedReason) {
+    return state.blockedReason
+  }
+
+  if (!settings.inputplumberAvailable) {
+    return INPUTPLUMBER_UNAVAILABLE_DESCRIPTION
+  }
+
+  if (state.enabled && state.builtIn) {
+    return GYRO_MOUNT_MATRIX_FIX_BUILT_IN_DESCRIPTION
+  }
+
+  if (state.enabled) {
+    return GYRO_MOUNT_MATRIX_FIX_ENABLED_DESCRIPTION
+  }
+
+  return GYRO_MOUNT_MATRIX_FIX_AVAILABLE_DESCRIPTION
 }
 
 async function syncActiveGameTarget(appId: string) {
@@ -527,6 +552,10 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const controllerModeBlocked = !isControllerModeConfirmed(settings)
 
   const controllerSpinner = savingControllerMode || savingGyroMountMatrixFix || savingRumbleIntensity
+  const gyroMountMatrixFixDisabled =
+    savingGyroMountMatrixFix
+    || !settings.inputplumberAvailable
+    || (!settings.gyroMountMatrixFix.available && !settings.gyroMountMatrixFix.enabled)
 
   return (
     <PanelSection title="Controller" spinner={controllerSpinner}>
@@ -536,12 +565,10 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         savingControllerMode={savingControllerMode}
         savingHomeButton={savingHomeButton}
         savingBrightnessDialFix={savingBrightnessDialFix}
-        savingGyroMountMatrixFix={savingGyroMountMatrixFix}
         onStartupToggleChange={(value: boolean) => void handleStartupToggleChange(value)}
         onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
         onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
         onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
-        onGyroMountMatrixFixToggleChange={(value: boolean) => void handleGyroMountMatrixFixToggleChange(value)}
       />
       <PerGameSettingsPanel
         activeGame={activeGame}
@@ -572,6 +599,17 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         trackpadMode={activeTrackpadMode}
         onTrackpadModeChange={(value: TrackpadMode) => void handleTrackpadModeChange(value)}
       />
+      {settings.gyroMountMatrixFix.visible && (
+        <PanelSectionRow>
+          <ToggleField
+            label="Gyro Orientation Fix"
+            checked={settings.gyroMountMatrixFix.enabled}
+            onChange={(value: boolean) => void handleGyroMountMatrixFixToggleChange(value)}
+            disabled={gyroMountMatrixFixDisabled}
+            description={getGyroMountMatrixFixDescription(settings)}
+          />
+        </PanelSectionRow>
+      )}
     </PanelSection>
   )
 }

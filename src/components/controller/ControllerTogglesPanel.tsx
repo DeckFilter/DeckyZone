@@ -7,12 +7,10 @@ type Props = {
   savingControllerMode: boolean
   savingHomeButton: boolean
   savingBrightnessDialFix: boolean
-  savingGyroMountMatrixFix: boolean
   onStartupToggleChange: (enabled: boolean) => void
   onControllerModeChange: (mode: ControllerMode) => void
   onHomeButtonToggleChange: (enabled: boolean) => void
   onBrightnessDialFixToggleChange: (enabled: boolean) => void
-  onGyroMountMatrixFixToggleChange: (enabled: boolean) => void
 }
 
 const CONTROLLER_FEATURES_DESCRIPTION = 'Turns on controller features'
@@ -25,9 +23,6 @@ const CONTROLLER_MODE_SWITCH_BUTTON = 'Switch to Gamepad'
 const CONTROLLER_MODE_SWITCH_BUTTON_PENDING = 'Switching to Gamepad...'
 const HOME_BUTTON_TOGGLE_DESCRIPTION = 'Navigates to Home'
 const BRIGHTNESS_DIAL_FIX_DESCRIPTION = 'Controls screen brightness with the right dial'
-const GYRO_MOUNT_MATRIX_FIX_AVAILABLE_DESCRIPTION = 'Corrects gyro axes; restarts InputPlumber'
-const GYRO_MOUNT_MATRIX_FIX_ENABLED_DESCRIPTION = 'Temporary override is active'
-const GYRO_MOUNT_MATRIX_FIX_BUILT_IN_DESCRIPTION = 'Built in now; turn off to remove override'
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
 
 function isControllerModeConfirmed(settings: PluginSettings) {
@@ -74,39 +69,16 @@ function getControllerModeDisplay(settings: PluginSettings) {
   }
 }
 
-function getGyroMountMatrixFixDescription(settings: PluginSettings) {
-  const state = settings.gyroMountMatrixFix
-  if (state.blockedReason) {
-    return state.blockedReason
-  }
-
-  if (!settings.inputplumberAvailable) {
-    return INPUTPLUMBER_UNAVAILABLE_DESCRIPTION
-  }
-
-  if (state.enabled && state.builtIn) {
-    return GYRO_MOUNT_MATRIX_FIX_BUILT_IN_DESCRIPTION
-  }
-
-  if (state.enabled) {
-    return GYRO_MOUNT_MATRIX_FIX_ENABLED_DESCRIPTION
-  }
-
-  return GYRO_MOUNT_MATRIX_FIX_AVAILABLE_DESCRIPTION
-}
-
 const ControllerTogglesPanel = ({
   settings,
   savingStartup,
   savingControllerMode,
   savingHomeButton,
   savingBrightnessDialFix,
-  savingGyroMountMatrixFix,
   onStartupToggleChange,
   onControllerModeChange,
   onHomeButtonToggleChange,
   onBrightnessDialFixToggleChange,
-  onGyroMountMatrixFixToggleChange,
 }: Props) => {
   const controllerModeConfirmed = isControllerModeConfirmed(settings)
   const controllerModeBlocked = !controllerModeConfirmed
@@ -114,10 +86,6 @@ const ControllerTogglesPanel = ({
   const showControllerModeStatus = controllerModeBlocked
   const showControllerModeSwitchButton = settings.controllerModeAvailable && settings.controllerMode !== 'gamepad'
   const showControllerFeatureControls = settings.startupApplyEnabled && controllerModeConfirmed
-  const gyroMountMatrixFixDisabled =
-    savingGyroMountMatrixFix
-    || !settings.inputplumberAvailable
-    || (!settings.gyroMountMatrixFix.available && !settings.gyroMountMatrixFix.enabled)
 
   return (
     <>
@@ -145,17 +113,6 @@ const ControllerTogglesPanel = ({
             </PanelSectionRow>
           )}
         </>
-      )}
-      {settings.gyroMountMatrixFix.visible && (
-        <PanelSectionRow>
-          <ToggleField
-            label="Gyro Orientation Fix"
-            checked={settings.gyroMountMatrixFix.enabled}
-            onChange={(value: boolean) => onGyroMountMatrixFixToggleChange(value)}
-            disabled={gyroMountMatrixFixDisabled}
-            description={getGyroMountMatrixFixDescription(settings)}
-          />
-        </PanelSectionRow>
       )}
       {showControllerFeatureControls && (
         <>
