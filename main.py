@@ -13,6 +13,7 @@ from pathlib import Path
 import decky
 import controller_targets
 import gamescope_display_profiles as gamescope_display_profiles_module
+import inputplumber_device_profile
 import inputplumber_target_sync
 import plugin_update
 import plugin_settings
@@ -112,6 +113,9 @@ RUNTIME_PROFILE_HOME_BUTTON_MAPPING_NAME = "DeckyZone Home Button"
 RUNTIME_PROFILE_M1_MAPPING_NAME = "DeckyZone M1 Remap"
 RUNTIME_PROFILE_M2_MAPPING_NAME = "DeckyZone M2 Remap"
 DEFAULT_INPUTPLUMBER_PROFILE_PATH = "/usr/share/inputplumber/profiles/default.yaml"
+SYSTEM_ZOTAC_INPUTPLUMBER_DEVICE_PROFILE_PATH = Path(
+    "/usr/share/inputplumber/devices/50-zotac-zone.yaml"
+)
 RUNTIME_INPUTPLUMBER_PROFILE_FILENAME = "inputplumber-runtime-profile.yaml"
 HOME_BUTTON_OVERRIDE_PROFILE_FILENAME = "inputplumber-home-button-profile.yaml"
 MANAGED_INPUTPLUMBER_CAPABILITY_MAPS_DIR = Path("/etc/inputplumber/capability_maps.d")
@@ -120,7 +124,10 @@ MANAGED_DIRECTIONAL_TRACKPAD_CAPABILITY_MAP_FILENAME = (
     "50-deckyzone-zone-trackpad-directional.yaml"
 )
 MANAGED_DIRECTIONAL_TRACKPAD_DEVICE_OVERRIDE_FILENAME = "50-zotac-zone.yaml"
+MANAGED_GYRO_MOUNT_MATRIX_DEVICE_PROFILE_FILENAME = "50-zotac-zone.yaml"
 DIRECTIONAL_TRACKPAD_BACKUP_FILENAME = "directional-trackpad-backup.json"
+GYRO_MOUNT_MATRIX_EXTERNAL_OVERRIDE_MESSAGE = "Custom InputPlumber override present."
+GYRO_MOUNT_MATRIX_UNAVAILABLE_MESSAGE = "Zotac InputPlumber profile is unavailable."
 ZOTAC_MOUSE_DEVICE_NAME = "ZOTAC Gaming Zone Mouse"
 ZOTAC_KEYBOARD_DEVICE_NAME = "ZOTAC Gaming Zone Keyboard"
 ZOTAC_DIALS_DEVICE_NAME = "ZOTAC Gaming Zone Dials"
@@ -454,6 +461,7 @@ class DeckyZoneService:
                 "keyboardPresent": keyboard_path is not None,
                 "keyboardPath": keyboard_path,
                 "controllerRuntimeState": controller_runtime_state,
+                "gyroMountMatrixFix": self._get_gyro_mount_matrix_fix_state(),
                 "compositeDeviceObjectPath": INPUTPLUMBER_DBUS_PATH,
             },
             "zotacZoneKernelDrivers": {
@@ -725,6 +733,7 @@ class DeckyZoneService:
             "controllerModeAvailable": controller_mode_snapshot["available"],
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
             "brightnessDialFixEnabled": self.settings_store.get_brightness_dial_fix_enabled(),
+            "gyroMountMatrixFix": self._get_gyro_mount_matrix_fix_state(),
             "trackpadMode": self.settings_store.get_trackpad_mode(),
             "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
             "gamescopeZotacProfileBuiltIn": display_profile_settings["gamescopeZotacProfileBuiltIn"],
@@ -962,6 +971,119 @@ class DeckyZoneService:
         path.unlink()
         return True
 
+    def _get_managed_gyro_mount_matrix_profile_path(self):
+        return (
+            MANAGED_INPUTPLUMBER_DEVICES_DIR
+            / MANAGED_GYRO_MOUNT_MATRIX_DEVICE_PROFILE_FILENAME
+        )
+
+    def _read_optional_file_text(self, path):
+        try:
+            return Path(path).read_text(encoding="utf-8")
+        except (FileNotFoundError, PermissionError, OSError, UnicodeDecodeError):
+            return None
+
+    def _get_gyro_mount_matrix_fix_state(self):
+        system_path = SYSTEM_ZOTAC_INPUTPLUMBER_DEVICE_PROFILE_PATH
+        managed_path = self._get_managed_gyro_mount_matrix_profile_path()
+        system_profile_yaml = self._read_optional_file_text(system_path)
+        managed_profile_yaml = self._read_optional_file_text(managed_path)
+
+        system_profile_available = system_profile_yaml is not None
+        built_in = bool(
+            system_profile_yaml
+            and inputplumber_device_profile.has_desired_mount_matrix(
+                system_profile_yaml
+            )
+        )
+        managed_override_exists = managed_profile_yaml is not None
+        managed_override_owned = bool(
+            managed_profile_yaml
+            and inputplumber_device_profile.is_deckyzone_managed_profile(
+                managed_profile_yaml
+            )
+        )
+        managed_override_has_matrix = bool(
+            managed_profile_yaml
+            and inputplumber_device_profile.has_desired_mount_matrix(
+                managed_profile_yaml
+            )
+        )
+        enabled = bool(managed_override_owned)
+        external_override = bool(
+            managed_override_exists and not managed_override_owned
+        )
+
+        blocked_reason = None
+        if external_override:
+            blocked_reason = GYRO_MOUNT_MATRIX_EXTERNAL_OVERRIDE_MESSAGE
+        elif not system_profile_available and not enabled:
+            blocked_reason = GYRO_MOUNT_MATRIX_UNAVAILABLE_MESSAGE
+
+        visible = bool(
+            external_override
+            or enabled
+            or (system_profile_available and not built_in)
+        )
+        available = bool(
+            system_profile_available and not built_in and not external_override
+        )
+
+        return {
+            "visible": visible,
+            "enabled": enabled,
+            "available": available,
+            "builtIn": built_in,
+            "blockedReason": blocked_reason,
+            "systemPath": str(system_path),
+            "managedPath": str(managed_path),
+            "managedOverrideExists": managed_override_exists,
+            "managedOverrideOwned": managed_override_owned,
+            "managedOverrideHasMatrix": managed_override_has_matrix,
+        }
+
+    def _write_gyro_mount_matrix_override(self):
+        managed_path = self._get_managed_gyro_mount_matrix_profile_path()
+        managed_profile_yaml = self._read_optional_file_text(managed_path)
+        if (
+            managed_profile_yaml is not None
+            and not inputplumber_device_profile.is_deckyzone_managed_profile(
+                managed_profile_yaml
+            )
+        ):
+            raise RuntimeError(GYRO_MOUNT_MATRIX_EXTERNAL_OVERRIDE_MESSAGE)
+
+        system_profile_yaml = self._read_optional_file_text(
+            SYSTEM_ZOTAC_INPUTPLUMBER_DEVICE_PROFILE_PATH
+        )
+        if system_profile_yaml is None:
+            raise RuntimeError(GYRO_MOUNT_MATRIX_UNAVAILABLE_MESSAGE)
+
+        override_yaml = inputplumber_device_profile.build_managed_mount_matrix_profile(
+            system_profile_yaml
+        )
+        return self._write_managed_inputplumber_file(
+            MANAGED_INPUTPLUMBER_DEVICES_DIR,
+            MANAGED_GYRO_MOUNT_MATRIX_DEVICE_PROFILE_FILENAME,
+            override_yaml,
+        )
+
+    def _remove_gyro_mount_matrix_override(self, skip_external=False):
+        managed_path = self._get_managed_gyro_mount_matrix_profile_path()
+        managed_profile_yaml = self._read_optional_file_text(managed_path)
+        if managed_profile_yaml is None:
+            return False
+
+        if not inputplumber_device_profile.is_deckyzone_managed_profile(
+            managed_profile_yaml
+        ):
+            if skip_external:
+                return False
+            raise RuntimeError(GYRO_MOUNT_MATRIX_EXTERNAL_OVERRIDE_MESSAGE)
+
+        managed_path.unlink()
+        return True
+
     def _get_effective_trackpad_mode(self, app_id=None):
         app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
         global_mode = self.settings_store.get_trackpad_mode()
@@ -1018,10 +1140,22 @@ class DeckyZoneService:
         )
 
     def _remove_directional_trackpad_device_override(self):
-        return self._remove_managed_inputplumber_file(
-            MANAGED_INPUTPLUMBER_DEVICES_DIR,
-            MANAGED_DIRECTIONAL_TRACKPAD_DEVICE_OVERRIDE_FILENAME,
+        path = (
+            MANAGED_INPUTPLUMBER_DEVICES_DIR
+            / MANAGED_DIRECTIONAL_TRACKPAD_DEVICE_OVERRIDE_FILENAME
         )
+        profile_yaml = self._read_optional_file_text(path)
+        if profile_yaml is None:
+            return False
+
+        if inputplumber_device_profile.is_deckyzone_managed_profile(profile_yaml):
+            return False
+
+        if trackpad_modes.DIRECTIONAL_CAPABILITY_MAP_ID not in profile_yaml:
+            return False
+
+        path.unlink()
+        return True
 
     def _sync_directional_trackpad_source_files(self, app_id=None):
         del app_id
@@ -1367,7 +1501,7 @@ class DeckyZoneService:
         self._reset_home_button_override_state()
         self._reset_runtime_input_profile_state()
 
-    async def _restart_inputplumber_after_trackpad_source_update(self):
+    async def _restart_inputplumber_after_managed_device_update(self, reason):
         try:
             self._release_zotac_mouse_device()
             self._startup_target_active = False
@@ -1377,17 +1511,39 @@ class DeckyZoneService:
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
             self.logger.warning(
-                f"Failed to restart InputPlumber after trackpad source update: {detail}"
+                f"Failed to restart InputPlumber after {reason}: {detail}"
             )
             return False
         except Exception as error:
             self.logger.warning(
-                "Failed to restart InputPlumber after trackpad source update: "
-                f"{error}"
+                f"Failed to restart InputPlumber after {reason}: {error}"
             )
             return False
 
         return await self.wait_for_inputplumber_dbus_silently()
+
+    async def _restart_inputplumber_after_trackpad_source_update(self):
+        return await self._restart_inputplumber_after_managed_device_update(
+            "trackpad source update"
+        )
+
+    async def _restore_deckyzone_runtime_after_inputplumber_restart(self):
+        controller_mode_snapshot = await self._reconcile_controller_mode_runtime(
+            update_status=True
+        )
+        if not self._is_controller_mode_snapshot_safe(controller_mode_snapshot):
+            return True
+
+        return await self.sync_per_game_target(self._active_per_game_app_id)
+
+    async def _restart_inputplumber_after_gyro_mount_matrix_update(self):
+        restarted = await self._restart_inputplumber_after_managed_device_update(
+            "gyro mount matrix update"
+        )
+        if not restarted:
+            return False
+
+        return await self._restore_deckyzone_runtime_after_inputplumber_restart()
 
     async def _sync_directional_trackpad_source_runtime(self, app_id=None):
         try:
@@ -3119,6 +3275,31 @@ class DeckyZoneService:
 
         return self._current_settings()
 
+    async def set_gyro_mount_matrix_fix_enabled(self, enabled):
+        state = self._get_gyro_mount_matrix_fix_state()
+        if enabled:
+            if state["builtIn"]:
+                return self._current_settings()
+
+            if not state["available"]:
+                if state["blockedReason"]:
+                    raise RuntimeError(state["blockedReason"])
+                return self._current_settings()
+
+            if not self.probe_inputplumber_available():
+                return self._current_settings()
+
+            changed = self._write_gyro_mount_matrix_override()
+        else:
+            changed = self._remove_gyro_mount_matrix_override()
+
+        if changed and not await self._restart_inputplumber_after_gyro_mount_matrix_update():
+            raise RuntimeError(
+                "Failed to restart InputPlumber after updating gyro orientation fix."
+            )
+
+        return self._current_settings()
+
     def set_trackpad_mode(self, mode):
         normalized_mode = trackpad_modes.normalize_trackpad_mode(mode)
         if (
@@ -3516,6 +3697,18 @@ class DeckyZoneService:
             result["message"] = "Failed to restore directional trackpad runtime."
         return result
 
+    def _remove_gyro_mount_matrix_fix_for_reset(self):
+        state = self._get_gyro_mount_matrix_fix_state()
+        changed = self._remove_gyro_mount_matrix_override(skip_external=True)
+        message = ""
+        if (
+            state["managedOverrideExists"]
+            and not state["managedOverrideOwned"]
+        ):
+            message = "Custom InputPlumber override present; skipped."
+
+        return self._cleanup_step_result(changed=changed, message=message)
+
     def _remove_plugin_runtime_files(self):
         changed = False
         runtime_dir = Path(decky.DECKY_PLUGIN_RUNTIME_DIR)
@@ -3600,6 +3793,14 @@ class DeckyZoneService:
             steps,
             "releaseTrackpadMouseGrab",
             self._release_zotac_mouse_device_for_reset,
+        )
+        gyro_mount_matrix_step = await self._run_cleanup_step(
+            steps,
+            "removeGyroMountMatrixFix",
+            self._remove_gyro_mount_matrix_fix_for_reset,
+        )
+        force_inputplumber_restart = bool(
+            force_inputplumber_restart or gyro_mount_matrix_step["changed"]
         )
         await self._run_cleanup_step(
             steps,
@@ -3908,6 +4109,9 @@ class Plugin:
 
     async def set_brightness_dial_fix_enabled(self, enabled):
         return await self.service.set_brightness_dial_fix_enabled(enabled)
+
+    async def set_gyro_mount_matrix_fix_enabled(self, enabled):
+        return await self.service.set_gyro_mount_matrix_fix_enabled(enabled)
 
     async def set_trackpad_mode(self, mode):
         return self.service.set_trackpad_mode(mode)

@@ -6,6 +6,19 @@ export type PluginStatus = {
 export type ControllerMode = 'gamepad' | 'desktop'
 export type TrackpadMode = 'default' | 'disabled' | 'directional_buttons'
 
+export type GyroMountMatrixFixState = {
+  visible: boolean
+  enabled: boolean
+  available: boolean
+  builtIn: boolean
+  blockedReason: string | null
+  systemPath: string
+  managedPath: string
+  managedOverrideExists: boolean
+  managedOverrideOwned: boolean
+  managedOverrideHasMatrix: boolean
+}
+
 export type CleanupStepResult = {
   name: string
   ok: boolean
@@ -58,6 +71,7 @@ export type DebugInfoSnapshot = {
     keyboardPresent: boolean
     keyboardPath: string | null
     controllerRuntimeState: string
+    gyroMountMatrixFix: GyroMountMatrixFixState
     compositeDeviceObjectPath: string
   }
   zotacZoneKernelDrivers: {
@@ -116,6 +130,7 @@ export type PluginSettings = {
   controllerModeAvailable: boolean
   homeButtonEnabled: boolean
   brightnessDialFixEnabled: boolean
+  gyroMountMatrixFix: GyroMountMatrixFixState
   trackpadMode: TrackpadMode
   zotacGlyphsEnabled: boolean
   gamescopeZotacProfileBuiltIn: boolean

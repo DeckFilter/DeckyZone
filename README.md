@@ -28,6 +28,7 @@ Status key: ✅ tested/working, ❌ not currently working in my testing, ❓ unt
 | Controller Mode status and recovery   | ✅             | ❌      | ❓     | ❓      |
 | Home Button navigation                | ✅             | ❌      | ❓     | ❓      |
 | Brightness Dial control               | ✅             | ❌      | ❓     | ❓      |
+| Gyro Orientation Fix                  | ✅             | ❌      | ❓     | ❓      |
 | Trackpad Mode: Default                | ✅             | ❌      | ❓     | ❓      |
 | Trackpad Mode: Disabled               | ✅             | ❌      | ❓     | ❓      |
 | Trackpad Mode: Directional Buttons    | ✅             | ❌      | ❓     | ❓      |
@@ -37,6 +38,8 @@ Status key: ✅ tested/working, ❌ not currently working in my testing, ❓ unt
 | Per-game Button Prompt Fix            | ✅             | ❌      | ❓     | ❓      |
 
 Controller Features is the master switch for the InputPlumber-based controller runtime. Home Button and Brightness Dial are dependent toggles: disabling Controller Features also turns both of them off.
+
+Gyro Orientation Fix installs a temporary DeckyZone-owned InputPlumber Zotac IMU mount-matrix override until the upstream device profile includes the same matrix.
 
 Trackpad modes:
 

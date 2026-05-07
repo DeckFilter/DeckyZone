@@ -21,6 +21,7 @@ const setStartupApplyEnabled = callable<[boolean], PluginSettings>('set_startup_
 const setControllerMode = callable<[ControllerMode], PluginSettings>('set_controller_mode')
 const setHomeButtonEnabled = callable<[boolean], PluginSettings>('set_home_button_enabled')
 const setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>('set_brightness_dial_fix_enabled')
+const setGyroMountMatrixFixEnabled = callable<[boolean], PluginSettings>('set_gyro_mount_matrix_fix_enabled')
 const setTrackpadMode = callable<[TrackpadMode], PluginSettings>('set_trackpad_mode')
 const setPerGameSettingsEnabled = callable<[string, boolean], PluginSettings>('set_per_game_settings_enabled')
 const setButtonPromptFixEnabled = callable<[string, boolean], PluginSettings>('set_button_prompt_fix_enabled')
@@ -41,6 +42,7 @@ const CONTROLLER_MODE_ACTION_FAILED_NOTICE = "Couldn't update mode."
 const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = "Couldn't update per-game setting."
 const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = "Couldn't update prompt fix."
 const TRACKPADS_ACTION_FAILED_NOTICE = "Couldn't update trackpad setting."
+const GYRO_MOUNT_MATRIX_FIX_ACTION_FAILED_NOTICE = "Couldn't update gyro orientation fix."
 const RUMBLE_ACTION_FAILED_NOTICE = "Couldn't update vibration."
 const RUMBLE_TEST_FAILED_NOTICE = "Couldn't send vibration test."
 
@@ -88,6 +90,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [savingControllerMode, setSavingControllerMode] = useState(false)
   const [savingHomeButton, setSavingHomeButton] = useState(false)
   const [savingBrightnessDialFix, setSavingBrightnessDialFix] = useState(false)
+  const [savingGyroMountMatrixFix, setSavingGyroMountMatrixFix] = useState(false)
   const [savingTrackpads, setSavingTrackpads] = useState(false)
   const [savingPerGameSettings, setSavingPerGameSettings] = useState(false)
   const [savingButtonPromptFix, setSavingButtonPromptFix] = useState(false)
@@ -264,6 +267,22 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       setControllerNotice(CONTROLLER_ACTION_FAILED_NOTICE)
     } finally {
       setSavingBrightnessDialFix(false)
+    }
+  }
+
+  const handleGyroMountMatrixFixToggleChange = async (enabled: boolean) => {
+    setControllerNotice(null)
+    setSavingGyroMountMatrixFix(true)
+    try {
+      const nextSettings = await setGyroMountMatrixFixEnabled(enabled)
+      onSettingsChange(nextSettings)
+      setControllerNotice(null)
+      await loadStatus()
+      await syncActiveGameTarget(activeGame?.appid ?? DEFAULT_APP_ID)
+    } catch {
+      setControllerNotice(GYRO_MOUNT_MATRIX_FIX_ACTION_FAILED_NOTICE)
+    } finally {
+      setSavingGyroMountMatrixFix(false)
     }
   }
 
@@ -507,7 +526,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
 
   const controllerModeBlocked = !isControllerModeConfirmed(settings)
 
-  const controllerSpinner = savingControllerMode || savingRumbleIntensity
+  const controllerSpinner = savingControllerMode || savingGyroMountMatrixFix || savingRumbleIntensity
 
   return (
     <PanelSection title="Controller" spinner={controllerSpinner}>
@@ -517,10 +536,12 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         savingControllerMode={savingControllerMode}
         savingHomeButton={savingHomeButton}
         savingBrightnessDialFix={savingBrightnessDialFix}
+        savingGyroMountMatrixFix={savingGyroMountMatrixFix}
         onStartupToggleChange={(value: boolean) => void handleStartupToggleChange(value)}
         onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
         onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
         onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
+        onGyroMountMatrixFixToggleChange={(value: boolean) => void handleGyroMountMatrixFixToggleChange(value)}
       />
       <PerGameSettingsPanel
         activeGame={activeGame}

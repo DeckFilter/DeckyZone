@@ -230,6 +230,16 @@ const DebugInfoDialog = ({ closeModal }: Props) => {
                           description={renderPathDescription(snapshot.inputPlumber.keyboardPath)}
                         />
                         <SnapshotRow
+                          label="Gyro Fix Built In"
+                          value={formatBoolean(snapshot.inputPlumber.gyroMountMatrixFix.builtIn)}
+                          description={<PathText path={snapshot.inputPlumber.gyroMountMatrixFix.systemPath} />}
+                        />
+                        <SnapshotRow
+                          label="Gyro Fix Override"
+                          value={snapshot.inputPlumber.gyroMountMatrixFix.enabled ? 'Enabled' : 'Disabled'}
+                          description={<PathText path={snapshot.inputPlumber.gyroMountMatrixFix.managedPath} />}
+                        />
+                        <SnapshotRow
                           label="Zotac HID Driver Loaded"
                           value={formatBoolean(snapshot.zotacZoneKernelDrivers.zotacZoneHidLoaded)}
                           description={<PathText path={snapshot.zotacZoneKernelDrivers.zotacZoneHidPath} />}
