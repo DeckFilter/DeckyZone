@@ -47,6 +47,8 @@ If controller input stops responding, try **Troubleshooting > Reapply Controller
 
 SteamOS users can update InputPlumber from **Troubleshooting**. The update remains installed after DeckyZone is reset or removed; use **Restore SteamOS InputPlumber** to undo it. SteamOS updates may reset this override. Bazzite and CachyOS use their distribution's packages.
 
+- `Mouse Drag Fix` trackpad mode: keeps mouse behavior, but maps both right trackpad click zones to left click so dragging does not release when crossing into the original right-click zone; long press sends right click.
+
 ## Support
 
 [Open an issue](https://github.com/DeckFilter/DeckyZone/issues) to report a bug or request a feature, or join [Discord](https://discord.gg/dyMMQNKdMH) for discussion.

@@ -16,11 +16,12 @@ type TrackpadModeOption = { data: TrackpadMode; label: string }
 const INPUTPLUMBER_UNAVAILABLE_MESSAGE = 'InputPlumber is not available'
 const NO_GAMEPAD_MODE_MESSAGE = 'No Gamepad mode detected'
 const TRACKPAD_MODE_EXPLAINER =
-  'Default keeps normal controller behavior with mouse input. Disabled turns off both trackpads. Directional Buttons uses the left pad as a D-pad and the right pad as A/B/X/Y.'
+  'Default keeps normal controller behavior with mouse input. Disabled turns off both trackpads. Directional Buttons uses the left pad as a D-pad and the right pad as A/B/X/Y. Mouse Drag Fix keeps left-button drags active across the right pad click zones and uses long press for right click.'
 const TRACKPAD_MODE_OPTIONS: TrackpadModeOption[] = [
   { data: 'default', label: 'Default' },
   { data: 'disabled', label: 'Disabled' },
   { data: 'directional_buttons', label: 'Directional Buttons' },
+  { data: 'mouse_drag_fix', label: 'Mouse Drag Fix' },
 ]
 
 function getTrackpadExplainer(inputplumberAvailable: boolean, controllerModeBlocked: boolean) {
