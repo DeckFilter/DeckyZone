@@ -1,0 +1,74 @@
+name: Pull request build
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pull-request-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-plugin:
+    name: Build installable plugin
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download Decky CLI
+        env:
+          DECKY_CLI_VERSION: 0.0.8
+          DECKY_CLI_SHA256: 6777e356508c1ce887f8e61b0fa4954bb48b32e6d97341eef68ea4e0d6ead9a0
+        run: |
+          mkdir -p cli
+          curl --fail --location --retry 3 \
+            --output cli/decky \
+            "https://github.com/SteamDeckHomebrew/cli/releases/download/${DECKY_CLI_VERSION}/decky-linux-x86_64"
+          echo "${DECKY_CLI_SHA256}  cli/decky" | sha256sum --check -
+          chmod +x cli/decky
+
+      - name: Build plugin with Decky CLI
+        env:
+          DECKY_BUILDER_IMAGE: ghcr.io/steamdeckhomebrew/builder
+          DECKY_BUILDER_DIGEST: sha256:03c1850fba3ed0f1f74828f64e8a103c11fbddc3273406affa893a977a10d28f
+        run: |
+          docker pull "${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}"
+          # Decky CLI 0.0.8 hardcodes :latest, so point that local tag at the pinned image.
+          docker tag \
+            "${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}" \
+            "${DECKY_BUILDER_IMAGE}:latest"
+          ./cli/decky plugin build .
+
+      - name: Verify installable package
+        run: |
+          package="out/DeckyZone.zip"
+          required_files=(
+            "DeckyZone/dist/index.js"
+            "DeckyZone/main.py"
+            "DeckyZone/package.json"
+            "DeckyZone/plugin.json"
+            "DeckyZone/assets/gamescope/zotac.zone.oled.lua"
+            "DeckyZone/assets/gamescope/zotac.zone.green-tint.lua"
+          )
+
+          test -f "${package}"
+          for required_file in "${required_files[@]}"; do
+            unzip -Z1 "${package}" | grep -Fx "${required_file}"
+          done
+
+          test "$(unzip -Z1 "${package}" | cut -d/ -f1 | sort -u)" = "DeckyZone"
+
+      - name: Upload installable package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: out/DeckyZone.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
