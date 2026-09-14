@@ -25,7 +25,6 @@ jobs:
         with:
           script: |
             const marker = '<!-- deckyzone-pr-build -->';
-            const artifactName = 'DeckyZone.zip';
             const run = context.payload.workflow_run;
             const repositoryName = `${context.repo.owner}/${context.repo.repo}`;
             const sourceRepository = run.head_repository?.full_name;
@@ -62,6 +61,7 @@ jobs:
 
             const pullRequest = matches[0];
             const shortSha = run.head_sha.slice(0, 7);
+            const artifactName = `DeckyZone-pr-${pullRequest.number}-${shortSha}.zip`;
             let body;
             let notifierError;
 
