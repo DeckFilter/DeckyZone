@@ -1,0 +1,137 @@
+name: Pull request build comment
+
+on:
+  workflow_run:
+    workflows:
+      - Pull request build
+    types:
+      - completed
+
+permissions:
+  actions: read
+  pull-requests: write
+
+jobs:
+  publish-download-link:
+    name: Publish download link
+    if: >-
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Update pull request comment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const marker = '<!-- deckyzone-pr-build -->';
+            const run = context.payload.workflow_run;
+            const repositoryName = `${context.repo.owner}/${context.repo.repo}`;
+            const sourceRepository = run.head_repository?.full_name;
+            const sourceOwner = run.head_repository?.owner?.login;
+
+            if (!sourceRepository || !sourceOwner || !run.head_branch || !run.head_sha) {
+              core.warning('The workflow run has no complete source branch metadata; skipping the PR comment.');
+              return;
+            }
+
+            const { data: pullRequests } = await github.rest.pulls.list({
+              ...context.repo,
+              state: 'open',
+              head: `${sourceOwner}:${run.head_branch}`,
+              per_page: 100,
+            });
+
+            const matches = pullRequests.filter((pullRequest) =>
+              pullRequest.head.repo?.full_name === sourceRepository &&
+              pullRequest.head.ref === run.head_branch &&
+              pullRequest.head.sha === run.head_sha &&
+              pullRequest.base.repo.full_name === repositoryName
+            );
+
+            if (matches.length === 0) {
+              core.info('No open pull request points at this workflow run commit; skipping the comment.');
+              return;
+            }
+
+            if (matches.length > 1) {
+              core.setFailed(`Found ${matches.length} pull requests for this workflow run; refusing to comment on an ambiguous match.`);
+              return;
+            }
+
+            const pullRequest = matches[0];
+            const shortSha = run.head_sha.slice(0, 7);
+            const artifactName = `DeckyZone-pr-${pullRequest.number}-${shortSha}.zip`;
+            let body;
+            let notifierError;
+
+            if (run.conclusion === 'success') {
+              const { data: artifactResponse } = await github.rest.actions.listWorkflowRunArtifacts({
+                ...context.repo,
+                run_id: run.id,
+                per_page: 100,
+              });
+              const artifacts = artifactResponse.artifacts
+                .filter((artifact) => artifact.name === artifactName && !artifact.expired)
+                .sort((first, second) => second.id - first.id);
+
+              if (artifacts.length > 0) {
+                const artifact = artifacts[0];
+                const artifactUrl = `${context.serverUrl}/${repositoryName}/actions/runs/${run.id}/artifacts/${artifact.id}`;
+                const expiry = artifact.expires_at.slice(0, 10);
+                body = `${marker}
+            ### Installable pull request build
+
+            [Download \`${artifactName}\`](${artifactUrl})
+
+            Built from \`${shortSha}\` · Available until ${expiry} · GitHub sign-in required
+
+            This artifact contains code from this pull request. Review it before installing.`;
+              } else {
+                notifierError = `No non-expired ${artifactName} artifact was found.`;
+                body = `${marker}
+            ### Installable pull request build
+
+            No download is available because the workflow did not publish the expected artifact. [Open the workflow run](${run.html_url}).
+
+            Commit: \`${shortSha}\``;
+              }
+            } else {
+              const conclusion = (run.conclusion ?? 'unknown').replace(/_/g, ' ');
+              body = `${marker}
+            ### Installable pull request build
+
+            No download is available because [the latest build finished with \`${conclusion}\`](${run.html_url}).
+
+            Commit: \`${shortSha}\``;
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: pullRequest.number,
+              per_page: 100,
+            });
+            const existingComment = comments.find((comment) =>
+              comment.user?.login === 'github-actions[bot]' &&
+              comment.body?.includes(marker)
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: existingComment.id,
+                body,
+              });
+              core.info(`Updated build comment on pull request #${pullRequest.number}.`);
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: pullRequest.number,
+                body,
+              });
+              core.info(`Created build comment on pull request #${pullRequest.number}.`);
+            }
+
+            if (notifierError) {
+              core.setFailed(notifierError);
+            }

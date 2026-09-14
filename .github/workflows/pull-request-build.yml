@@ -65,10 +65,34 @@ jobs:
 
           test "$(unzip -Z1 "${package}" | cut -d/ -f1 | sort -u)" = "DeckyZone"
 
+      - name: Name pull request package
+        id: package
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          package_name="DeckyZone-pr-${PR_NUMBER}-${HEAD_SHA:0:7}.zip"
+          mv out/DeckyZone.zip "out/${package_name}"
+          printf 'filename=%s\n' "${package_name}" >> "${GITHUB_OUTPUT}"
+
       - name: Upload installable package
+        id: upload-package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          path: out/DeckyZone.zip
+          path: out/${{ steps.package.outputs.filename }}
           archive: false
           if-no-files-found: error
           retention-days: 30
+
+      - name: Add download link to run summary
+        env:
+          ARTIFACT_NAME: ${{ steps.package.outputs.filename }}
+          ARTIFACT_URL: ${{ steps.upload-package.outputs.artifact-url }}
+        run: |
+          {
+            echo "### Installable pull request build"
+            echo
+            echo "[Download ${ARTIFACT_NAME}](${ARTIFACT_URL})"
+            echo
+            echo "GitHub sign-in and repository access are required. The download is retained for 30 days."
+          } >> "${GITHUB_STEP_SUMMARY}"
