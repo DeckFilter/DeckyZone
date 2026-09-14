@@ -2,6 +2,7 @@ import { callable } from '@decky/api'
 import { PanelSection, PanelSectionRow, ToggleField, gamepadDialogClasses } from '@decky/ui'
 import { useState } from 'react'
 import type { PluginSettings } from '../types/plugin'
+import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
 
 type Props = {
@@ -76,34 +77,56 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
   )
 
   const handleZotacProfileChange = async (enabled: boolean) => {
+    let restartRequired = false
     setDisplayNotice(null)
     setSavingZotacProfile(true)
     try {
       const nextSettings = await setGamescopeZotacProfileEnabled(enabled)
       onSettingsChange(nextSettings)
-      setDisplayNotice(
-        nextSettings.gamescopeZotacProfileInstalled !== enabled ? DISPLAY_MISMATCH_NOTICE : DISPLAY_RESTART_REQUIRED_NOTICE,
-      )
+      if (nextSettings.gamescopeZotacProfileInstalled !== enabled) {
+        setDisplayNotice(DISPLAY_MISMATCH_NOTICE)
+      } else {
+        restartRequired = true
+      }
     } catch {
       setDisplayNotice(DISPLAY_UPDATE_FAILED_NOTICE)
     } finally {
       setSavingZotacProfile(false)
     }
+
+    if (restartRequired) {
+      try {
+        showRestartRequiredDialog()
+      } catch {
+        setDisplayNotice(DISPLAY_RESTART_REQUIRED_NOTICE)
+      }
+    }
   }
 
   const handleGreenTintFixChange = async (enabled: boolean) => {
+    let restartRequired = false
     setDisplayNotice(null)
     setSavingGreenTintFix(true)
     try {
       const nextSettings = await setGamescopeGreenTintFixEnabled(enabled)
       onSettingsChange(nextSettings)
-      setDisplayNotice(
-        nextSettings.gamescopeGreenTintFixEnabled !== enabled ? DISPLAY_MISMATCH_NOTICE : DISPLAY_RESTART_REQUIRED_NOTICE,
-      )
+      if (nextSettings.gamescopeGreenTintFixEnabled !== enabled) {
+        setDisplayNotice(DISPLAY_MISMATCH_NOTICE)
+      } else {
+        restartRequired = true
+      }
     } catch {
       setDisplayNotice(DISPLAY_UPDATE_FAILED_NOTICE)
     } finally {
       setSavingGreenTintFix(false)
+    }
+
+    if (restartRequired) {
+      try {
+        showRestartRequiredDialog()
+      } catch {
+        setDisplayNotice(DISPLAY_RESTART_REQUIRED_NOTICE)
+      }
     }
   }
 

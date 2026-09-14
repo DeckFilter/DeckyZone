@@ -3,6 +3,7 @@ import { DropdownItem, PanelSection, PanelSectionRow, gamepadDialogClasses } fro
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentProps, ComponentType } from 'react'
 import type { PluginSettings } from '../types/plugin'
+import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
 
 type Props = {
@@ -122,6 +123,7 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
 
     const previousVram = { ...settings.vram }
     const previousVramGb = getVramValue(settings)
+    let restartRequired = false
     savingVramRef.current = true
     setVramNotice(null)
     setSavingVram(true)
@@ -132,13 +134,11 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
       const confirmedVramGb = getVramValue(nextSettings)
       onSettingsChange(nextSettings)
       setVramDraftGb(confirmedVramGb)
-      setVramNotice(
-        nextSettings.vram.pendingVramGb !== nextVramGb
-          ? VRAM_UPDATE_FAILED_NOTICE
-          : nextSettings.vram.rebootRequired
-            ? VRAM_REBOOT_REQUIRED_NOTICE
-            : null,
-      )
+      if (nextSettings.vram.pendingVramGb !== nextVramGb) {
+        setVramNotice(VRAM_UPDATE_FAILED_NOTICE)
+      } else if (nextSettings.vram.rebootRequired) {
+        restartRequired = true
+      }
     } catch {
       setVramNotice(VRAM_UPDATE_FAILED_NOTICE)
       onSettingsChange((currentSettings) => ({
@@ -149,6 +149,14 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
     } finally {
       savingVramRef.current = false
       setSavingVram(false)
+    }
+
+    if (restartRequired) {
+      try {
+        showRestartRequiredDialog()
+      } catch {
+        setVramNotice(VRAM_REBOOT_REQUIRED_NOTICE)
+      }
     }
   }
 
