@@ -3373,10 +3373,16 @@ class DeckyZoneService:
 
         size_gb = int(size_gb)
         vram_control.write_vram_gb(size_gb)
-        self.logger.info(
-            f"Stored VRAM size {size_gb}GB in CMOS; reboot required to apply."
-        )
-        return self._current_settings()
+        next_settings = self._current_settings()
+        vram_state = next_settings["vram"]
+        if vram_state["activeVramGb"] is None:
+            result = "reboot requirement could not be determined"
+        elif vram_state["rebootRequired"]:
+            result = "reboot required to apply"
+        else:
+            result = "active VRAM already matches"
+        self.logger.info(f"Stored VRAM size {size_gb}GB in CMOS; {result}.")
+        return next_settings
 
     def remove_gamescope_display_profiles(self):
         try:

@@ -35,6 +35,18 @@ def is_valid_vram_gb(size_gb):
     return isinstance(size_gb, int) and MIN_VRAM_GB <= size_gb <= MAX_VRAM_GB
 
 
+def decode_vram_gb(raw_value):
+    """Decode a supported CMOS byte into a whole-number VRAM size."""
+    if not isinstance(raw_value, int) or raw_value % CMOS_UNITS_PER_GB != 0:
+        raise ValueError(f"Unsupported CMOS VRAM value: {raw_value}.")
+
+    size_gb = raw_value // CMOS_UNITS_PER_GB
+    if not is_valid_vram_gb(size_gb):
+        raise ValueError(f"Unsupported CMOS VRAM value: {raw_value}.")
+
+    return size_gb
+
+
 def _cmos_transaction(port_file, value=None):
     """Select the VRAM CMOS index, optionally write a byte, and read it back.
 
@@ -59,12 +71,12 @@ def _cmos_transaction(port_file, value=None):
 def read_pending_vram_gb():
     """Return the VRAM size in GB currently stored in CMOS.
 
-    This is the value the BIOS will apply on the next boot. May be a
-    fractional value if the stored byte is not a whole number of GB.
+    This is the validated value the BIOS will apply on the next boot.
+    Raises when the stored byte is not one of the supported encodings.
     """
     with open(PORT_DEVICE_PATH, "r+b", buffering=0) as port_file:
         raw_value = _cmos_transaction(port_file)
-    return raw_value / CMOS_UNITS_PER_GB
+    return decode_vram_gb(raw_value)
 
 
 def write_vram_gb(size_gb):

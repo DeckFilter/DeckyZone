@@ -21,7 +21,8 @@ const ControlledDropdownItem = DropdownItem as ComponentType<
 
 const VRAM_DEFAULT_GB = 4
 const VRAM_DESCRIPTION = 'Memory reserved for the GPU (UMA framebuffer), reboot after changing this'
-const VRAM_UNAVAILABLE_DESCRIPTION = 'VRAM control is not available on this device'
+const VRAM_UNAVAILABLE_DESCRIPTION = 'Current VRAM setting is unavailable'
+const VRAM_UNKNOWN_LABEL = 'Unknown'
 const VRAM_UPDATE_FAILED_NOTICE = "Couldn't update VRAM size."
 const VRAM_REBOOT_REQUIRED_NOTICE = 'Reboot to apply VRAM change.'
 
@@ -29,13 +30,13 @@ function getVramOptionLabel(vramGb: number) {
   return `${vramGb} GB${vramGb === VRAM_DEFAULT_GB ? ' (Default)' : ''}`
 }
 
-function clampVramGb(value: number, minVramGb: number, maxVramGb: number) {
-  return Math.min(maxVramGb, Math.max(minVramGb, Math.round(value)))
+function isValidVramGb(value: number | null, minVramGb: number, maxVramGb: number): value is number {
+  return value !== null && Number.isInteger(value) && value >= minVramGb && value <= maxVramGb
 }
 
 function getVramValue(settings: PluginSettings) {
-  const { pendingVramGb, activeVramGb, minVramGb, maxVramGb } = settings.vram
-  return clampVramGb(pendingVramGb ?? activeVramGb ?? VRAM_DEFAULT_GB, minVramGb, maxVramGb)
+  const { available, pendingVramGb, minVramGb, maxVramGb } = settings.vram
+  return available && isValidVramGb(pendingVramGb, minVramGb, maxVramGb) ? pendingVramGb : null
 }
 
 function getVramDescription(settings: PluginSettings) {
@@ -87,7 +88,7 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
     setVramDraftGb(getVramValue(settings))
   }, [
     settings.vram.pendingVramGb,
-    settings.vram.activeVramGb,
+    settings.vram.available,
     settings.vram.minVramGb,
     settings.vram.maxVramGb,
   ])
@@ -108,10 +109,14 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
       return
     }
 
-    const clampedVramGb = clampVramGb(nextVramGb, settings.vram.minVramGb, settings.vram.maxVramGb)
+    if (!isValidVramGb(nextVramGb, settings.vram.minVramGb, settings.vram.maxVramGb)) {
+      setVramNotice(VRAM_UPDATE_FAILED_NOTICE)
+      return
+    }
+
     const currentVramGb = settings.vram.pendingVramGb ?? settings.vram.activeVramGb
-    if (clampedVramGb === currentVramGb) {
-      setVramDraftGb(clampedVramGb)
+    if (nextVramGb === currentVramGb) {
+      setVramDraftGb(nextVramGb)
       return
     }
 
@@ -120,15 +125,19 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
     savingVramRef.current = true
     setVramNotice(null)
     setSavingVram(true)
-    setVramDraftGb(clampedVramGb)
-    onSettingsChange(getOptimisticVramSettings(settings, clampedVramGb))
+    setVramDraftGb(nextVramGb)
+    onSettingsChange(getOptimisticVramSettings(settings, nextVramGb))
     try {
-      const nextSettings = await setVramSizeGb(clampedVramGb)
+      const nextSettings = await setVramSizeGb(nextVramGb)
       const confirmedVramGb = getVramValue(nextSettings)
       onSettingsChange(nextSettings)
       setVramDraftGb(confirmedVramGb)
       setVramNotice(
-        nextSettings.vram.pendingVramGb !== clampedVramGb ? VRAM_UPDATE_FAILED_NOTICE : VRAM_REBOOT_REQUIRED_NOTICE,
+        nextSettings.vram.pendingVramGb !== nextVramGb
+          ? VRAM_UPDATE_FAILED_NOTICE
+          : nextSettings.vram.rebootRequired
+            ? VRAM_REBOOT_REQUIRED_NOTICE
+            : null,
       )
     } catch {
       setVramNotice(VRAM_UPDATE_FAILED_NOTICE)
@@ -152,10 +161,10 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
           menuLabel="VRAM Size"
           description={getVramDescription(settings)}
           rgOptions={vramOptions}
-          strDefaultLabel={getVramOptionLabel(vramDraftGb)}
+          strDefaultLabel={vramDraftGb === null ? VRAM_UNKNOWN_LABEL : getVramOptionLabel(vramDraftGb)}
           selectedOption={vramDraftGb}
           onChange={(option: VramOption) => void handleVramChange(option.data)}
-          disabled={savingVram || !settings.vram.available}
+          disabled={savingVram || !settings.vram.available || vramDraftGb === null}
         />
       </PanelSectionRow>
       {vramRebootHint && (
