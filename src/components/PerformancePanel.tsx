@@ -1,6 +1,6 @@
 import { callable } from '@decky/api'
-import { PanelSection, PanelSectionRow, SliderField, gamepadDialogClasses } from '@decky/ui'
-import { useEffect, useState } from 'react'
+import { DropdownItem, PanelSection, PanelSectionRow, gamepadDialogClasses } from '@decky/ui'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PluginSettings } from '../types/plugin'
 import { useDeckyToastNotice } from '../utils/toasts'
 
@@ -8,6 +8,8 @@ type Props = {
   settings: PluginSettings
   onSettingsChange: (nextSettings: PluginSettings) => void
 }
+
+type VramOption = { data: number; label: string }
 
 const setVramSizeGb = callable<[number], PluginSettings>('set_vram_size_gb')
 
@@ -21,7 +23,7 @@ function clampVramGb(value: number, minVramGb: number, maxVramGb: number) {
   return Math.min(maxVramGb, Math.max(minVramGb, Math.round(value)))
 }
 
-function getVramSliderValue(settings: PluginSettings) {
+function getVramValue(settings: PluginSettings) {
   const { pendingVramGb, activeVramGb, minVramGb, maxVramGb } = settings.vram
   return clampVramGb(pendingVramGb ?? activeVramGb ?? VRAM_DEFAULT_GB, minVramGb, maxVramGb)
 }
@@ -45,13 +47,28 @@ function getVramRebootHint(settings: PluginSettings) {
 
 const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
   const [savingVram, setSavingVram] = useState(false)
-  const [vramDraftGb, setVramDraftGb] = useState(() => getVramSliderValue(settings))
+  const savingVramRef = useRef(false)
+  const [vramDraftGb, setVramDraftGb] = useState(() => getVramValue(settings))
   const [vramNotice, setVramNotice] = useState<string | null>(null)
+  const vramOptions = useMemo<VramOption[]>(
+    () =>
+      Array.from({ length: settings.vram.maxVramGb - settings.vram.minVramGb + 1 }, (_, index) => {
+        const value = settings.vram.minVramGb + index
+        return { data: value, label: `${value} GB` }
+      }),
+    [settings.vram.minVramGb, settings.vram.maxVramGb],
+  )
+  const selectedVramOption = vramOptions.find((option) => option.data === vramDraftGb)
   const vramRebootHint = getVramRebootHint(settings)
 
   useEffect(() => {
-    setVramDraftGb(getVramSliderValue(settings))
-  }, [settings.vram.pendingVramGb, settings.vram.activeVramGb])
+    setVramDraftGb(getVramValue(settings))
+  }, [
+    settings.vram.pendingVramGb,
+    settings.vram.activeVramGb,
+    settings.vram.minVramGb,
+    settings.vram.maxVramGb,
+  ])
 
   useDeckyToastNotice(
     vramNotice
@@ -65,12 +82,18 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
   )
 
   const handleVramChange = async (nextVramGb: number) => {
+    if (savingVramRef.current) {
+      return
+    }
+
     const clampedVramGb = clampVramGb(nextVramGb, settings.vram.minVramGb, settings.vram.maxVramGb)
-    if (clampedVramGb === (settings.vram.pendingVramGb ?? null)) {
+    const currentVramGb = settings.vram.pendingVramGb ?? settings.vram.activeVramGb
+    if (clampedVramGb === currentVramGb) {
       setVramDraftGb(clampedVramGb)
       return
     }
 
+    savingVramRef.current = true
     setVramNotice(null)
     setSavingVram(true)
     setVramDraftGb(clampedVramGb)
@@ -82,8 +105,9 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
       )
     } catch {
       setVramNotice(VRAM_UPDATE_FAILED_NOTICE)
-      setVramDraftGb(getVramSliderValue(settings))
+      setVramDraftGb(getVramValue(settings))
     } finally {
+      savingVramRef.current = false
       setSavingVram(false)
     }
   }
@@ -91,19 +115,15 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
   return (
     <PanelSection title="Performance">
       <PanelSectionRow>
-        <SliderField
+        <DropdownItem
+          key={`vram-size:${vramDraftGb}`}
           label="VRAM Size"
+          menuLabel="VRAM Size"
           description={getVramDescription(settings)}
-          value={vramDraftGb}
-          min={settings.vram.minVramGb}
-          max={settings.vram.maxVramGb}
-          step={1}
-          notchCount={settings.vram.maxVramGb - settings.vram.minVramGb + 1}
-          notchTicksVisible
-          showValue
-          valueSuffix=" GB"
-          resetValue={VRAM_DEFAULT_GB}
-          onChange={(value: number) => void handleVramChange(value)}
+          rgOptions={vramOptions}
+          strDefaultLabel={selectedVramOption?.label ?? `${vramDraftGb} GB`}
+          selectedOption={selectedVramOption?.data ?? vramDraftGb}
+          onChange={(option: { data: number }) => void handleVramChange(option.data)}
           disabled={savingVram || !settings.vram.available}
         />
       </PanelSectionRow>
