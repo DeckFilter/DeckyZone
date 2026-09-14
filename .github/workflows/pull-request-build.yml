@@ -35,7 +35,16 @@ jobs:
           chmod +x cli/decky
 
       - name: Build plugin with Decky CLI
-        run: ./cli/decky plugin build .
+        env:
+          DECKY_BUILDER_IMAGE: ghcr.io/steamdeckhomebrew/builder
+          DECKY_BUILDER_DIGEST: sha256:03c1850fba3ed0f1f74828f64e8a103c11fbddc3273406affa893a977a10d28f
+        run: |
+          docker pull "${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}"
+          # Decky CLI 0.0.8 hardcodes :latest, so point that local tag at the pinned image.
+          docker tag \
+            "${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}" \
+            "${DECKY_BUILDER_IMAGE}:latest"
+          ./cli/decky plugin build .
 
       - name: Verify installable package
         run: |
