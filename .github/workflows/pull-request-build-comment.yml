@@ -71,11 +71,11 @@ jobs:
                 run_id: run.id,
                 per_page: 100,
               });
-              const artifacts = artifactResponse.artifacts.filter((artifact) =>
-                artifact.name === artifactName && !artifact.expired
-              );
+              const artifacts = artifactResponse.artifacts
+                .filter((artifact) => artifact.name === artifactName && !artifact.expired)
+                .sort((first, second) => second.id - first.id);
 
-              if (artifacts.length === 1) {
+              if (artifacts.length > 0) {
                 const artifact = artifacts[0];
                 const artifactUrl = `${context.serverUrl}/${repositoryName}/actions/runs/${run.id}/artifacts/${artifact.id}`;
                 const expiry = artifact.expires_at.slice(0, 10);
@@ -88,7 +88,7 @@ jobs:
 
             This artifact contains code from this pull request. Review it before installing.`;
               } else {
-                notifierError = `Expected one non-expired ${artifactName} artifact, found ${artifacts.length}.`;
+                notifierError = `No non-expired ${artifactName} artifact was found.`;
                 body = `${marker}
             ### Installable pull request build
 
