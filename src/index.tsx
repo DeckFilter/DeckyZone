@@ -6,7 +6,7 @@ import {
   SteamSpinner,
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener } from '@decky/api'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import ControllerPanel from "./components/ControllerPanel"
 import DisplayPanel from "./components/DisplayPanel"
 import ErrorBoundary from "./components/ErrorBoundary"
@@ -27,6 +27,7 @@ type BootstrapSnapshot = {
   settings: PluginSettings
 }
 type BootstrapState = { state: 'loading' } | { state: 'ready'; snapshot: BootstrapSnapshot } | { state: 'error'; message: string }
+type PluginSettingsUpdate = PluginSettings | ((currentSettings: PluginSettings) => PluginSettings)
 
 const getStatus = callable<[], PluginStatus>('get_status')
 const getSettings = callable<[], PluginSettings>('get_settings')
@@ -299,10 +300,19 @@ function Content() {
   const [bootstrap, setBootstrap] = useState<BootstrapState>(getBootstrapState())
   const [status, setStatus] = useState<PluginStatus | null>(() => getBootstrapStatus())
   const [settings, setSettings] = useState<PluginSettings | null>(() => getBootstrapSettings())
+  const settingsRef = useRef(settings)
+  settingsRef.current = settings
   const [activeGame, setActiveGame] = useState<ActiveGame | null>(getActiveGame())
   const [uiRevision, setUiRevision] = useState(0)
 
-  const applySettingsUpdate = (nextSettings: PluginSettings) => {
+  const applySettingsUpdate = (update: PluginSettingsUpdate) => {
+    const currentSettings = settingsRef.current
+    if (typeof update === 'function' && !currentSettings) {
+      return
+    }
+
+    const nextSettings = typeof update === 'function' ? update(currentSettings!) : update
+    settingsRef.current = nextSettings
     cacheBootstrapSettings(nextSettings)
     setBootstrap(getBootstrapState())
     setSettings(nextSettings)

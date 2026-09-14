@@ -1,23 +1,33 @@
 import { callable } from '@decky/api'
 import { DropdownItem, PanelSection, PanelSectionRow, gamepadDialogClasses } from '@decky/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ComponentProps, ComponentType } from 'react'
 import type { PluginSettings } from '../types/plugin'
 import { useDeckyToastNotice } from '../utils/toasts'
 
 type Props = {
   settings: PluginSettings
-  onSettingsChange: (nextSettings: PluginSettings) => void
+  onSettingsChange: (
+    update: PluginSettings | ((currentSettings: PluginSettings) => PluginSettings)
+  ) => void
 }
 
 type VramOption = { data: number; label: string }
 
 const setVramSizeGb = callable<[number], PluginSettings>('set_vram_size_gb')
+const ControlledDropdownItem = DropdownItem as ComponentType<
+  ComponentProps<typeof DropdownItem> & { controlled: boolean }
+>
 
 const VRAM_DEFAULT_GB = 4
 const VRAM_DESCRIPTION = 'Memory reserved for the GPU (UMA framebuffer), reboot after changing this'
 const VRAM_UNAVAILABLE_DESCRIPTION = 'VRAM control is not available on this device'
 const VRAM_UPDATE_FAILED_NOTICE = "Couldn't update VRAM size."
 const VRAM_REBOOT_REQUIRED_NOTICE = 'Reboot to apply VRAM change.'
+
+function getVramOptionLabel(vramGb: number) {
+  return `${vramGb} GB${vramGb === VRAM_DEFAULT_GB ? ' (Default)' : ''}`
+}
 
 function clampVramGb(value: number, minVramGb: number, maxVramGb: number) {
   return Math.min(maxVramGb, Math.max(minVramGb, Math.round(value)))
@@ -45,6 +55,19 @@ function getVramRebootHint(settings: PluginSettings) {
   return `Reboot required: ${activeVramGb} GB active, ${pendingVramGb} GB after reboot`
 }
 
+function getOptimisticVramSettings(settings: PluginSettings, pendingVramGb: number): PluginSettings {
+  const activeVramGb = settings.vram.activeVramGb
+
+  return {
+    ...settings,
+    vram: {
+      ...settings.vram,
+      pendingVramGb,
+      rebootRequired: activeVramGb !== null && Math.abs(pendingVramGb - activeVramGb) >= 0.5,
+    },
+  }
+}
+
 const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
   const [savingVram, setSavingVram] = useState(false)
   const savingVramRef = useRef(false)
@@ -54,11 +77,10 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
     () =>
       Array.from({ length: settings.vram.maxVramGb - settings.vram.minVramGb + 1 }, (_, index) => {
         const value = settings.vram.minVramGb + index
-        return { data: value, label: `${value} GB` }
+        return { data: value, label: getVramOptionLabel(value) }
       }),
     [settings.vram.minVramGb, settings.vram.maxVramGb],
   )
-  const selectedVramOption = vramOptions.find((option) => option.data === vramDraftGb)
   const vramRebootHint = getVramRebootHint(settings)
 
   useEffect(() => {
@@ -93,19 +115,28 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
       return
     }
 
+    const previousVram = { ...settings.vram }
+    const previousVramGb = getVramValue(settings)
     savingVramRef.current = true
     setVramNotice(null)
     setSavingVram(true)
     setVramDraftGb(clampedVramGb)
+    onSettingsChange(getOptimisticVramSettings(settings, clampedVramGb))
     try {
       const nextSettings = await setVramSizeGb(clampedVramGb)
+      const confirmedVramGb = getVramValue(nextSettings)
       onSettingsChange(nextSettings)
+      setVramDraftGb(confirmedVramGb)
       setVramNotice(
         nextSettings.vram.pendingVramGb !== clampedVramGb ? VRAM_UPDATE_FAILED_NOTICE : VRAM_REBOOT_REQUIRED_NOTICE,
       )
     } catch {
       setVramNotice(VRAM_UPDATE_FAILED_NOTICE)
-      setVramDraftGb(getVramValue(settings))
+      onSettingsChange((currentSettings) => ({
+        ...currentSettings,
+        vram: previousVram,
+      }))
+      setVramDraftGb(previousVramGb)
     } finally {
       savingVramRef.current = false
       setSavingVram(false)
@@ -115,15 +146,15 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
   return (
     <PanelSection title="Performance">
       <PanelSectionRow>
-        <DropdownItem
-          key={`vram-size:${vramDraftGb}`}
+        <ControlledDropdownItem
+          controlled
           label="VRAM Size"
           menuLabel="VRAM Size"
           description={getVramDescription(settings)}
           rgOptions={vramOptions}
-          strDefaultLabel={selectedVramOption?.label ?? `${vramDraftGb} GB`}
-          selectedOption={selectedVramOption?.data ?? vramDraftGb}
-          onChange={(option: { data: number }) => void handleVramChange(option.data)}
+          strDefaultLabel={getVramOptionLabel(vramDraftGb)}
+          selectedOption={vramDraftGb}
+          onChange={(option: VramOption) => void handleVramChange(option.data)}
           disabled={savingVram || !settings.vram.available}
         />
       </PanelSectionRow>
