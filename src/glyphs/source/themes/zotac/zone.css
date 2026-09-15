@@ -4,7 +4,10 @@
     --controller-right-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller-right.png");
 
     --button-guide-image: url("/__deckyzone_glyph_assets__/zotac/zone/guide.svg");
-    --button-view-image: url("/__deckyzone_glyph_assets__/shared/view.svg");
+    /* Keep HOME artwork in the bundle without assigning it to Guide/Menu/View
+       until the device's Steam glyph mapping is confirmed. */
+    --zotac-home-button-image: url("/__deckyzone_glyph_assets__/zotac/zone/home.svg");
+    --button-view-image: url("/__deckyzone_glyph_assets__/zotac/zone/view.svg");
     --button-menu-image: url("/__deckyzone_glyph_assets__/zotac/zone/menu.svg");
     --button-lb-image: url("/__deckyzone_glyph_assets__/zotac/zone/lb.svg");
     --button-rb-image: url("/__deckyzone_glyph_assets__/zotac/zone/rb.svg");
@@ -12,6 +15,18 @@
     --button-lb-height: 22px;
     --button-rb-width: 36px;
     --button-rb-height: 22px;
+    --button-lt-image: url("/__deckyzone_glyph_assets__/zotac/zone/lt.svg");
+    --button-lt-soft-image: url("/__deckyzone_glyph_assets__/zotac/zone/lt-soft.svg");
+    --button-rt-image: url("/__deckyzone_glyph_assets__/zotac/zone/rt.svg");
+    --button-rt-soft-image: url("/__deckyzone_glyph_assets__/zotac/zone/rt-soft.svg");
+    --button-lt-width: 36px;
+    --button-lt-height: 24px;
+    --button-lt-soft-width: 36px;
+    --button-lt-soft-height: 24px;
+    --button-rt-width: 36px;
+    --button-rt-height: 24px;
+    --button-rt-soft-width: 36px;
+    --button-rt-soft-height: 24px;
 
     --button-l4-image: url("/__deckyzone_glyph_assets__/shared/m2-left.svg");
     --button-r4-image: url("/__deckyzone_glyph_assets__/shared/m1-right.svg");

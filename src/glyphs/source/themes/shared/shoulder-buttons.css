@@ -17,23 +17,39 @@ img[src="/steaminputglyphs/sd_r1.svg"] {
 img[src="/steaminputglyphs/ps5_l2.svg"],
 img[src="/steaminputglyphs/xbox_lt.svg"],
 img[src="/steaminputglyphs/sd_l2.svg"] {
-    content: url("/__deckyzone_glyph_assets__/shared/lt.svg");
+    content: var(--button-lt-image, url("/__deckyzone_glyph_assets__/shared/lt.svg"));
+    width: var(--button-lt-width, auto);
+    height: var(--button-lt-height, auto);
+    max-width: 100%;
+    max-height: 100%;
 }
 
 img[src="/steaminputglyphs/ps5_l2_soft.svg"],
 img[src="/steaminputglyphs/xbox_lt_soft.svg"],
 img[src="/steaminputglyphs/sd_l2_half.svg"] {
-    content: url("/__deckyzone_glyph_assets__/shared/lt-soft.svg");
+    content: var(--button-lt-soft-image, url("/__deckyzone_glyph_assets__/shared/lt-soft.svg"));
+    width: var(--button-lt-soft-width, auto);
+    height: var(--button-lt-soft-height, auto);
+    max-width: 100%;
+    max-height: 100%;
 }
 
 img[src="/steaminputglyphs/ps5_r2.svg"],
 img[src="/steaminputglyphs/xbox_rt.svg"],
 img[src="/steaminputglyphs/sd_r2.svg"] {
-    content: url("/__deckyzone_glyph_assets__/shared/rt.svg");
+    content: var(--button-rt-image, url("/__deckyzone_glyph_assets__/shared/rt.svg"));
+    width: var(--button-rt-width, auto);
+    height: var(--button-rt-height, auto);
+    max-width: 100%;
+    max-height: 100%;
 }
 
 img[src="/steaminputglyphs/ps5_r2_soft.svg"],
 img[src="/steaminputglyphs/xbox_rt_soft.svg"],
 img[src="/steaminputglyphs/sd_r2_half.svg"] {
-    content: url("/__deckyzone_glyph_assets__/shared/rt-soft.svg");
+    content: var(--button-rt-soft-image, url("/__deckyzone_glyph_assets__/shared/rt-soft.svg"));
+    width: var(--button-rt-soft-width, auto);
+    height: var(--button-rt-soft-height, auto);
+    max-width: 100%;
+    max-height: 100%;
 }
