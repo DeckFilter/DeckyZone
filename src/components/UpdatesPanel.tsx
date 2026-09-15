@@ -1,53 +1,19 @@
 import { callable } from '@decky/api'
 import { ButtonItem, Field, PanelSection, PanelSectionRow } from '@decky/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  checkLatestVersion,
+  compareVersions,
+  readVersionCache,
+  recheckLatestVersion,
+  type VersionCache,
+} from '../utils/pluginUpdates'
 import { useDeckyToastNotice } from '../utils/toasts'
 
-const getLatestVersionNum = callable<[], string>('get_latest_version_num')
 const otaUpdate = callable<[], boolean>('ota_update')
-
-const VERSION_CACHE_KEY = 'DeckyZone.versionCache'
 
 type Props = {
   installedVersionNum: string
-}
-
-type VersionCache = {
-  installedVersionNum: string
-  latestVersionNum: string
-  lastCheckTime: number
-}
-
-const readVersionCache = (): VersionCache | null => {
-  try {
-    const rawCache = localStorage.getItem(VERSION_CACHE_KEY)
-    if (!rawCache) {
-      return null
-    }
-
-    const parsedCache = JSON.parse(rawCache) as Partial<VersionCache>
-    if (
-      typeof parsedCache.installedVersionNum !== 'string' ||
-      typeof parsedCache.latestVersionNum !== 'string' ||
-      typeof parsedCache.lastCheckTime !== 'number'
-    ) {
-      localStorage.removeItem(VERSION_CACHE_KEY)
-      return null
-    }
-
-    return {
-      installedVersionNum: parsedCache.installedVersionNum,
-      latestVersionNum: parsedCache.latestVersionNum,
-      lastCheckTime: parsedCache.lastCheckTime,
-    }
-  } catch {
-    localStorage.removeItem(VERSION_CACHE_KEY)
-    return null
-  }
-}
-
-const writeVersionCache = (cache: VersionCache) => {
-  localStorage.setItem(VERSION_CACHE_KEY, JSON.stringify(cache))
 }
 
 const getLastCheckText = (lastCheckTime: number): string => {
@@ -71,28 +37,6 @@ const getLastCheckText = (lastCheckTime: number): string => {
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
-const compareVersions = (left: string, right: string): number => {
-  const leftParts = left
-    .replace(/^v/i, '')
-    .split('.')
-    .map((part) => Number.parseInt(part, 10) || 0)
-  const rightParts = right
-    .replace(/^v/i, '')
-    .split('.')
-    .map((part) => Number.parseInt(part, 10) || 0)
-  const maxLength = Math.max(leftParts.length, rightParts.length)
-
-  for (let index = 0; index < maxLength; index += 1) {
-    const leftPart = leftParts[index] ?? 0
-    const rightPart = rightParts[index] ?? 0
-    if (leftPart !== rightPart) {
-      return leftPart - rightPart
-    }
-  }
-
-  return 0
-}
-
 const UpdatesPanel = ({ installedVersionNum }: Props) => {
   const [latestVersionNum, setLatestVersionNum] = useState('')
   const [lastCheckTime, setLastCheckTime] = useState<number | null>(null)
@@ -101,6 +45,15 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
   const [isLoadingLatestVersion, setIsLoadingLatestVersion] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const isMountedRef = useRef(true)
+
+  const applyLatestVersion = (versionInfo: VersionCache) => {
+    if (!isMountedRef.current) {
+      return
+    }
+
+    setLatestVersionNum(versionInfo.latestVersionNum)
+    setLastCheckTime(versionInfo.lastCheckTime)
+  }
 
   useDeckyToastNotice(
     versionError
@@ -128,19 +81,7 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
     setIsLoadingLatestVersion(true)
     setVersionError(null)
     try {
-      const fetchedVersionNum = await getLatestVersionNum()
-      if (!isMountedRef.current) {
-        return
-      }
-
-      const nextLastCheckTime = Date.now()
-      setLatestVersionNum(fetchedVersionNum)
-      setLastCheckTime(nextLastCheckTime)
-      writeVersionCache({
-        installedVersionNum,
-        latestVersionNum: fetchedVersionNum,
-        lastCheckTime: nextLastCheckTime,
-      })
+      applyLatestVersion(await recheckLatestVersion(installedVersionNum))
     } catch {
       if (!isMountedRef.current) {
         return
@@ -155,13 +96,22 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
   }
 
   useEffect(() => {
-    const cachedVersionInfo = readVersionCache()
+    const cachedVersionInfo = readVersionCache(installedVersionNum)
     if (cachedVersionInfo) {
-      setLatestVersionNum(cachedVersionInfo.latestVersionNum)
-      setLastCheckTime(cachedVersionInfo.lastCheckTime)
-    } else {
-      void loadLatestVersion()
+      applyLatestVersion(cachedVersionInfo)
     }
+
+    setIsLoadingLatestVersion(true)
+    void checkLatestVersion(installedVersionNum)
+      .then(applyLatestVersion)
+      .catch(() => {
+        // Background checks are best-effort; the manual button reports failures.
+      })
+      .finally(() => {
+        if (isMountedRef.current) {
+          setIsLoadingLatestVersion(false)
+        }
+      })
 
     return () => {
       isMountedRef.current = false
