@@ -499,7 +499,7 @@ class DeckyZoneService:
 
     async def get_latest_version_num(self):
         try:
-            return plugin_update.get_latest_version()
+            return await asyncio.to_thread(plugin_update.get_latest_version)
         except Exception as error:
             self.logger.error(f"Failed to fetch latest DeckyZone version: {error}")
             raise RuntimeError("Failed to fetch latest DeckyZone version.")

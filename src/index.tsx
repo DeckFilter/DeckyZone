@@ -18,6 +18,8 @@ import UpdatesPanel from "./components/UpdatesPanel"
 import ZotacIcon from "./components/ZotacIcon"
 import { cleanupZotacGlyphsRuntime, syncStoredZotacGlyphsRuntimeEnabled } from "./glyphs/zotacGlyphRuntime"
 import type { ActiveGame, PluginResetResult, PluginSettings, PluginStatus } from "./types/plugin"
+import { checkLatestVersion, compareVersions, resetStartupCheck } from './utils/pluginUpdates'
+import { showDeckyToast } from './utils/toasts'
 
 type BrightnessDialDirection = 'up' | 'down'
 type ActiveGameChangedHandler = (newGame: ActiveGame | null, oldGame: ActiveGame | null) => void
@@ -45,6 +47,8 @@ let brightnessChangeRegistration: { unregister?: () => void } | null = null
 let brightnessDialFixEventListener: ((direction: BrightnessDialDirection) => void) | null = null
 let bootstrapState: BootstrapState = { state: 'loading' }
 let bootstrapPromise: Promise<void> | null = null
+let updateNoticeGeneration = 0
+let notifiedUpdateVersion: string | null = null
 
 function clampBrightnessPercent(value: number) {
   return Math.min(100, Math.max(0, value))
@@ -183,6 +187,37 @@ function startBootstrap() {
     })
 
   return bootstrapPromise
+}
+
+function startUpdateNoticeAfterBootstrap(bootstrap: Promise<void>, generation: number) {
+  void bootstrap.then(async () => {
+    if (generation !== updateNoticeGeneration || bootstrapState.state !== 'ready') {
+      return
+    }
+
+    const installedVersionNum = bootstrapState.snapshot.settings.pluginVersionNum ?? ''
+    try {
+      const { latestVersionNum } = await checkLatestVersion(installedVersionNum)
+      if (
+        generation !== updateNoticeGeneration ||
+        !/^v?\d+(?:\.\d+)*$/i.test(installedVersionNum) ||
+        !/^v?\d+(?:\.\d+)*$/i.test(latestVersionNum) ||
+        compareVersions(latestVersionNum, installedVersionNum) <= 0 ||
+        notifiedUpdateVersion === latestVersionNum
+      ) {
+        return
+      }
+
+      notifiedUpdateVersion = latestVersionNum
+      showDeckyToast({
+        title: 'DeckyZone',
+        body: 'Update available',
+        severity: 'warning',
+      })
+    } catch {
+      // A failed release check should not interrupt plugin startup.
+    }
+  })
 }
 
 function getActiveGame(): ActiveGame | null {
@@ -474,7 +509,11 @@ function Content() {
 export default definePlugin(() => {
   registerBrightnessDialFixListeners()
   RunningApps.register()
-  void startBootstrap()
+  updateNoticeGeneration += 1
+  notifiedUpdateVersion = null
+  const currentUpdateNoticeGeneration = updateNoticeGeneration
+  const bootstrap = startBootstrap()
+  startUpdateNoticeAfterBootstrap(bootstrap, currentUpdateNoticeGeneration)
   const unregisterHomeNavigationListener = addEventListener('zotac_home_short_pressed', () => {
     if (!homeButtonEnabled) {
       return
@@ -494,6 +533,8 @@ export default definePlugin(() => {
     content: <Content />,
     icon: <ZotacIcon />,
     onDismount() {
+      updateNoticeGeneration += 1
+      resetStartupCheck()
       removeEventListener('zotac_home_short_pressed', unregisterHomeNavigationListener)
       unregisterActiveGameSync()
       RunningApps.unregister()

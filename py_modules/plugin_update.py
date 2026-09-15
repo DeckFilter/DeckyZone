@@ -12,6 +12,7 @@ import decky
 
 PACKAGE_NAME = "DeckyZone"
 RELEASE_API_URL = "https://api.github.com/repos/DeckFilter/DeckyZone/releases/latest"
+RELEASE_CHECK_TIMEOUT_SECONDS = 5
 TARBALL_ASSET_NAME = f"{PACKAGE_NAME}.tar.gz"
 
 
@@ -21,10 +22,19 @@ def get_env():
     return env
 
 
-def _fetch_latest_release():
+def _fetch_latest_release(timeout_seconds=None):
     ssl_context = ssl.SSLContext()
 
-    with urllib.request.urlopen(RELEASE_API_URL, context=ssl_context) as response:
+    if timeout_seconds is None:
+        response = urllib.request.urlopen(RELEASE_API_URL, context=ssl_context)
+    else:
+        response = urllib.request.urlopen(
+            RELEASE_API_URL,
+            context=ssl_context,
+            timeout=timeout_seconds,
+        )
+
+    with response:
         return json.load(response)
 
 
@@ -37,7 +47,7 @@ def _get_tarball_download_url(release_metadata):
 
 
 def get_latest_version():
-    release_metadata = _fetch_latest_release()
+    release_metadata = _fetch_latest_release(RELEASE_CHECK_TIMEOUT_SECONDS)
     tag_name = release_metadata.get("tag_name") or ""
 
     if not tag_name:
