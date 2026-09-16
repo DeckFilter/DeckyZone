@@ -1,11 +1,12 @@
 {
   "name": "deckyzone",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Zotac Gaming Zone plugin for Decky Loader.",
   "type": "module",
   "scripts": {
     "build": "node scripts/generate-zotac-glyph-css.mjs && rollup -c",
     "watch": "node scripts/generate-zotac-glyph-css.mjs && rollup -c -w",
+    "release:prepare": "npm version --no-git-tag-version --no-package-lock",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
