@@ -138,6 +138,7 @@ DEFAULT_BRIGHTNESS_DIAL_RETRY_INTERVAL_SECONDS = 1
 DEFAULT_BRIGHTNESS_DIAL_POLL_INTERVAL_SECONDS = 0.1
 DEFAULT_HOME_BUTTON_RETRY_INTERVAL_SECONDS = 1
 DEFAULT_HOME_BUTTON_POLL_INTERVAL_SECONDS = 0.1
+REMAINING_BATTERY_TIME_OWNERSHIP_DIRECTORY = Path("/run/deckyzone")
 REMAINING_BATTERY_TIME_OWNERSHIP_FILENAME = (
     "remaining-battery-time-ownership.json"
 )
@@ -272,7 +273,7 @@ class DeckyZoneService:
             or remaining_battery_time.RemainingBatteryTimeBridge(
                 command_runner=command_runner,
                 ownership_path=(
-                    Path(decky.DECKY_PLUGIN_RUNTIME_DIR)
+                    REMAINING_BATTERY_TIME_OWNERSHIP_DIRECTORY
                     / REMAINING_BATTERY_TIME_OWNERSHIP_FILENAME
                 ),
                 command_env=self.get_env(),
@@ -3386,8 +3387,10 @@ class DeckyZoneService:
                 f"auto-disable: {error}"
             )
 
-    async def start_remaining_battery_time_bridge(self):
-        return await self.remaining_battery_time_controller.start()
+    async def start_remaining_battery_time_bridge(self, retry_on_error=False):
+        return await self.remaining_battery_time_controller.start(
+            retry_on_error=retry_on_error,
+        )
 
     async def stop_remaining_battery_time_bridge(self):
         changed = await self.remaining_battery_time_controller.stop()
@@ -4363,14 +4366,10 @@ class Plugin:
             and hasattr(self.service, "start_remaining_battery_time_bridge")
         ):
             try:
-                await self.service.start_remaining_battery_time_bridge()
-            except Exception as error:
-                settings_store = getattr(
-                    self.service,
-                    "settings_store",
-                    plugin_settings,
+                await self.service.start_remaining_battery_time_bridge(
+                    retry_on_error=True,
                 )
-                settings_store.set_remaining_battery_time_fix_enabled(False)
+            except Exception as error:
                 await self.service.stop_remaining_battery_time_bridge()
                 decky.logger.warning(
                     "Failed to restore remaining battery time fix: "
