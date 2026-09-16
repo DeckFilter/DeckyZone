@@ -11,7 +11,11 @@ UPOWER_SERVICE = "org.freedesktop.UPower"
 UPOWER_DISPLAY_DEVICE_PATH = "/org/freedesktop/UPower/devices/DisplayDevice"
 UPOWER_DEVICE_INTERFACE = "org.freedesktop.UPower.Device"
 UPOWER_TIME_TO_EMPTY_PROPERTY = "TimeToEmpty"
-VPOWER_REMAINING_TIME_FILENAME = "secs_until_shutdown_request"
+UPOWER_TIME_TO_FULL_PROPERTY = "TimeToFull"
+VPOWER_TIME_TO_EMPTY_FILENAME = "secs_until_shutdown_request"
+VPOWER_TIME_TO_FULL_FILENAME = "secs_until_battery_full"
+# Keep the original name for callers that refer to the discharge target.
+VPOWER_REMAINING_TIME_FILENAME = VPOWER_TIME_TO_EMPTY_FILENAME
 OWNERSHIP_VERSION = 1
 
 RECONCILE_WAITING = "waiting"
@@ -43,15 +47,17 @@ class RemainingBatteryTimeBridge:
         clock=time.time,
         native_file_fresh_seconds=3.0,
         command_timeout_seconds=2.0,
+        _upower_property=UPOWER_TIME_TO_EMPTY_PROPERTY,
+        _target_filename=VPOWER_TIME_TO_EMPTY_FILENAME,
+        _include_charging_target=True,
     ):
         self.command_runner = command_runner
         self.vpower_directory = Path(vpower_directory)
-        self.target_path = (
-            self.vpower_directory / VPOWER_REMAINING_TIME_FILENAME
-        )
+        self.upower_property = _upower_property
+        self.target_path = self.vpower_directory / _target_filename
         self.temp_path = (
             self.vpower_directory
-            / f".deckyzone-{VPOWER_REMAINING_TIME_FILENAME}"
+            / f".deckyzone-{_target_filename}"
         )
         self.ownership_path = Path(ownership_path) if ownership_path else None
         self.command_env = command_env
@@ -66,8 +72,36 @@ class RemainingBatteryTimeBridge:
         self._owned_fingerprint = self._load_owned_fingerprint()
         self._foreign_candidate_fingerprint = None
         self._foreign_candidate_updates = 0
+        self._time_to_empty_native_confirmed = False
+        self._time_to_full_native_confirmed = False
+        self._charging_bridge = None
+        if _include_charging_target:
+            charging_ownership_path = self._charging_ownership_path(
+                self.ownership_path
+            )
+            self._charging_bridge = RemainingBatteryTimeBridge(
+                command_runner=command_runner,
+                vpower_directory=vpower_directory,
+                ownership_path=charging_ownership_path,
+                command_env=command_env,
+                clock=clock,
+                native_file_fresh_seconds=native_file_fresh_seconds,
+                command_timeout_seconds=command_timeout_seconds,
+                _upower_property=UPOWER_TIME_TO_FULL_PROPERTY,
+                _target_filename=VPOWER_TIME_TO_FULL_FILENAME,
+                _include_charging_target=False,
+            )
 
     def read_time_to_empty(self):
+        return self._read_upower_time(self.upower_property)
+
+    def read_time_to_full(self):
+        if self._charging_bridge is None:
+            return 0
+
+        return self._charging_bridge.read_time_to_empty()
+
+    def _read_upower_time(self, property_name):
         command = [
             "busctl",
             "--system",
@@ -75,7 +109,7 @@ class RemainingBatteryTimeBridge:
             UPOWER_SERVICE,
             UPOWER_DISPLAY_DEVICE_PATH,
             UPOWER_DEVICE_INTERFACE,
-            UPOWER_TIME_TO_EMPTY_PROPERTY,
+            property_name,
         ]
         run_options = {
             "check": True,
@@ -93,8 +127,58 @@ class RemainingBatteryTimeBridge:
         )
         return max(0, parse_busctl_int64(result.stdout))
 
-    def reconcile(self, time_to_empty_seconds):
-        expected_seconds = max(0, int(time_to_empty_seconds or 0))
+    def reconcile(self, time_to_empty_seconds, time_to_full_seconds=0):
+        time_to_empty_outcome = self._reconcile_single(
+            time_to_empty_seconds
+        )
+        if self._charging_bridge is None:
+            return time_to_empty_outcome
+
+        time_to_full_outcome = self._charging_bridge._reconcile_single(
+            time_to_full_seconds
+        )
+        self._time_to_empty_native_confirmed = (
+            self._update_native_confirmation(
+                self._time_to_empty_native_confirmed,
+                time_to_empty_outcome,
+            )
+        )
+        self._time_to_full_native_confirmed = (
+            self._update_native_confirmation(
+                self._time_to_full_native_confirmed,
+                time_to_full_outcome,
+            )
+        )
+
+        changed = bool(
+            time_to_empty_outcome["changed"]
+            or time_to_full_outcome["changed"]
+        )
+        if (
+            self._time_to_empty_native_confirmed
+            and self._time_to_full_native_confirmed
+        ):
+            return {
+                "state": RECONCILE_NATIVE,
+                "changed": changed,
+            }
+
+        if (
+            time_to_empty_outcome["state"] == RECONCILE_BRIDGED
+            or time_to_full_outcome["state"] == RECONCILE_BRIDGED
+        ):
+            return {
+                "state": RECONCILE_BRIDGED,
+                "changed": changed,
+            }
+
+        return {
+            "state": RECONCILE_WAITING,
+            "changed": changed,
+        }
+
+    def _reconcile_single(self, remaining_time_seconds):
+        expected_seconds = max(0, int(remaining_time_seconds or 0))
         current_fingerprint = self._fingerprint(self.target_path)
         owned = self._fingerprints_match(
             current_fingerprint,
@@ -160,6 +244,16 @@ class RemainingBatteryTimeBridge:
         }
 
     def cleanup(self):
+        changed = self._cleanup_single()
+        if self._charging_bridge is not None:
+            charging_changed = self._charging_bridge._cleanup_single()
+            changed = bool(charging_changed or changed)
+
+        self._time_to_empty_native_confirmed = False
+        self._time_to_full_native_confirmed = False
+        return changed
+
+    def _cleanup_single(self):
         changed = self._remove_owned_target(self._fingerprint(self.target_path))
 
         if self.temp_path.exists():
@@ -177,6 +271,23 @@ class RemainingBatteryTimeBridge:
         self._owned_fingerprint = None
         self._reset_foreign_candidate()
         return changed
+
+    @staticmethod
+    def _charging_ownership_path(ownership_path):
+        if ownership_path is None:
+            return None
+
+        return ownership_path.with_name(
+            f"{ownership_path.stem}-charging{ownership_path.suffix}"
+        )
+
+    @staticmethod
+    def _update_native_confirmation(confirmed, outcome):
+        if outcome["state"] == RECONCILE_NATIVE:
+            return True
+        if outcome["state"] == RECONCILE_BRIDGED:
+            return False
+        return confirmed
 
     def _reset_foreign_candidate(self):
         self._foreign_candidate_fingerprint = None
@@ -335,6 +446,7 @@ class RemainingBatteryTimeController:
         self.task = None
         self.running = False
         self.time_to_empty_seconds = 0
+        self.time_to_full_seconds = 0
         self.next_refresh = 0.0
         self.last_error = None
 
@@ -351,18 +463,29 @@ class RemainingBatteryTimeController:
             # plugin. Wait for it to finish before starting a replacement task.
             await self.task
 
-        await asyncio.to_thread(self.ensure_vpower_running)
-        time_to_empty = await asyncio.to_thread(self.bridge.read_time_to_empty)
-
-        self.running = True
-        self.time_to_empty_seconds = time_to_empty
-        self.next_refresh = self.monotonic() + self.refresh_interval_seconds
-        self.last_error = None
         try:
-            outcome = self.bridge.reconcile(time_to_empty)
+            await asyncio.to_thread(self.ensure_vpower_running)
+            time_to_empty, time_to_full = await self._read_remaining_times()
+
+            self.running = True
+            self.time_to_empty_seconds = time_to_empty
+            self.time_to_full_seconds = time_to_full
+            self.next_refresh = self.monotonic() + self.refresh_interval_seconds
+            self.last_error = None
+            outcome = self._reconcile()
         except Exception:
             self.running = False
-            self.bridge.cleanup()
+            self.time_to_empty_seconds = 0
+            self.time_to_full_seconds = 0
+            self.next_refresh = 0.0
+            try:
+                self.bridge.cleanup()
+            except Exception as cleanup_error:
+                self._log(
+                    "warning",
+                    "Failed to clean up remaining battery time bridge after "
+                    f"startup error: {cleanup_error}",
+                )
             raise
 
         if outcome["state"] == RECONCILE_NATIVE:
@@ -390,6 +513,7 @@ class RemainingBatteryTimeController:
 
         self.task = None
         self.time_to_empty_seconds = 0
+        self.time_to_full_seconds = 0
         self.next_refresh = 0.0
         self.last_error = None
         return bool(self.bridge.cleanup() or changed)
@@ -399,18 +523,19 @@ class RemainingBatteryTimeController:
             while self.running:
                 try:
                     now = self.monotonic()
+                    refreshed = False
                     if now >= self.next_refresh:
-                        self.time_to_empty_seconds = await asyncio.to_thread(
-                            self.bridge.read_time_to_empty
-                        )
+                        (
+                            self.time_to_empty_seconds,
+                            self.time_to_full_seconds,
+                        ) = await self._read_remaining_times()
+                        refreshed = True
                         self.next_refresh = (
                             self.monotonic() + self.refresh_interval_seconds
                         )
 
-                    outcome = self.bridge.reconcile(
-                        self.time_to_empty_seconds
-                    )
-                    if self.last_error is not None:
+                    outcome = self._reconcile()
+                    if self.last_error is not None and refreshed:
                         self._log("info", "Remaining battery time bridge recovered.")
                         self.last_error = None
 
@@ -428,11 +553,12 @@ class RemainingBatteryTimeController:
                         )
                         self.last_error = error_message
                     self.time_to_empty_seconds = 0
+                    self.time_to_full_seconds = 0
                     self.next_refresh = (
                         self.monotonic() + self.refresh_interval_seconds
                     )
                     try:
-                        self.bridge.reconcile(0)
+                        self._reconcile()
                     except Exception:
                         pass
 
@@ -440,6 +566,26 @@ class RemainingBatteryTimeController:
         finally:
             if self.task is asyncio.current_task():
                 self.task = None
+
+    async def _read_remaining_times(self):
+        time_to_empty = await asyncio.to_thread(
+            self.bridge.read_time_to_empty
+        )
+        read_time_to_full = getattr(self.bridge, "read_time_to_full", None)
+        if not callable(read_time_to_full):
+            return time_to_empty, 0
+
+        time_to_full = await asyncio.to_thread(read_time_to_full)
+        return time_to_empty, time_to_full
+
+    def _reconcile(self):
+        if callable(getattr(self.bridge, "read_time_to_full", None)):
+            return self.bridge.reconcile(
+                self.time_to_empty_seconds,
+                self.time_to_full_seconds,
+            )
+
+        return self.bridge.reconcile(self.time_to_empty_seconds)
 
     async def _handle_native_support(self):
         self.running = False
