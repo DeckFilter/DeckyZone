@@ -17,6 +17,7 @@ import inputplumber_device_profile
 import inputplumber_target_sync
 import plugin_update
 import plugin_settings
+import remaining_battery_time
 import runtime_profile_utils
 import trackpad_modes
 import vram_control
@@ -137,6 +138,14 @@ DEFAULT_BRIGHTNESS_DIAL_RETRY_INTERVAL_SECONDS = 1
 DEFAULT_BRIGHTNESS_DIAL_POLL_INTERVAL_SECONDS = 0.1
 DEFAULT_HOME_BUTTON_RETRY_INTERVAL_SECONDS = 1
 DEFAULT_HOME_BUTTON_POLL_INTERVAL_SECONDS = 0.1
+REMAINING_BATTERY_TIME_OWNERSHIP_DIRECTORY = Path("/run/deckyzone")
+REMAINING_BATTERY_TIME_OWNERSHIP_FILENAME = (
+    "remaining-battery-time-ownership.json"
+)
+REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT = (
+    "remaining_battery_time_fix_disabled"
+)
+VPOWER_SERVICE_NAME = "vpower.service"
 RUMBLE_PREVIEW_DURATION_MS = 180
 INPUTPLUMBER_KEYBOARD_DEVICE_NAME = "InputPlumber Keyboard"
 EV_KEY = 0x01
@@ -245,6 +254,7 @@ class DeckyZoneService:
         read_text=None,
         settings_store=plugin_settings,
         gamescope_display_profiles=None,
+        remaining_battery_time_bridge=None,
     ):
         self.command_runner = command_runner
         self.sleep = sleep
@@ -256,6 +266,30 @@ class DeckyZoneService:
             or gamescope_display_profiles_module.GamescopeDisplayProfiles(
                 user_home=decky.DECKY_USER_HOME,
                 plugin_dir=decky.DECKY_PLUGIN_DIR,
+            )
+        )
+        self.remaining_battery_time_bridge = (
+            remaining_battery_time_bridge
+            or remaining_battery_time.RemainingBatteryTimeBridge(
+                command_runner=command_runner,
+                ownership_path=(
+                    REMAINING_BATTERY_TIME_OWNERSHIP_DIRECTORY
+                    / REMAINING_BATTERY_TIME_OWNERSHIP_FILENAME
+                ),
+                command_env=self.get_env(),
+            )
+        )
+        self._remaining_battery_time_transition_lock = asyncio.Lock()
+        self._remaining_battery_time_accepting_changes = True
+        self.remaining_battery_time_controller = (
+            remaining_battery_time.RemainingBatteryTimeController(
+                bridge=self.remaining_battery_time_bridge,
+                ensure_vpower_running=self._ensure_vpower_service_running,
+                on_native_support=(
+                    self._disable_remaining_battery_time_fix_for_native_support
+                ),
+                sleep=sleep,
+                logger=logger,
             )
         )
         self._status = {"state": "idle", "message": DBUS_READY_MESSAGE}
@@ -737,6 +771,9 @@ class DeckyZoneService:
             "gyroMountMatrixFix": self._get_gyro_mount_matrix_fix_state(),
             "trackpadMode": self.settings_store.get_trackpad_mode(),
             "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
+            "remainingBatteryTimeFixEnabled": (
+                self.settings_store.get_remaining_battery_time_fix_enabled()
+            ),
             "gamescopeZotacProfileBuiltIn": display_profile_settings["gamescopeZotacProfileBuiltIn"],
             "gamescopeZotacProfileInstalled": display_profile_settings["gamescopeZotacProfileInstalled"],
             "gamescopeGreenTintFixEnabled": display_profile_settings["gamescopeGreenTintFixEnabled"],
@@ -761,6 +798,18 @@ class DeckyZoneService:
 
     def _systemctl_args(self, *args):
         return ["systemctl", *args]
+
+    def _ensure_vpower_service_running(self):
+        self.command_runner(
+            self._systemctl_args("start", VPOWER_SERVICE_NAME),
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=5,
+            env=self.get_env(),
+        )
+        return True
 
     def _get_ids(self):
         return os.getuid(), os.geteuid()
@@ -3324,6 +3373,47 @@ class DeckyZoneService:
         self.settings_store.set_zotac_glyphs_enabled(enabled)
         return self._current_settings()
 
+    async def _disable_remaining_battery_time_fix_for_native_support(self):
+        self.settings_store.set_remaining_battery_time_fix_enabled(False)
+        self.logger.info(
+            "Disabled remaining battery time fix because vpower now provides "
+            "a valid estimate."
+        )
+        try:
+            await decky.emit(REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT)
+        except Exception as error:
+            self.logger.warning(
+                "Failed to notify frontend about remaining battery time "
+                f"auto-disable: {error}"
+            )
+
+    async def start_remaining_battery_time_bridge(self, retry_on_error=False):
+        return await self.remaining_battery_time_controller.start(
+            retry_on_error=retry_on_error,
+        )
+
+    async def stop_remaining_battery_time_bridge(self):
+        changed = await self.remaining_battery_time_controller.stop()
+        return self._cleanup_step_result(changed=changed)
+
+    async def set_remaining_battery_time_fix_enabled(self, enabled):
+        async with self._remaining_battery_time_transition_lock:
+            enabled = bool(enabled)
+            if not enabled or not self._remaining_battery_time_accepting_changes:
+                await self.stop_remaining_battery_time_bridge()
+                self.settings_store.set_remaining_battery_time_fix_enabled(False)
+                return self._current_settings()
+
+            try:
+                started = await self.start_remaining_battery_time_bridge()
+            except Exception:
+                self.settings_store.set_remaining_battery_time_fix_enabled(False)
+                await self.stop_remaining_battery_time_bridge()
+                raise
+
+            self.settings_store.set_remaining_battery_time_fix_enabled(started)
+            return self._current_settings()
+
     async def set_gamescope_zotac_profile_enabled(self, enabled):
         self.gamescope_display_profiles.set_zotac_profile_enabled(enabled)
         return self._current_settings()
@@ -3812,6 +3902,10 @@ class DeckyZoneService:
         return self._cleanup_step_result(changed=True)
 
     async def reset_plugin_state(self):
+        async with self._remaining_battery_time_transition_lock:
+            return await self._reset_plugin_state_locked()
+
+    async def _reset_plugin_state_locked(self):
         steps = []
         force_inputplumber_restart = bool(
             self._startup_target_active
@@ -3822,6 +3916,11 @@ class DeckyZoneService:
             steps,
             "stopControllerModeMonitor",
             self.stop_controller_mode_monitor,
+        )
+        await self._run_cleanup_step(
+            steps,
+            "stopRemainingBatteryTimeBridge",
+            self.stop_remaining_battery_time_bridge,
         )
         await self._run_cleanup_step(
             steps,
@@ -3894,11 +3993,21 @@ class DeckyZoneService:
         }
 
     async def cleanup_for_unload(self):
+        async with self._remaining_battery_time_transition_lock:
+            self._remaining_battery_time_accepting_changes = False
+            return await self._cleanup_for_unload_locked()
+
+    async def _cleanup_for_unload_locked(self):
         steps = []
         await self._run_cleanup_step(
             steps,
             "stopControllerModeMonitor",
             self.stop_controller_mode_monitor,
+        )
+        await self._run_cleanup_step(
+            steps,
+            "stopRemainingBatteryTimeBridge",
+            self.stop_remaining_battery_time_bridge,
         )
         await self._run_cleanup_step(
             steps,
@@ -4090,6 +4199,8 @@ class Plugin:
             else:
                 if hasattr(self.service, "stop_brightness_dial_fixer"):
                     await self.service.stop_brightness_dial_fixer()
+                if hasattr(self.service, "stop_remaining_battery_time_bridge"):
+                    await self.service.stop_remaining_battery_time_bridge()
                 await self.service.stop_rumble_fixer()
             if hasattr(self.service, "remove_gamescope_display_profiles"):
                 self.service.remove_gamescope_display_profiles()
@@ -4176,6 +4287,9 @@ class Plugin:
     async def set_zotac_glyphs_enabled(self, enabled):
         return await self.service.set_zotac_glyphs_enabled(enabled)
 
+    async def set_remaining_battery_time_fix_enabled(self, enabled):
+        return await self.service.set_remaining_battery_time_fix_enabled(enabled)
+
     async def set_gamescope_zotac_profile_enabled(self, enabled):
         return await self.service.set_gamescope_zotac_profile_enabled(enabled)
 
@@ -4247,6 +4361,22 @@ class Plugin:
         await self.service.start_controller_mode_monitor()
         if settings["rumbleEnabled"]:
             await self.service.start_rumble_fixer()
+        if (
+            settings.get("remainingBatteryTimeFixEnabled", False)
+            and hasattr(self.service, "start_remaining_battery_time_bridge")
+        ):
+            try:
+                await self.service.start_remaining_battery_time_bridge(
+                    retry_on_error=True,
+                )
+            except Exception as error:
+                await self.service.stop_remaining_battery_time_bridge()
+                decky.logger.warning(
+                    "Failed to restore remaining battery time fix: "
+                    f"{error}"
+                )
+        elif hasattr(self.service, "stop_remaining_battery_time_bridge"):
+            await self.service.stop_remaining_battery_time_bridge()
         if settings["startupApplyEnabled"]:
             self.startup_task = self.loop.create_task(self.service.apply_startup_mode())
         else:
@@ -4269,6 +4399,8 @@ class Plugin:
             await self.service.stop_controller_mode_monitor()
             if hasattr(self.service, "stop_brightness_dial_fixer"):
                 await self.service.stop_brightness_dial_fixer()
+            if hasattr(self.service, "stop_remaining_battery_time_bridge"):
+                await self.service.stop_remaining_battery_time_bridge()
             await self.service.stop_rumble_fixer()
             result = {
                 "ok": True,

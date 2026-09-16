@@ -20,6 +20,8 @@ curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh |
 
 Status key: ✅ tested/working, ❌ not currently working in my testing, ❓ untested or unknown.
 
+All compatibility fixes are opt-in and can be disabled at any time.
+
 ### Controller
 
 | Feature                               | SteamOS `main` | Bazzite | Nobara | CachyOS |
@@ -49,11 +51,14 @@ Trackpad modes:
 
 ### Interface
 
-| Feature             | SteamOS `main` | Bazzite | Nobara | CachyOS |
-| ------------------- | -------------- | ------- | ------ | ------- |
-| Enable Zotac Glyphs | ✅             | ✅      | ❓     | ❓      |
+| Feature                    | SteamOS `main` | Bazzite | Nobara | CachyOS |
+| -------------------------- | -------------- | ------- | ------ | ------- |
+| Enable Zotac Glyphs        | ✅             | ✅      | ❓     | ❓      |
+| Remaining Battery Time Fix | ❓             | ❓      | ❓     | ❓      |
 
 Zotac Glyphs applies Zotac controller button glyphs and controller images in Steam UI.
+
+Remaining Battery Time Fix passes UPower's charging and discharging estimates to Steam through `/run/vpower` while leaving Valve's `vpower` service running. It turns itself off after `vpower` provides valid estimates for both states.
 
 ### Display
 

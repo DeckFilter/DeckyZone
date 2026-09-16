@@ -142,6 +142,7 @@ export type PluginSettings = {
   gyroMountMatrixFix: GyroMountMatrixFixState
   trackpadMode: TrackpadMode
   zotacGlyphsEnabled: boolean
+  remainingBatteryTimeFixEnabled: boolean
   gamescopeZotacProfileBuiltIn: boolean
   gamescopeZotacProfileInstalled: boolean
   gamescopeGreenTintFixEnabled: boolean
