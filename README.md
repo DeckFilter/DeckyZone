@@ -49,11 +49,14 @@ Trackpad modes:
 
 ### Interface
 
-| Feature             | SteamOS `main` | Bazzite | Nobara | CachyOS |
-| ------------------- | -------------- | ------- | ------ | ------- |
-| Enable Zotac Glyphs | ✅             | ✅      | ❓     | ❓      |
+| Feature                    | SteamOS `main` | Bazzite | Nobara | CachyOS |
+| -------------------------- | -------------- | ------- | ------ | ------- |
+| Enable Zotac Glyphs        | ✅             | ✅      | ❓     | ❓      |
+| Remaining Battery Time Fix | ❓             | ❓      | ❓     | ❓      |
 
 Zotac Glyphs applies Zotac controller button glyphs and controller images in Steam UI.
+
+Remaining Battery Time Fix is off by default. When enabled, it passes UPower's estimate to Steam through `/run/vpower` while leaving Valve's `vpower` service running. It turns itself off when `vpower` starts providing a valid estimate.
 
 ### Display
 
