@@ -59,6 +59,7 @@ const TrackpadPanel = ({
     <PanelSectionRow>
       <SteamExplainerDropdownItem
         key={`trackpad-mode:${trackpadModeValue}`}
+        layout="below"
         label="Trackpad Mode"
         menuLabel="Trackpad Mode"
         explainerTitle="Trackpad Mode"

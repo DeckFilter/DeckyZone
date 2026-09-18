@@ -159,6 +159,7 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
       <PanelSectionRow>
         <SteamExplainerDropdownItem
           controlled
+          layout="below"
           label="VRAM Size"
           menuLabel="VRAM Size"
           explainerTitle="VRAM Size"

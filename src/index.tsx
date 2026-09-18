@@ -5,19 +5,24 @@ import {
   PanelSectionRow,
   Router,
   SteamSpinner,
+  Tabs,
 } from '@decky/ui'
-import { addEventListener, callable, definePlugin, removeEventListener } from '@decky/api'
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { addEventListener, callable, definePlugin, removeEventListener, routerHook } from '@decky/api'
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react'
+import { FaDesktop, FaEllipsisH, FaGamepad, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
 import ControllerPanel from "./components/ControllerPanel"
+import SystemInformationPage from "./pages/SystemInformationPage"
 import DisplayPanel from "./components/DisplayPanel"
 import ErrorBoundary from "./components/ErrorBoundary"
 import InterfacePanel from "./components/InterfacePanel"
+import LayoutPanel from './components/LayoutPanel'
 import PerformancePanel from "./components/PerformancePanel"
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
 import TroubleshootingPanel from "./components/TroubleshootingPanel"
 import UpdatesPanel from "./components/UpdatesPanel"
 import ZotacIcon from "./components/ZotacIcon"
 import { cleanupZotacGlyphsRuntime, syncStoredZotacGlyphsRuntimeEnabled } from "./glyphs/zotacGlyphRuntime"
+import { DECKYZONE_ROUTE } from './routes'
 import type { ActiveGame, PluginResetResult, PluginSettings, PluginStatus } from "./types/plugin"
 import { checkLatestVersion, compareVersions, resetStartupCheck } from './utils/pluginUpdates'
 import { showDeckyToast } from './utils/toasts'
@@ -53,6 +58,27 @@ let bootstrapPromise: Promise<void> | null = null
 let bootstrapGeneration = 0
 let updateNoticeGeneration = 0
 let notifiedUpdateVersion: string | null = null
+let currentMainTab = 'controller'
+
+const mainTabsStyle = {
+  contain: 'layout style paint',
+  height: '95%',
+  marginTop: '-12px',
+  maxWidth: '100%',
+  position: 'absolute' as const,
+  width: 'calc(100vw - 50px)',
+}
+
+const tabContentStyle = {
+  marginLeft: '-2.8vw',
+  marginRight: '-2.8vw',
+}
+
+const TabIcon = ({ label, children }: { label: string; children: ReactNode }) => (
+  <span aria-label={label} title={label} style={{ display: 'block', lineHeight: 0 }}>
+    {children}
+  </span>
+)
 
 function clampBrightnessPercent(value: number) {
   return Math.min(100, Math.max(0, value))
@@ -389,6 +415,7 @@ function Content() {
   settingsRef.current = settings
   const [activeGame, setActiveGame] = useState<ActiveGame | null>(getActiveGame())
   const [uiRevision, setUiRevision] = useState(0)
+  const [activeTab, setActiveTab] = useState(currentMainTab)
 
   const syncBootstrapIntoLocalState = () => {
     if (!isMountedRef.current) {
@@ -577,50 +604,141 @@ function Content() {
     )
   }
 
+  const controllerPanel = (
+    <ErrorBoundary title="Controller">
+      <ControllerPanel
+        activeGame={activeGame}
+        settings={settings}
+        status={status}
+        onSettingsChange={applySettingsUpdate}
+        onStatusChange={applyStatusUpdate}
+      />
+    </ErrorBoundary>
+  )
+  const interfacePanel = (
+    <ErrorBoundary title="Interface">
+      <InterfacePanel
+        settings={settings}
+        onSettingsChange={applySettingsUpdate}
+      />
+    </ErrorBoundary>
+  )
+  const displayPanel = (
+    <ErrorBoundary title="Display">
+      <DisplayPanel
+        settings={settings}
+        onSettingsChange={applySettingsUpdate}
+      />
+    </ErrorBoundary>
+  )
+  const performancePanel = (
+    <ErrorBoundary title="Performance">
+      <PerformancePanel
+        settings={settings}
+        onSettingsChange={applySettingsUpdate}
+      />
+    </ErrorBoundary>
+  )
+  const layoutPanel = (
+    <ErrorBoundary title="Layout">
+      <LayoutPanel
+        settings={settings}
+        onSettingsChange={applySettingsUpdate}
+      />
+    </ErrorBoundary>
+  )
+  const troubleshootingPanel = (
+    <ErrorBoundary title="Troubleshooting">
+      <TroubleshootingPanel onResetPlugin={handleResetPlugin} />
+    </ErrorBoundary>
+  )
+  const updatesPanel = (
+    <ErrorBoundary title="Updates">
+      <UpdatesPanel installedVersionNum={settings.pluginVersionNum ?? ''} />
+    </ErrorBoundary>
+  )
+
+  if (settings.legacyLayoutEnabled) {
+    return (
+      <Fragment key={`deckyzone-ui:${uiRevision}`}>
+        {controllerPanel}
+        {interfacePanel}
+        {displayPanel}
+        {performancePanel}
+        {layoutPanel}
+        {troubleshootingPanel}
+        {updatesPanel}
+      </Fragment>
+    )
+  }
+
   return (
     <Fragment key={`deckyzone-ui:${uiRevision}`}>
-      <ErrorBoundary title="Controller">
-        <ControllerPanel
-          activeGame={activeGame}
-          settings={settings}
-          status={status}
-          onSettingsChange={applySettingsUpdate}
-          onStatusChange={applyStatusUpdate}
+      <div style={mainTabsStyle}>
+        <Tabs
+          activeTab={activeTab}
+          autoFocusContents
+          onShowTab={(tabId: string) => {
+            currentMainTab = tabId
+            setActiveTab(tabId)
+          }}
+          tabs={[
+            {
+              id: 'controller',
+              title: <TabIcon label="Controller"><FaGamepad size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {controllerPanel}
+                </div>
+              ),
+            },
+            {
+              id: 'interface',
+              title: <TabIcon label="Interface"><FaSlidersH size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {interfacePanel}
+                </div>
+              ),
+            },
+            {
+              id: 'display',
+              title: <TabIcon label="Display"><FaDesktop size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {displayPanel}
+                </div>
+              ),
+            },
+            {
+              id: 'performance',
+              title: <TabIcon label="Performance"><FaTachometerAlt size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {performancePanel}
+                </div>
+              ),
+            },
+            {
+              id: 'more',
+              title: <TabIcon label="More"><FaEllipsisH size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {layoutPanel}
+                  {troubleshootingPanel}
+                  {updatesPanel}
+                </div>
+              ),
+            },
+          ]}
         />
-      </ErrorBoundary>
-      <ErrorBoundary title="Interface">
-        <InterfacePanel
-          settings={settings}
-          onSettingsChange={applySettingsUpdate}
-        />
-      </ErrorBoundary>
-      <ErrorBoundary title="Display">
-        <DisplayPanel
-          settings={settings}
-          onSettingsChange={applySettingsUpdate}
-        />
-      </ErrorBoundary>
-      <ErrorBoundary title="Performance">
-        <PerformancePanel
-          settings={settings}
-          onSettingsChange={applySettingsUpdate}
-        />
-      </ErrorBoundary>
-      <ErrorBoundary title="Troubleshooting">
-        <TroubleshootingPanel
-          onResetPlugin={handleResetPlugin}
-        />
-      </ErrorBoundary>
-      <ErrorBoundary title="Updates">
-        <UpdatesPanel
-          installedVersionNum={settings.pluginVersionNum ?? ''}
-        />
-      </ErrorBoundary>
+      </div>
     </Fragment>
   )
 }
 
 export default definePlugin(() => {
+  routerHook.addRoute(DECKYZONE_ROUTE, SystemInformationPage, { exact: false })
   registerBrightnessDialFixListeners()
   RunningApps.register()
   updateNoticeGeneration += 1
@@ -647,6 +765,7 @@ export default definePlugin(() => {
     content: <Content />,
     icon: <ZotacIcon />,
     onDismount() {
+      routerHook.removeRoute(DECKYZONE_ROUTE)
       updateNoticeGeneration += 1
       resetBootstrap()
       resetStartupCheck()

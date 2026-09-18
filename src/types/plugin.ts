@@ -51,13 +51,14 @@ export type DebugInfoSnapshot = {
     productName: string | null
     boardName: string | null
     boardVendor: string | null
-    supportedDevice: boolean
-    dmiPaths: string[]
   }
   osContext: {
     prettyName: string | null
     kernelRelease: string | null
-    osReleaseCandidatePaths: string[]
+  }
+  memory: {
+    systemRamGb: number | null
+    activeVramGb: number | null
   }
   inputPlumber: {
     available: boolean
@@ -72,20 +73,9 @@ export type DebugInfoSnapshot = {
     keyboardPath: string | null
     controllerRuntimeState: string
     gyroMountMatrixFix: GyroMountMatrixFixState
-    compositeDeviceObjectPath: string
   }
   zotacZoneKernelDrivers: {
-    zotacZonePlatformLoaded: boolean
-    zotacZonePlatformPath: string
     zotacZoneHidLoaded: boolean
-    zotacZoneHidPath: string
-    firmwareAttributesClassLoaded: boolean
-    firmwareAttributesClassPath: string
-    firmwareAttributesNodePresent: boolean
-    firmwareAttributesNodePath: string
-    hidConfigNodePath: string | null
-    hidConfigSearchRoot: string
-    hidConfigMatchMarker: string
   }
   gamescope: {
     version: string | null
@@ -95,14 +85,25 @@ export type DebugInfoSnapshot = {
     verificationState: string
     baseAssetAvailable: boolean
     greenTintAssetAvailable: boolean
-    builtInCandidatePaths: string[]
-    managedProfilePath: string
-    baseAssetPath: string
-    greenTintAssetPath: string
   }
   deckyZoneStatus: {
     message: string
   }
+}
+
+export type SystemReport = {
+  generatedAt: string
+  summary: {
+    pluginVersion: string
+    deckyVersion: string
+    os: string
+    kernel: string
+    vram: string
+    battery: string
+  }
+  text: string
+  truncated: boolean
+  logIncluded: boolean
 }
 
 export type PerGameSettings = {
@@ -135,6 +136,7 @@ export type VramState = {
 
 export type PluginSettings = {
   startupApplyEnabled: boolean
+  legacyLayoutEnabled: boolean
   controllerMode: ControllerMode | null
   controllerModeAvailable: boolean
   homeButtonEnabled: boolean

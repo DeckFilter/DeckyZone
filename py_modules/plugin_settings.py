@@ -11,6 +11,7 @@ TRACKPAD_MODE_KEY = "trackpadMode"
 LEGACY_TRACKPADS_DISABLED_KEY = "trackpadsDisabled"
 ZOTAC_GLYPHS_ENABLED_KEY = "zotacGlyphsEnabled"
 REMAINING_BATTERY_TIME_FIX_ENABLED_KEY = "remainingBatteryTimeFixEnabled"
+LEGACY_LAYOUT_ENABLED_KEY = "legacyLayoutEnabled"
 RUMBLE_ENABLED_KEY = "rumbleEnabled"
 RUMBLE_INTENSITY_KEY = "rumbleIntensity"
 PER_GAME_SETTINGS_KEY = "perGameSettings"
@@ -29,6 +30,7 @@ DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED = False
 DEFAULT_TRACKPAD_MODE = trackpad_modes.DEFAULT_TRACKPAD_MODE
 DEFAULT_ZOTAC_GLYPHS_ENABLED = False
 DEFAULT_REMAINING_BATTERY_TIME_FIX_ENABLED = False
+DEFAULT_LEGACY_LAYOUT_ENABLED = False
 DEFAULT_RUMBLE_ENABLED = False
 DEFAULT_RUMBLE_INTENSITY = 75
 DEFAULT_PER_GAME_REMAP_TARGET = "none"
@@ -279,6 +281,18 @@ def get_remaining_battery_time_fix_enabled():
 def set_remaining_battery_time_fix_enabled(enabled):
     _write_setting(REMAINING_BATTERY_TIME_FIX_ENABLED_KEY, bool(enabled))
     return get_remaining_battery_time_fix_enabled()
+
+
+def get_legacy_layout_enabled():
+    settings = _read_settings()
+    return bool(
+        settings.get(LEGACY_LAYOUT_ENABLED_KEY, DEFAULT_LEGACY_LAYOUT_ENABLED)
+    )
+
+
+def set_legacy_layout_enabled(enabled):
+    _write_setting(LEGACY_LAYOUT_ENABLED_KEY, bool(enabled))
+    return get_legacy_layout_enabled()
 
 
 def get_rumble_enabled():

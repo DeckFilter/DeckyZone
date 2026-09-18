@@ -19,6 +19,8 @@ import plugin_update
 import plugin_settings
 import remaining_battery_time
 import runtime_profile_utils
+import support_report
+import system_memory
 import trackpad_modes
 import vram_control
 
@@ -31,17 +33,8 @@ DMI_SYS_VENDOR_PATH = "/sys/devices/virtual/dmi/id/sys_vendor"
 DMI_PRODUCT_NAME_PATH = "/sys/devices/virtual/dmi/id/product_name"
 DMI_BOARD_NAME_PATH = "/sys/devices/virtual/dmi/id/board_name"
 DMI_BOARD_VENDOR_PATH = "/sys/devices/virtual/dmi/id/board_vendor"
-DMI_PATHS = (
-    DMI_SYS_VENDOR_PATH,
-    DMI_PRODUCT_NAME_PATH,
-    DMI_BOARD_NAME_PATH,
-    DMI_BOARD_VENDOR_PATH,
-)
 OS_RELEASE_CANDIDATE_PATHS = ("/etc/os-release", "/usr/lib/os-release")
-ZOTAC_ZONE_PLATFORM_MODULE_PATH = "/sys/module/zotac_zone_platform"
 ZOTAC_ZONE_HID_MODULE_PATH = "/sys/module/zotac_zone_hid"
-FIRMWARE_ATTRIBUTES_CLASS_MODULE_PATH = "/sys/module/firmware_attributes_class"
-FIRMWARE_ATTRIBUTES_NODE_PATH = "/sys/class/firmware-attributes/zotac_zone_platform"
 ZOTAC_HID_CONFIG_SEARCH_ROOT = "/sys/class/hidraw/hidraw*/device"
 ZOTAC_HID_CONFIG_MATCH_MARKER = "save_config"
 ZOTAC_CONTROLLER_VENDOR_IDS = {"1ee9", "1e19"}
@@ -434,13 +427,25 @@ class DeckyZoneService:
         inputplumber_available = bool(self.probe_inputplumber_available())
         inputplumber_version = self._get_binary_version("inputplumber")
         gamescope_version = self._get_binary_version("gamescope")
+        system_ram_gb = None
+        active_vram_gb = None
+
+        try:
+            system_ram_gb = system_memory.read_system_ram_gb()
+        except Exception as error:
+            self.logger.warning(f"Failed to read system RAM: {error}")
+
+        try:
+            active_vram_gb = vram_control.read_active_vram_gb()
+        except Exception as error:
+            self.logger.warning(f"Failed to read active VRAM: {error}")
+
         controller_mode_snapshot = self._get_controller_mode_snapshot()
         profile_name = None
         profile_path = None
         target_gamepad_path = None
         keyboard_path = None
         display_profile_settings = self._get_display_profile_settings()
-        gamescope_paths = self._get_gamescope_support_paths()
 
         if inputplumber_available:
             try:
@@ -476,13 +481,14 @@ class DeckyZoneService:
                 "productName": self._read_optional_text(DMI_PRODUCT_NAME_PATH),
                 "boardName": self._read_optional_text(DMI_BOARD_NAME_PATH),
                 "boardVendor": self._read_optional_text(DMI_BOARD_VENDOR_PATH),
-                "supportedDevice": self.is_supported_device(),
-                "dmiPaths": list(DMI_PATHS),
             },
             "osContext": {
                 "prettyName": self._get_os_pretty_name(),
                 "kernelRelease": self._get_kernel_release(),
-                "osReleaseCandidatePaths": list(OS_RELEASE_CANDIDATE_PATHS),
+            },
+            "memory": {
+                "systemRamGb": system_ram_gb,
+                "activeVramGb": active_vram_gb,
             },
             "inputPlumber": {
                 "available": inputplumber_available,
@@ -497,24 +503,9 @@ class DeckyZoneService:
                 "keyboardPath": keyboard_path,
                 "controllerRuntimeState": controller_runtime_state,
                 "gyroMountMatrixFix": self._get_gyro_mount_matrix_fix_state(),
-                "compositeDeviceObjectPath": INPUTPLUMBER_DBUS_PATH,
             },
             "zotacZoneKernelDrivers": {
-                "zotacZonePlatformLoaded": self._path_exists(ZOTAC_ZONE_PLATFORM_MODULE_PATH),
-                "zotacZonePlatformPath": ZOTAC_ZONE_PLATFORM_MODULE_PATH,
                 "zotacZoneHidLoaded": self._path_exists(ZOTAC_ZONE_HID_MODULE_PATH),
-                "zotacZoneHidPath": ZOTAC_ZONE_HID_MODULE_PATH,
-                "firmwareAttributesClassLoaded": self._path_exists(
-                    FIRMWARE_ATTRIBUTES_CLASS_MODULE_PATH
-                ),
-                "firmwareAttributesClassPath": FIRMWARE_ATTRIBUTES_CLASS_MODULE_PATH,
-                "firmwareAttributesNodePresent": self._path_exists(
-                    FIRMWARE_ATTRIBUTES_NODE_PATH
-                ),
-                "firmwareAttributesNodePath": FIRMWARE_ATTRIBUTES_NODE_PATH,
-                "hidConfigNodePath": self._resolve_zotac_hid_config_path(),
-                "hidConfigSearchRoot": ZOTAC_HID_CONFIG_SEARCH_ROOT,
-                "hidConfigMatchMarker": ZOTAC_HID_CONFIG_MATCH_MARKER,
             },
             "gamescope": {
                 "version": gamescope_version,
@@ -524,12 +515,44 @@ class DeckyZoneService:
                 "verificationState": display_profile_settings["gamescopeZotacProfileVerificationState"],
                 "baseAssetAvailable": bool(display_profile_settings["gamescopeZotacProfileBaseAssetAvailable"]),
                 "greenTintAssetAvailable": bool(display_profile_settings["gamescopeZotacProfileGreenAssetAvailable"]),
-                **gamescope_paths,
             },
             "deckyZoneStatus": {
                 "message": status["message"],
             },
         }
+
+    def get_support_report(self, debug_snapshot=None):
+        if debug_snapshot is None:
+            debug_snapshot = self.get_debug_info()
+
+        return support_report.build_support_report(
+            plugin_version=decky.DECKY_PLUGIN_VERSION,
+            decky_version=decky.DECKY_VERSION,
+            debug_snapshot=debug_snapshot,
+            supported_device=self.is_supported_device(),
+            remaining_battery_enabled=(
+                self.settings_store.get_remaining_battery_time_fix_enabled()
+            ),
+            logger=self.logger,
+            log_path=decky.DECKY_PLUGIN_LOG,
+            command_runner=self.command_runner,
+            command_env=self.get_env(),
+            read_text=self.read_text,
+            path_exists=self._path_exists,
+            pending_vram_reader=vram_control.read_pending_vram_gb,
+            active_vram_reader=vram_control.read_active_vram_gb,
+            redaction_paths=(
+                decky.DECKY_USER_HOME,
+                decky.DECKY_HOME,
+            ),
+        )
+
+    def save_support_report(self, report_text):
+        return support_report.save_report_to_desktop(
+            report_text,
+            user_home=decky.DECKY_USER_HOME,
+            user_name=decky.DECKY_USER,
+        )
 
     async def get_latest_version_num(self):
         try:
@@ -765,6 +788,7 @@ class DeckyZoneService:
         controller_mode_snapshot = self._get_controller_mode_snapshot()
         return {
             "startupApplyEnabled": self.settings_store.get_startup_apply_enabled(),
+            "legacyLayoutEnabled": self.settings_store.get_legacy_layout_enabled(),
             "controllerMode": controller_mode_snapshot["mode"],
             "controllerModeAvailable": controller_mode_snapshot["available"],
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
@@ -3192,6 +3216,10 @@ class DeckyZoneService:
 
         return self._current_settings()
 
+    def set_legacy_layout_enabled(self, enabled):
+        self.settings_store.set_legacy_layout_enabled(enabled)
+        return self._current_settings()
+
     async def disable_startup_target_runtime(self):
         self._startup_target_active = False
 
@@ -3408,7 +3436,11 @@ class DeckyZoneService:
 
             try:
                 started = await self.start_remaining_battery_time_bridge()
-            except Exception:
+            except Exception as error:
+                self.logger.warning(
+                    "Failed to enable remaining battery time fix: "
+                    f"{error}"
+                )
                 self.settings_store.set_remaining_battery_time_fix_enabled(False)
                 await self.stop_remaining_battery_time_bridge()
                 raise
@@ -4239,6 +4271,19 @@ class Plugin:
     async def get_debug_info(self):
         return self.service.get_debug_info()
 
+    async def get_support_report(self):
+        debug_snapshot = self.service.get_debug_info()
+        return await asyncio.to_thread(
+            self.service.get_support_report,
+            debug_snapshot,
+        )
+
+    async def save_support_report(self, report_text):
+        return await asyncio.to_thread(
+            self.service.save_support_report,
+            report_text,
+        )
+
     async def reset_plugin(self):
         result = await self._reset_plugin_cleanup()
         self._log_cleanup_result("reset", result)
@@ -4264,6 +4309,9 @@ class Plugin:
 
     async def set_home_button_enabled(self, enabled):
         return await self.service.set_home_button_enabled(enabled)
+
+    async def set_legacy_layout_enabled(self, enabled):
+        return self.service.set_legacy_layout_enabled(enabled)
 
     async def set_controller_mode(self, mode):
         return await self.service.set_controller_mode(mode)
