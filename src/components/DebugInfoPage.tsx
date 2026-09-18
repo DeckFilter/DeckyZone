@@ -4,11 +4,16 @@ import {
   DialogBody,
   DialogControlsSection,
   Field,
+  Focusable,
+  GamepadButton,
+  type GamepadEvent,
+  ScrollPanelGroup,
   SidebarNavigation,
   SteamSpinner,
   gamepadDialogClasses,
 } from '@decky/ui'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { FaClipboardList, FaDesktop, FaGamepad, FaInfoCircle } from 'react-icons/fa'
 import {
   DECKYZONE_DISPLAY_ROUTE,
   DECKYZONE_INPUT_ROUTE,
@@ -47,8 +52,10 @@ const pathListStyle = {
 
 const pathTextStyle = {
   fontFamily: 'monospace',
-  whiteSpace: 'nowrap' as const,
+  whiteSpace: 'normal' as const,
+  overflowWrap: 'anywhere' as const,
   display: 'inline-block',
+  userSelect: 'text' as const,
 }
 
 const reportTextStyle = {
@@ -79,9 +86,19 @@ const PathText = ({ path }: { path: string }) => {
 
 const SnapshotRow = ({ label, value, description, bottomSeparator = 'standard' }: SnapshotRowProps) => {
   return (
-    <Field label={label} highlightOnFocus={false} description={description} bottomSeparator={bottomSeparator}>
+    <Field focusable label={label} description={description} bottomSeparator={bottomSeparator}>
       {value}
     </Field>
+  )
+}
+
+const ErrorField = ({ message }: { message: string }) => {
+  return (
+    <DialogControlsSection>
+      <Field focusable label="Error">
+        <span style={{ color: 'red' }}>{message}</span>
+      </Field>
+    </DialogControlsSection>
   )
 }
 
@@ -132,7 +149,7 @@ const SnapshotPage = ({ snapshot, error, isLoading, children }: SnapshotPageProp
   return (
     <DialogBody>
       {isLoading && !snapshot && <SteamSpinner />}
-      {error && <div style={{ color: 'red', marginBottom: snapshot ? '12px' : 0 }}>{error}</div>}
+      {error && <ErrorField message={error} />}
       {snapshot && <DialogControlsSection>{children(snapshot)}</DialogControlsSection>}
     </DialogBody>
   )
@@ -288,6 +305,7 @@ const SupportReportPage = () => {
   const [copyState, setCopyState] = useState<CopyState>('idle')
   const isMountedRef = useRef(true)
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reportTextRef = useRef<HTMLDivElement>(null)
 
   const loadSupportReport = async () => {
     setIsLoading(true)
@@ -380,16 +398,38 @@ const SupportReportPage = () => {
         ? 'Copies the complete report as text'
         : 'Generate a report before copying'
 
+  const handleReportNavigation = (event: GamepadEvent) => {
+    const element = reportTextRef.current
+    if (!element) {
+      return
+    }
+
+    const direction = event.detail.button
+    const isScrollingDown = direction === GamepadButton.DIR_DOWN
+    const isScrollingUp = direction === GamepadButton.DIR_UP
+    const canScrollDown = element.scrollTop + element.clientHeight < element.scrollHeight - 1
+    const canScrollUp = element.scrollTop > 0
+
+    if ((isScrollingDown && canScrollDown) || (isScrollingUp && canScrollUp)) {
+      event.preventDefault()
+      event.stopPropagation()
+      element.scrollBy({
+        top: isScrollingDown ? 120 : -120,
+        behavior: 'smooth',
+      })
+    }
+  }
+
   return (
     <DialogBody>
       {isLoading && !report && <SteamSpinner />}
-      {error && <div style={{ color: 'red', marginBottom: report ? '12px' : 0 }}>{error}</div>}
+      {error && <ErrorField message={error} />}
       {report && (
         <DialogControlsSection>
           <Field
+            focusable
             label="Local Support Report"
             description="Generated locally. Common identifiers are redacted, but review it before sharing. Nothing is uploaded. Recent DeckyZone logs may be included."
-            highlightOnFocus={false}
           />
           <SnapshotRow label="DeckyZone" value={formatValue(report.summary.pluginVersion)} />
           <SnapshotRow label="Decky Loader" value={formatValue(report.summary.deckyVersion)} />
@@ -424,8 +464,20 @@ const SupportReportPage = () => {
 
       {report && (
         <DialogControlsSection>
-          <Field label="Full Report" highlightOnFocus={false} childrenLayout="below">
-            <pre style={reportTextStyle} tabIndex={0}>{report.text}</pre>
+          <Field label="Full Report" childrenLayout="below">
+            <ScrollPanelGroup>
+              <Focusable
+                ref={reportTextRef}
+                style={reportTextStyle}
+                onGamepadDirection={handleReportNavigation}
+                actionDescriptionMap={{
+                  [GamepadButton.DIR_UP]: 'Scroll Up',
+                  [GamepadButton.DIR_DOWN]: 'Scroll Down',
+                }}
+              >
+                <pre style={{ margin: 0, font: 'inherit', whiteSpace: 'inherit' }}>{report.text}</pre>
+              </Focusable>
+            </ScrollPanelGroup>
           </Field>
         </DialogControlsSection>
       )}
@@ -474,26 +526,28 @@ const DebugInfoPage = () => {
 
   return (
     <SidebarNavigation
-      title="DeckyZone"
-      showTitle
       pages={[
         {
           title: 'Overview',
+          icon: <FaInfoCircle />,
           content: <OverviewPage {...snapshotPageProps} />,
           route: DECKYZONE_OVERVIEW_ROUTE,
         },
         {
           title: 'Input',
+          icon: <FaGamepad />,
           content: <InputPage {...snapshotPageProps} />,
           route: DECKYZONE_INPUT_ROUTE,
         },
         {
           title: 'Display',
+          icon: <FaDesktop />,
           content: <DisplayPage {...snapshotPageProps} />,
           route: DECKYZONE_DISPLAY_ROUTE,
         },
         {
           title: 'Support Report',
+          icon: <FaClipboardList />,
           content: <SupportReportPage />,
           route: DECKYZONE_SUPPORT_REPORT_ROUTE,
         },
