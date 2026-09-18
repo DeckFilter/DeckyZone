@@ -1,5 +1,6 @@
 import { ButtonItem, ConfirmModal, Navigation, PanelSection, PanelSectionRow, Spinner, showModal } from '@decky/ui'
 import { useState } from 'react'
+import { openDebugInformation } from '../routes'
 import type { PluginResetResult } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
 
@@ -108,6 +109,14 @@ const ResetPluginConfirmModal = ({
 const TroubleshootingPanel = ({ onResetPlugin }: Props) => {
   return (
     <PanelSection title="Troubleshooting">
+      <PanelSectionRow>
+        <ButtonItem
+          layout="below"
+          onClick={openDebugInformation}
+        >
+          Open Debug Information
+        </ButtonItem>
+      </PanelSectionRow>
       <PanelSectionRow>
         <ButtonItem
           layout="below"

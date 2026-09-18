@@ -6,9 +6,10 @@ import {
   Router,
   SteamSpinner,
 } from '@decky/ui'
-import { addEventListener, callable, definePlugin, removeEventListener } from '@decky/api'
+import { addEventListener, callable, definePlugin, removeEventListener, routerHook } from '@decky/api'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import ControllerPanel from "./components/ControllerPanel"
+import DebugInfoPage from "./components/DebugInfoPage"
 import DisplayPanel from "./components/DisplayPanel"
 import ErrorBoundary from "./components/ErrorBoundary"
 import InterfacePanel from "./components/InterfacePanel"
@@ -18,6 +19,7 @@ import TroubleshootingPanel from "./components/TroubleshootingPanel"
 import UpdatesPanel from "./components/UpdatesPanel"
 import ZotacIcon from "./components/ZotacIcon"
 import { cleanupZotacGlyphsRuntime, syncStoredZotacGlyphsRuntimeEnabled } from "./glyphs/zotacGlyphRuntime"
+import { DECKYZONE_ROUTE } from './routes'
 import type { ActiveGame, PluginResetResult, PluginSettings, PluginStatus } from "./types/plugin"
 import { checkLatestVersion, compareVersions, resetStartupCheck } from './utils/pluginUpdates'
 import { showDeckyToast } from './utils/toasts'
@@ -621,6 +623,7 @@ function Content() {
 }
 
 export default definePlugin(() => {
+  routerHook.addRoute(DECKYZONE_ROUTE, DebugInfoPage, { exact: false })
   registerBrightnessDialFixListeners()
   RunningApps.register()
   updateNoticeGeneration += 1
@@ -647,6 +650,7 @@ export default definePlugin(() => {
     content: <Content />,
     icon: <ZotacIcon />,
     onDismount() {
+      routerHook.removeRoute(DECKYZONE_ROUTE)
       updateNoticeGeneration += 1
       resetBootstrap()
       resetStartupCheck()

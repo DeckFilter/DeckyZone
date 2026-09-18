@@ -105,6 +105,21 @@ export type DebugInfoSnapshot = {
   }
 }
 
+export type SupportReport = {
+  generatedAt: string
+  summary: {
+    pluginVersion: string
+    deckyVersion: string
+    os: string
+    kernel: string
+    vram: string
+    battery: string
+  }
+  text: string
+  truncated: boolean
+  logIncluded: boolean
+}
+
 export type PerGameSettings = {
   enabled: boolean
   buttonPromptFixEnabled: boolean
