@@ -465,8 +465,13 @@ const SupportReportPage = () => {
       {report && (
         <DialogControlsSection>
           <Field label="Full Report" childrenLayout="below">
-            <ScrollPanelGroup>
+            <ScrollPanelGroup
+              // @ts-expect-error Steam's runtime component supports disabling its focus target.
+              focusable={false}
+            >
               <Focusable
+                // @ts-expect-error Steam's runtime component supports an explicit focus target.
+                focusable
                 ref={reportTextRef}
                 style={reportTextStyle}
                 onGamepadDirection={handleReportNavigation}
