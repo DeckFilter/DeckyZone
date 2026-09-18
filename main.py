@@ -19,6 +19,7 @@ import plugin_update
 import plugin_settings
 import remaining_battery_time
 import runtime_profile_utils
+import support_report
 import trackpad_modes
 import vram_control
 
@@ -530,6 +531,32 @@ class DeckyZoneService:
                 "message": status["message"],
             },
         }
+
+    def get_support_report(self, debug_snapshot=None):
+        if debug_snapshot is None:
+            debug_snapshot = self.get_debug_info()
+
+        return support_report.build_support_report(
+            plugin_version=decky.DECKY_PLUGIN_VERSION,
+            decky_version=decky.DECKY_VERSION,
+            debug_snapshot=debug_snapshot,
+            supported_device=self.is_supported_device(),
+            remaining_battery_enabled=(
+                self.settings_store.get_remaining_battery_time_fix_enabled()
+            ),
+            logger=self.logger,
+            log_path=decky.DECKY_PLUGIN_LOG,
+            command_runner=self.command_runner,
+            command_env=self.get_env(),
+            read_text=self.read_text,
+            path_exists=self._path_exists,
+            pending_vram_reader=vram_control.read_pending_vram_gb,
+            active_vram_reader=vram_control.read_active_vram_gb,
+            redaction_paths=(
+                decky.DECKY_USER_HOME,
+                decky.DECKY_HOME,
+            ),
+        )
 
     async def get_latest_version_num(self):
         try:
@@ -3406,7 +3433,11 @@ class DeckyZoneService:
 
             try:
                 started = await self.start_remaining_battery_time_bridge()
-            except Exception:
+            except Exception as error:
+                self.logger.warning(
+                    "Failed to enable remaining battery time fix: "
+                    f"{error}"
+                )
                 self.settings_store.set_remaining_battery_time_fix_enabled(False)
                 await self.stop_remaining_battery_time_bridge()
                 raise
@@ -4236,6 +4267,13 @@ class Plugin:
 
     async def get_debug_info(self):
         return self.service.get_debug_info()
+
+    async def get_support_report(self):
+        debug_snapshot = self.service.get_debug_info()
+        return await asyncio.to_thread(
+            self.service.get_support_report,
+            debug_snapshot,
+        )
 
     async def reset_plugin(self):
         result = await self._reset_plugin_cleanup()
