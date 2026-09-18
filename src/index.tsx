@@ -1,4 +1,5 @@
 import {
+  ButtonItem,
   Navigation,
   PanelSection,
   PanelSectionRow,
@@ -38,6 +39,7 @@ const syncPerGameTarget = callable<[string], boolean>('sync_per_game_target')
 
 const DEFAULT_APP_ID = '0'
 const ACTIVE_GAME_POLL_INTERVAL_MS = 1000
+const BOOTSTRAP_TIMEOUT_MS = 10_000
 const BRIGHTNESS_DIAL_FIX_STEP = 5
 const REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT = 'remaining_battery_time_fix_disabled'
 
@@ -48,6 +50,7 @@ let brightnessChangeRegistration: { unregister?: () => void } | null = null
 let brightnessDialFixEventListener: ((direction: BrightnessDialDirection) => void) | null = null
 let bootstrapState: BootstrapState = { state: 'loading' }
 let bootstrapPromise: Promise<void> | null = null
+let bootstrapGeneration = 0
 let updateNoticeGeneration = 0
 let notifiedUpdateVersion: string | null = null
 
@@ -170,24 +173,68 @@ function cacheBootstrapSettings(nextSettings: PluginSettings) {
   }
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)
+  })
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId)
+    }
+  })
+}
+
 function startBootstrap() {
   if (bootstrapPromise !== null) {
     return bootstrapPromise
   }
 
+  const generation = ++bootstrapGeneration
   bootstrapState = { state: 'loading' }
-  bootstrapPromise = Promise.all([getStatus(), getSettings()])
+  bootstrapPromise = withTimeout(
+    Promise.all([getStatus(), getSettings()]),
+    BOOTSTRAP_TIMEOUT_MS,
+    'DeckyZone backend did not respond within 10 seconds.',
+  )
     .then(([nextStatus, nextSettings]) => {
+      if (generation !== bootstrapGeneration) {
+        return
+      }
+
       setBootstrapSnapshot(nextStatus, nextSettings)
     })
     .catch((error) => {
+      if (generation !== bootstrapGeneration) {
+        return
+      }
+
+      console.error('Failed to load DeckyZone state', error)
       bootstrapState = {
         state: 'error',
-        message: `Failed to load plugin state: ${String(error)}`,
+        message: `${error instanceof Error ? error.message : String(error)} Retry, or reload DeckyZone from Decky settings if this keeps happening.`,
       }
     })
 
   return bootstrapPromise
+}
+
+function retryBootstrap() {
+  if (bootstrapState.state === 'loading' && bootstrapPromise !== null) {
+    return bootstrapPromise
+  }
+
+  bootstrapGeneration += 1
+  bootstrapPromise = null
+  bootstrapState = { state: 'loading' }
+  return startBootstrap()
+}
+
+function resetBootstrap() {
+  bootstrapGeneration += 1
+  bootstrapPromise = null
+  bootstrapState = { state: 'loading' }
 }
 
 function startUpdateNoticeAfterBootstrap(bootstrap: Promise<void>, generation: number) {
@@ -336,11 +383,29 @@ function Content() {
   const [bootstrap, setBootstrap] = useState<BootstrapState>(getBootstrapState())
   const [status, setStatus] = useState<PluginStatus | null>(() => getBootstrapStatus())
   const [settings, setSettings] = useState<PluginSettings | null>(() => getBootstrapSettings())
+  const isMountedRef = useRef(true)
   const settingsRef = useRef(settings)
   const settingsRevisionRef = useRef(0)
   settingsRef.current = settings
   const [activeGame, setActiveGame] = useState<ActiveGame | null>(getActiveGame())
   const [uiRevision, setUiRevision] = useState(0)
+
+  const syncBootstrapIntoLocalState = () => {
+    if (!isMountedRef.current) {
+      return
+    }
+
+    const nextBootstrap = getBootstrapState()
+    setBootstrap(nextBootstrap)
+    if (nextBootstrap.state !== 'ready') {
+      return
+    }
+
+    setStatus(nextBootstrap.snapshot.status)
+    settingsRef.current = nextBootstrap.snapshot.settings
+    settingsRevisionRef.current += 1
+    setSettings(nextBootstrap.snapshot.settings)
+  }
 
   const applySettingsUpdate = (update: PluginSettingsUpdate) => {
     const currentSettings = settingsRef.current
@@ -372,8 +437,12 @@ function Content() {
   }
 
   const refreshStatusAfterActiveGameSync = (appId: string) => {
+    if (!isMountedRef.current) {
+      return
+    }
+
     void syncActiveGameTarget(appId).then((nextStatus) => {
-      if (nextStatus) {
+      if (isMountedRef.current && nextStatus) {
         applyStatusUpdate(nextStatus)
       }
     })
@@ -407,7 +476,20 @@ function Content() {
     }
   }
 
+  const handleRetryBootstrap = () => {
+    const bootstrap = retryBootstrap()
+    startUpdateNoticeAfterBootstrap(bootstrap, updateNoticeGeneration)
+    syncBootstrapIntoLocalState()
+    void bootstrap.then(() => {
+      syncBootstrapIntoLocalState()
+      if (isMountedRef.current && getBootstrapState().state === 'ready') {
+        refreshStatusAfterActiveGameSync(RunningApps.active())
+      }
+    })
+  }
+
   useEffect(() => {
+    isMountedRef.current = true
     const remainingBatteryTimeAutoDisabledListener = addEventListener(
       REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
       () => {
@@ -418,32 +500,29 @@ function Content() {
       },
     )
 
-    const syncBootstrapIntoLocalState = () => {
-      const nextBootstrap = getBootstrapState()
-      setBootstrap(nextBootstrap)
-      if (nextBootstrap.state !== 'ready') {
+    syncBootstrapIntoLocalState()
+    void startBootstrap().then(async () => {
+      if (!isMountedRef.current) {
         return
       }
 
-      setStatus(nextBootstrap.snapshot.status)
-      settingsRef.current = nextBootstrap.snapshot.settings
-      settingsRevisionRef.current += 1
-      setSettings(nextBootstrap.snapshot.settings)
-    }
-
-    syncBootstrapIntoLocalState()
-    void startBootstrap().then(async () => {
       syncBootstrapIntoLocalState()
+      if (getBootstrapState().state !== 'ready') {
+        return
+      }
+
       const settingsRevisionAtRequest = settingsRevisionRef.current
       try {
         const nextSettings = await getSettings()
-        if (settingsRevisionRef.current === settingsRevisionAtRequest) {
+        if (isMountedRef.current && settingsRevisionRef.current === settingsRevisionAtRequest) {
           applySettingsUpdate(nextSettings)
         }
       } catch (error) {
         console.error('Failed to refresh DeckyZone settings', error)
       }
-      refreshStatusAfterActiveGameSync(RunningApps.active())
+      if (isMountedRef.current) {
+        refreshStatusAfterActiveGameSync(RunningApps.active())
+      }
     })
     setActiveGame((currentGame) => {
       const nextActiveGame = RunningApps.activeAppInfo() ?? getActiveGame()
@@ -454,6 +533,7 @@ function Content() {
       refreshStatusAfterActiveGameSync(nextActiveGame?.appid ?? DEFAULT_APP_ID)
     })
     return () => {
+      isMountedRef.current = false
       unregisterActiveGameListener()
       removeEventListener(
         REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
@@ -477,6 +557,11 @@ function Content() {
       <PanelSection title="Controller">
         <PanelSectionRow>
           <div style={{ color: 'red' }}>{bootstrap.message}</div>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ButtonItem layout="below" onClick={handleRetryBootstrap}>
+            Retry
+          </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
     )
@@ -563,6 +648,7 @@ export default definePlugin(() => {
     icon: <ZotacIcon />,
     onDismount() {
       updateNoticeGeneration += 1
+      resetBootstrap()
       resetStartupCheck()
       removeEventListener('zotac_home_short_pressed', unregisterHomeNavigationListener)
       unregisterActiveGameSync()
