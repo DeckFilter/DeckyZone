@@ -12,7 +12,6 @@ mechanism on Windows via WinRing0.
 Encoding (verified against the Windows Zotac launcher on a 16GB Zone):
 
     byte value = VRAM size in 256MB units (VRAM_GB * 4)
-    0 (uninitialized/default) = 4GB
     4GB (default) = 16, 5GB = 20, 6GB = 24, 7GB = 28, 8GB = 32
 
 The Windows launcher allows the 4GB base plus increments of 1GB up to
@@ -38,13 +37,7 @@ def is_valid_vram_gb(size_gb):
 
 def decode_vram_gb(raw_value):
     """Decode a supported CMOS byte into a whole-number VRAM size."""
-    if not isinstance(raw_value, int) or isinstance(raw_value, bool):
-        raise ValueError(f"Unsupported CMOS VRAM value: {raw_value}.")
-
-    if raw_value == 0:
-        return MIN_VRAM_GB
-
-    if raw_value % CMOS_UNITS_PER_GB != 0:
+    if not isinstance(raw_value, int) or raw_value % CMOS_UNITS_PER_GB != 0:
         raise ValueError(f"Unsupported CMOS VRAM value: {raw_value}.")
 
     size_gb = raw_value // CMOS_UNITS_PER_GB

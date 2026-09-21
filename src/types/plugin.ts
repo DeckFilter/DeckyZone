@@ -146,7 +146,6 @@ export type PluginSettings = {
   gamescopeZotacProfileBuiltIn: boolean
   gamescopeZotacProfileInstalled: boolean
   gamescopeGreenTintFixEnabled: boolean
-  gamescopeDisplayRestartRequired: boolean
   gamescopeZotacProfileTargetPath: string
   gamescopeZotacProfileVerificationState: string
   inputplumberAvailable: boolean

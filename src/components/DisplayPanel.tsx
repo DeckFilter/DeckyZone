@@ -85,7 +85,7 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
       onSettingsChange(nextSettings)
       if (nextSettings.gamescopeZotacProfileInstalled !== enabled) {
         setDisplayNotice(DISPLAY_MISMATCH_NOTICE)
-      } else if (nextSettings.gamescopeDisplayRestartRequired) {
+      } else {
         restartRequired = true
       }
     } catch {
@@ -112,7 +112,7 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
       onSettingsChange(nextSettings)
       if (nextSettings.gamescopeGreenTintFixEnabled !== enabled) {
         setDisplayNotice(DISPLAY_MISMATCH_NOTICE)
-      } else if (nextSettings.gamescopeDisplayRestartRequired) {
+      } else {
         restartRequired = true
       }
     } catch {

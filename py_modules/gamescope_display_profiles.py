@@ -18,7 +18,6 @@ class GamescopeDisplayProfiles:
     def __init__(self, user_home, plugin_dir, system_profile_paths=None):
         self.user_home = Path(user_home)
         self.plugin_dir = Path(plugin_dir)
-        self._active_profile_variant = None
         self.system_profile_paths = tuple(
             Path(path)
             for path in (system_profile_paths or DEFAULT_SYSTEM_PROFILE_PATHS)
@@ -172,32 +171,6 @@ class GamescopeDisplayProfiles:
             **self._asset_state(),
         }
 
-    def _get_effective_profile_variant(self, state):
-        verification_state = state["gamescopeZotacProfileVerificationState"]
-        if verification_state in (PROFILE_VARIANT_BASE, PROFILE_VARIANT_GREEN):
-            return verification_state
-        if verification_state == PROFILE_VARIANT_ABSENT:
-            return (
-                PROFILE_VARIANT_BASE
-                if state["gamescopeZotacProfileBuiltIn"]
-                else PROFILE_VARIANT_ABSENT
-            )
-        return None
-
-    def _with_restart_state(self, state):
-        pending_profile_variant = self._get_effective_profile_variant(state)
-        if self._active_profile_variant is None and pending_profile_variant is not None:
-            self._active_profile_variant = pending_profile_variant
-
-        return {
-            **state,
-            "gamescopeDisplayRestartRequired": (
-                self._active_profile_variant is not None
-                and pending_profile_variant is not None
-                and pending_profile_variant != self._active_profile_variant
-            ),
-        }
-
     def _is_any_managed_profile_present(self):
         return any(
             path.is_file()
@@ -260,7 +233,7 @@ class GamescopeDisplayProfiles:
             ):
                 verification_state = PROFILE_VARIANT_ERROR
 
-            state = {
+            return {
                 "gamescopeZotacProfileBuiltIn": self.is_builtin_profile_available(),
                 "gamescopeZotacProfileInstalled": managed_profile_present,
                 "gamescopeGreenTintFixEnabled": verification_state == PROFILE_VARIANT_GREEN,
@@ -269,12 +242,9 @@ class GamescopeDisplayProfiles:
                 **self._asset_state(),
             }
         except OSError:
-            state = self._fallback_state()
-
-        return self._with_restart_state(state)
+            return self._fallback_state()
 
     def set_zotac_profile_enabled(self, enabled):
-        self.get_state()
         self._migrate_legacy_managed_profiles()
         if enabled:
             if not self._is_asset_available(self.base_profile_asset_path):
@@ -291,7 +261,6 @@ class GamescopeDisplayProfiles:
         return self.get_state()
 
     def set_green_tint_fix_enabled(self, enabled):
-        self.get_state()
         self._migrate_legacy_managed_profiles()
         if enabled:
             if (
@@ -323,7 +292,6 @@ class GamescopeDisplayProfiles:
         return self.get_state()
 
     def cleanup_managed_files(self):
-        self.get_state()
         self._remove_managed_profile_tolerant(self.managed_profile_path)
         self._remove_legacy_managed_profiles_tolerant()
         self._cleanup_empty_directories()
