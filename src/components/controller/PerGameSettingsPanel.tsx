@@ -1,6 +1,7 @@
-import { PanelSectionRow, ToggleField } from '@decky/ui'
+import { PanelSectionRow } from '@decky/ui'
 import type { ReactNode } from 'react'
 import type { ActiveGame } from '../../types/plugin'
+import { SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
   activeGame: ActiveGame | null
@@ -15,7 +16,10 @@ type Props = {
 
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
 const NO_ACTIVE_GAME_PER_GAME_SETTINGS_DESCRIPTION = 'Launch a game to enable per-game settings'
-const BUTTON_PROMPT_FIX_DESCRIPTION = 'Fixes button prompts and glyphs'
+const PER_GAME_SETTINGS_EXPLAINER =
+  'Stores separate button prompt, trackpad, and rumble settings for the running game. Other games keep using the global settings.'
+const BUTTON_PROMPT_FIX_EXPLAINER =
+  "Switches the running game's virtual controller to Xbox Elite so Steam uses compatible button prompts and glyphs."
 // TODO: Re-enable these remap options after M1/M2 remap behavior is fully confirmed on-device.
 // const M1_REMAP_DESCRIPTION = 'Maps M1 while this fix is on'
 // const M2_REMAP_DESCRIPTION = 'Maps M2 while this fix is on'
@@ -123,8 +127,10 @@ const PerGameSettingsPanel = ({
   return (
     <>
       <PanelSectionRow>
-        <ToggleField
+        <SteamExplainerToggleField
           label="Enable Per-Game Settings"
+          explainerTitle="Per-Game Settings"
+          explainer={PER_GAME_SETTINGS_EXPLAINER}
           checked={isPerGameSettingsEnabled}
           onChange={(value: boolean) => onPerGameSettingsToggleChange(value)}
           disabled={!activeGame || savingPerGameSettings || !inputplumberAvailable}
@@ -133,12 +139,14 @@ const PerGameSettingsPanel = ({
       </PanelSectionRow>
       {activeGame && isPerGameSettingsEnabled && (
         <PanelSectionRow>
-          <ToggleField
+          <SteamExplainerToggleField
             label="Button Prompt Fix"
+            explainerTitle="Button Prompt Fix"
+            explainer={BUTTON_PROMPT_FIX_EXPLAINER}
             checked={isButtonPromptFixEnabled}
             onChange={(value: boolean) => onButtonPromptFixToggleChange(value)}
             disabled={savingPerGameSettings || savingButtonPromptFix || !inputplumberAvailable}
-            description={inputplumberAvailable ? BUTTON_PROMPT_FIX_DESCRIPTION : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
+            description={inputplumberAvailable ? undefined : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
           />
         </PanelSectionRow>
       )}
