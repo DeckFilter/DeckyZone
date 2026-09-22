@@ -1,10 +1,10 @@
 import { callable } from '@decky/api'
-import { DropdownItem, PanelSection, PanelSectionRow, gamepadDialogClasses } from '@decky/ui'
+import { PanelSection, PanelSectionRow, gamepadDialogClasses } from '@decky/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ComponentProps, ComponentType } from 'react'
 import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
+import { SteamExplainerDropdownItem } from './SteamExplainer'
 
 type Props = {
   settings: PluginSettings
@@ -16,12 +16,10 @@ type Props = {
 type VramOption = { data: number; label: string }
 
 const setVramSizeGb = callable<[number], PluginSettings>('set_vram_size_gb')
-const ControlledDropdownItem = DropdownItem as ComponentType<
-  ComponentProps<typeof DropdownItem> & { controlled: boolean }
->
 
 const VRAM_DEFAULT_GB = 4
-const VRAM_DESCRIPTION = 'Memory reserved for the GPU (UMA framebuffer), reboot after changing this'
+const VRAM_EXPLAINER =
+  'Reserves system memory for the integrated GPU as a UMA framebuffer. Higher values leave less memory for games and SteamOS. Restart SteamOS after changing this setting.'
 const VRAM_UNAVAILABLE_DESCRIPTION = 'Current VRAM setting is unavailable'
 const VRAM_UNKNOWN_LABEL = 'Unknown'
 const VRAM_UPDATE_FAILED_NOTICE = "Couldn't update VRAM size."
@@ -41,11 +39,7 @@ function getVramValue(settings: PluginSettings) {
 }
 
 function getVramDescription(settings: PluginSettings) {
-  if (!settings.vram.available) {
-    return VRAM_UNAVAILABLE_DESCRIPTION
-  }
-
-  return VRAM_DESCRIPTION
+  return settings.vram.available ? undefined : VRAM_UNAVAILABLE_DESCRIPTION
 }
 
 function getVramRebootHint(settings: PluginSettings) {
@@ -163,10 +157,12 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
   return (
     <PanelSection title="Performance">
       <PanelSectionRow>
-        <ControlledDropdownItem
+        <SteamExplainerDropdownItem
           controlled
           label="VRAM Size"
           menuLabel="VRAM Size"
+          explainerTitle="VRAM Size"
+          explainer={VRAM_EXPLAINER}
           description={getVramDescription(settings)}
           rgOptions={vramOptions}
           strDefaultLabel={vramDraftGb === null ? VRAM_UNKNOWN_LABEL : getVramOptionLabel(vramDraftGb)}

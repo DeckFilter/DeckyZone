@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
+import { SteamExplainerToggleField } from './SteamExplainer'
 
 type Props = {
   settings: PluginSettings
@@ -21,16 +22,23 @@ const DISPLAY_VERIFICATION_NOTICE = 'Display profile needs attention.'
 const DISPLAY_RESTART_REQUIRED_NOTICE = 'Restart to apply display change.'
 const ZOTAC_PROFILE_DESCRIPTION = `Adds the Zotac OLED Gamescope profile if it's missing, ${RESTART_NOTE}`
 
-function getGreenTintDescription(settings: PluginSettings, isBaseProfileAvailable: boolean) {
+function getGreenTintDescription(isBaseProfileAvailable: boolean) {
   if (!isBaseProfileAvailable) {
     return `Requires the Zotac OLED profile first, ${RESTART_NOTE}`
   }
 
-  if (settings.gamescopeZotacProfileBuiltIn) {
-    return `Applies a white point correction to the built-in Zotac OLED profile, ${RESTART_NOTE}`
+  return undefined
+}
+
+function getGreenTintExplainer(settings: PluginSettings, isBaseProfileAvailable: boolean) {
+  if (!isBaseProfileAvailable) {
+    return 'The green tint fix requires the Zotac OLED profile. Enable the profile first, then restart SteamOS after changing this setting.'
   }
 
-  return `Applies a white point correction to reduce green tint, ${RESTART_NOTE}`
+  const profile = settings.gamescopeZotacProfileBuiltIn
+    ? 'built-in Zotac OLED profile'
+    : 'Zotac OLED profile'
+  return `Adjusts the ${profile}'s white point to reduce its green tint. Restart SteamOS after changing this setting.`
 }
 
 function getDisplayVerificationNotice(settings: PluginSettings) {
@@ -144,12 +152,14 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
         </PanelSectionRow>
       )}
       <PanelSectionRow>
-        <ToggleField
+        <SteamExplainerToggleField
           label="Enable Green Tint Fix"
+          explainerTitle="Green Tint Fix"
+          explainer={getGreenTintExplainer(settings, isBaseProfileAvailable)}
           checked={settings.gamescopeGreenTintFixEnabled}
           onChange={(value: boolean) => void handleGreenTintFixChange(value)}
           disabled={savingGreenTintFix || !isBaseProfileAvailable}
-          description={getGreenTintDescription(settings, isBaseProfileAvailable)}
+          description={getGreenTintDescription(isBaseProfileAvailable)}
         />
       </PanelSectionRow>
       <PanelSectionRow>
