@@ -1,5 +1,5 @@
-import { ButtonItem, PanelSectionRow, SliderField } from '@decky/ui'
-import { SteamExplainerToggleField } from '../SteamExplainer'
+import { ButtonItem, PanelSectionRow } from '@decky/ui'
+import { SteamExplainerSliderField, SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
   inputplumberAvailable: boolean
@@ -16,11 +16,11 @@ type Props = {
 
 const RUMBLE_EXPLAINER =
   'Enables controller vibration. Use Intensity below to adjust its strength and Test Rumble to preview it.'
-const RUMBLE_INTENSITY_DESCRIPTION = '75% recommended, 100% is very strong'
+const RUMBLE_INTENSITY_EXPLAINER = 'Adjusts vibration strength. 75% is recommended; 100% is very strong.'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available'
 
-function getRumbleDescription(rumbleAvailable: boolean) {
-  return rumbleAvailable ? undefined : RUMBLE_UNAVAILABLE_MESSAGE
+function getRumbleExplainer(rumbleAvailable: boolean) {
+  return rumbleAvailable ? RUMBLE_EXPLAINER : `${RUMBLE_EXPLAINER} ${RUMBLE_UNAVAILABLE_MESSAGE}.`
 }
 
 const RumblePanel = ({
@@ -41,19 +41,19 @@ const RumblePanel = ({
         <SteamExplainerToggleField
           label="Rumble Controls"
           explainerTitle="Rumble Controls"
-          explainer={RUMBLE_EXPLAINER}
+          explainer={getRumbleExplainer(rumbleAvailable)}
           checked={rumbleEnabled}
           onChange={(value: boolean) => onRumbleToggleChange(value)}
           disabled={savingRumble}
-          description={getRumbleDescription(rumbleAvailable)}
         />
       </PanelSectionRow>
       {rumbleEnabled && (
         <>
           <PanelSectionRow>
-            <SliderField
+            <SteamExplainerSliderField
               label="Intensity"
-              description={RUMBLE_INTENSITY_DESCRIPTION}
+              explainerTitle="Rumble Intensity"
+              explainer={RUMBLE_INTENSITY_EXPLAINER}
               value={rumbleIntensityDraft}
               min={0}
               max={100}

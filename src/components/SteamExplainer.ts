@@ -1,4 +1,4 @@
-import { DropdownItem, ToggleField } from '@decky/ui'
+import { DropdownItem, SliderField, ToggleField } from '@decky/ui'
 import type { ComponentProps, ComponentType, ReactNode } from 'react'
 
 type SteamExplainerProps = {
@@ -12,4 +12,8 @@ export const SteamExplainerDropdownItem = DropdownItem as ComponentType<
 
 export const SteamExplainerToggleField = ToggleField as ComponentType<
   ComponentProps<typeof ToggleField> & SteamExplainerProps
+>
+
+export const SteamExplainerSliderField = SliderField as ComponentType<
+  ComponentProps<typeof SliderField> & SteamExplainerProps
 >
