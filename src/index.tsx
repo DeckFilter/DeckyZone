@@ -1,14 +1,12 @@
 import {
   ButtonItem,
   Navigation,
-  PanelSection,
-  PanelSectionRow,
   Router,
   SteamSpinner,
   Tabs,
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener, routerHook } from '@decky/api'
-import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react'
+import { Fragment, type ReactNode, useState } from 'react'
 import { FaDesktop, FaEllipsisH, FaGamepad, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
 import ControllerPanel from "./components/ControllerPanel"
 import SystemInformationPage from "./pages/SystemInformationPage"
@@ -18,11 +16,18 @@ import InterfacePanel from "./components/InterfacePanel"
 import LayoutPanel from './components/LayoutPanel'
 import PerformancePanel from "./components/PerformancePanel"
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
+import { SettingsRow, SettingsSection, SettingsSurfaceProvider } from './components/SettingsSurface'
 import TroubleshootingPanel from "./components/TroubleshootingPanel"
 import UpdatesPanel from "./components/UpdatesPanel"
 import ZotacIcon from "./components/ZotacIcon"
 import { cleanupZotacGlyphsRuntime, syncStoredZotacGlyphsRuntimeEnabled } from "./glyphs/zotacGlyphRuntime"
 import { DECKYZONE_ROUTE } from './routes'
+import {
+  DeckyZoneState,
+  DeckyZoneStateProvider,
+  type PluginSettingsUpdate,
+  useDeckyZoneState,
+} from './state/DeckyZoneState'
 import type { ActiveGame, PluginResetResult, PluginSettings, PluginStatus } from "./types/plugin"
 import { checkLatestVersion, compareVersions, resetStartupCheck } from './utils/pluginUpdates'
 import { showDeckyToast } from './utils/toasts'
@@ -30,13 +35,6 @@ import { showDeckyToast } from './utils/toasts'
 type BrightnessDialDirection = 'up' | 'down'
 type ActiveGameChangedHandler = (newGame: ActiveGame | null, oldGame: ActiveGame | null) => void
 type UnregisterFn = () => void
-type BootstrapSnapshot = {
-  status: PluginStatus
-  settings: PluginSettings
-}
-type BootstrapState = { state: 'loading' } | { state: 'ready'; snapshot: BootstrapSnapshot } | { state: 'error'; message: string }
-type PluginSettingsUpdate = PluginSettings | ((currentSettings: PluginSettings) => PluginSettings)
-
 const getStatus = callable<[], PluginStatus>('get_status')
 const getSettings = callable<[], PluginSettings>('get_settings')
 const resetPlugin = callable<[], PluginResetResult>('reset_plugin')
@@ -53,7 +51,6 @@ let homeButtonEnabled = false
 let currentBrightnessPercent = 50
 let brightnessChangeRegistration: { unregister?: () => void } | null = null
 let brightnessDialFixEventListener: ((direction: BrightnessDialDirection) => void) | null = null
-let bootstrapState: BootstrapState = { state: 'loading' }
 let bootstrapPromise: Promise<void> | null = null
 let bootstrapGeneration = 0
 let updateNoticeGeneration = 0
@@ -91,6 +88,14 @@ function setBrightnessDialFixRuntimeEnabled(enabled: boolean) {
 function setHomeButtonRuntimeEnabled(enabled: boolean) {
   homeButtonEnabled = enabled
 }
+
+function applySettingsRuntime(settings: PluginSettings) {
+  setBrightnessDialFixRuntimeEnabled(settings.brightnessDialFixEnabled)
+  setHomeButtonRuntimeEnabled(settings.homeButtonEnabled)
+  syncStoredZotacGlyphsRuntimeEnabled(settings.zotacGlyphsEnabled)
+}
+
+const deckyZoneState = new DeckyZoneState(applySettingsRuntime)
 
 function applyBrightnessDialDelta(delta: number) {
   if (!delta) {
@@ -143,60 +148,19 @@ function cleanupBrightnessDialFixListeners() {
 }
 
 function getBootstrapState() {
-  return bootstrapState
-}
-
-function getBootstrapStatus() {
-  return bootstrapState.state === 'ready' ? bootstrapState.snapshot.status : null
-}
-
-function getBootstrapSettings() {
-  return bootstrapState.state === 'ready' ? bootstrapState.snapshot.settings : null
+  return deckyZoneState.getSnapshot().bootstrap
 }
 
 function setBootstrapSnapshot(nextStatus: PluginStatus, nextSettings: PluginSettings) {
-  setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
-  setHomeButtonRuntimeEnabled(nextSettings.homeButtonEnabled)
-  syncStoredZotacGlyphsRuntimeEnabled(nextSettings.zotacGlyphsEnabled)
-  bootstrapState = {
-    state: 'ready',
-    snapshot: {
-      status: nextStatus,
-      settings: nextSettings,
-    },
-  }
+  deckyZoneState.setReady(nextStatus, nextSettings)
 }
 
 function cacheBootstrapStatus(nextStatus: PluginStatus) {
-  if (bootstrapState.state !== 'ready') {
-    return
-  }
-
-  bootstrapState = {
-    state: 'ready',
-    snapshot: {
-      ...bootstrapState.snapshot,
-      status: nextStatus,
-    },
-  }
+  deckyZoneState.updateStatus(nextStatus)
 }
 
 function cacheBootstrapSettings(nextSettings: PluginSettings) {
-  setBrightnessDialFixRuntimeEnabled(nextSettings.brightnessDialFixEnabled)
-  setHomeButtonRuntimeEnabled(nextSettings.homeButtonEnabled)
-  syncStoredZotacGlyphsRuntimeEnabled(nextSettings.zotacGlyphsEnabled)
-
-  if (bootstrapState.state !== 'ready') {
-    return
-  }
-
-  bootstrapState = {
-    state: 'ready',
-    snapshot: {
-      ...bootstrapState.snapshot,
-      settings: nextSettings,
-    },
-  }
+  deckyZoneState.updateSettings(nextSettings)
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string) {
@@ -218,7 +182,7 @@ function startBootstrap() {
   }
 
   const generation = ++bootstrapGeneration
-  bootstrapState = { state: 'loading' }
+  deckyZoneState.setLoading()
   bootstrapPromise = withTimeout(
     Promise.all([getStatus(), getSettings()]),
     BOOTSTRAP_TIMEOUT_MS,
@@ -237,34 +201,34 @@ function startBootstrap() {
       }
 
       console.error('Failed to load DeckyZone state', error)
-      bootstrapState = {
-        state: 'error',
-        message: `${error instanceof Error ? error.message : String(error)} Retry, or reload DeckyZone from Decky settings if this keeps happening.`,
-      }
+      deckyZoneState.setError(
+        `${error instanceof Error ? error.message : String(error)} Retry, or reload DeckyZone from Decky settings if this keeps happening.`,
+      )
     })
 
   return bootstrapPromise
 }
 
 function retryBootstrap() {
-  if (bootstrapState.state === 'loading' && bootstrapPromise !== null) {
+  if (getBootstrapState().state === 'loading' && bootstrapPromise !== null) {
     return bootstrapPromise
   }
 
   bootstrapGeneration += 1
   bootstrapPromise = null
-  bootstrapState = { state: 'loading' }
+  deckyZoneState.setLoading()
   return startBootstrap()
 }
 
 function resetBootstrap() {
   bootstrapGeneration += 1
   bootstrapPromise = null
-  bootstrapState = { state: 'loading' }
+  deckyZoneState.reset()
 }
 
 function startUpdateNoticeAfterBootstrap(bootstrap: Promise<void>, generation: number) {
   void bootstrap.then(async () => {
+    const bootstrapState = getBootstrapState()
     if (generation !== updateNoticeGeneration || bootstrapState.state !== 'ready') {
       return
     }
@@ -371,25 +335,6 @@ class RunningApps {
   }
 }
 
-function areGamesEqual(left: ActiveGame | null, right: ActiveGame | null) {
-  if (!left && !right) {
-    return true
-  }
-
-  if (!left || !right) {
-    return false
-  }
-
-  return (
-    left.appid === right.appid &&
-    left.display_name === right.display_name &&
-    left.icon_data === right.icon_data &&
-    left.icon_data_format === right.icon_data_format &&
-    left.icon_hash === right.icon_hash &&
-    left.local_cache_version === right.local_cache_version
-  )
-}
-
 async function syncActiveGameTarget(appId: string) {
   try {
     const synced = await syncPerGameTarget(appId)
@@ -405,204 +350,102 @@ async function syncActiveGameTarget(appId: string) {
   return null
 }
 
-function Content() {
-  const [bootstrap, setBootstrap] = useState<BootstrapState>(getBootstrapState())
-  const [status, setStatus] = useState<PluginStatus | null>(() => getBootstrapStatus())
-  const [settings, setSettings] = useState<PluginSettings | null>(() => getBootstrapSettings())
-  const isMountedRef = useRef(true)
-  const settingsRef = useRef(settings)
-  const settingsRevisionRef = useRef(0)
-  settingsRef.current = settings
-  const [activeGame, setActiveGame] = useState<ActiveGame | null>(getActiveGame())
-  const [uiRevision, setUiRevision] = useState(0)
-  const [activeTab, setActiveTab] = useState(currentMainTab)
+async function handleResetPlugin() {
+  let glyphCleanupFailed = false
 
-  const syncBootstrapIntoLocalState = () => {
-    if (!isMountedRef.current) {
-      return
-    }
-
-    const nextBootstrap = getBootstrapState()
-    setBootstrap(nextBootstrap)
-    if (nextBootstrap.state !== 'ready') {
-      return
-    }
-
-    setStatus(nextBootstrap.snapshot.status)
-    settingsRef.current = nextBootstrap.snapshot.settings
-    settingsRevisionRef.current += 1
-    setSettings(nextBootstrap.snapshot.settings)
+  try {
+    await cleanupZotacGlyphsRuntime()
+  } catch {
+    glyphCleanupFailed = true
   }
 
-  const applySettingsUpdate = (update: PluginSettingsUpdate) => {
-    const currentSettings = settingsRef.current
-    if (typeof update === 'function' && !currentSettings) {
-      return
-    }
+  const result = await resetPlugin()
+  let nextStatus = result.status
+  let nextSettings = result.settings
 
-    const nextSettings = typeof update === 'function' ? update(currentSettings!) : update
-    settingsRef.current = nextSettings
-    settingsRevisionRef.current += 1
-    cacheBootstrapSettings(nextSettings)
-    setBootstrap(getBootstrapState())
-    setSettings(nextSettings)
+  try {
+    ;[nextStatus, nextSettings] = await Promise.all([getStatus(), getSettings()])
+  } catch (error) {
+    console.error('Failed to refresh DeckyZone state after reset', error)
+  }
+
+  setBootstrapSnapshot(nextStatus, nextSettings)
+  deckyZoneState.bumpUiRevision()
+
+  return {
+    result,
+    glyphCleanupFailed,
+  }
+}
+
+async function refreshStateAfterBootstrap(bootstrap: Promise<void>) {
+  await bootstrap
+  const stateAfterBootstrap = deckyZoneState.getSnapshot()
+  if (stateAfterBootstrap.bootstrap.state !== 'ready') {
+    return
+  }
+
+  const settingsRevisionAtRequest = stateAfterBootstrap.settingsRevision
+  try {
+    const nextSettings = await getSettings()
+    const currentState = deckyZoneState.getSnapshot()
+    if (
+      currentState.bootstrap.state === 'ready'
+      && currentState.settingsRevision === settingsRevisionAtRequest
+    ) {
+      cacheBootstrapSettings(nextSettings)
+    }
+  } catch (error) {
+    console.error('Failed to refresh DeckyZone settings', error)
+  }
+
+  await syncActiveGameTarget(RunningApps.active())
+}
+
+function handleRetryBootstrap() {
+  const bootstrap = retryBootstrap()
+  startUpdateNoticeAfterBootstrap(bootstrap, updateNoticeGeneration)
+  void refreshStateAfterBootstrap(bootstrap)
+}
+
+function Content() {
+  const { activeGame, bootstrap, store, uiRevision } = useDeckyZoneState()
+  const [activeTab, setActiveTab] = useState(currentMainTab)
+
+  const applySettingsUpdate = (update: PluginSettingsUpdate) => {
+    store.updateSettings(update)
   }
 
   const applyStatusUpdate = (nextStatus: PluginStatus) => {
-    cacheBootstrapStatus(nextStatus)
-    setBootstrap(getBootstrapState())
-    setStatus(nextStatus)
+    store.updateStatus(nextStatus)
   }
-
-  const applySnapshotUpdate = (nextStatus: PluginStatus, nextSettings: PluginSettings) => {
-    settingsRef.current = nextSettings
-    settingsRevisionRef.current += 1
-    setBootstrapSnapshot(nextStatus, nextSettings)
-    setBootstrap(getBootstrapState())
-    setStatus(nextStatus)
-    setSettings(nextSettings)
-  }
-
-  const refreshStatusAfterActiveGameSync = (appId: string) => {
-    if (!isMountedRef.current) {
-      return
-    }
-
-    void syncActiveGameTarget(appId).then((nextStatus) => {
-      if (isMountedRef.current && nextStatus) {
-        applyStatusUpdate(nextStatus)
-      }
-    })
-  }
-
-  const handleResetPlugin = async () => {
-    let glyphCleanupFailed = false
-
-    try {
-      await cleanupZotacGlyphsRuntime()
-    } catch {
-      glyphCleanupFailed = true
-    }
-
-    const result = await resetPlugin()
-    let nextStatus = result.status
-    let nextSettings = result.settings
-
-    try {
-      ;[nextStatus, nextSettings] = await Promise.all([getStatus(), getSettings()])
-    } catch (error) {
-      console.error('Failed to refresh DeckyZone state after reset', error)
-    }
-
-    applySnapshotUpdate(nextStatus, nextSettings)
-    setUiRevision((revision) => revision + 1)
-
-    return {
-      result,
-      glyphCleanupFailed,
-    }
-  }
-
-  const handleRetryBootstrap = () => {
-    const bootstrap = retryBootstrap()
-    startUpdateNoticeAfterBootstrap(bootstrap, updateNoticeGeneration)
-    syncBootstrapIntoLocalState()
-    void bootstrap.then(() => {
-      syncBootstrapIntoLocalState()
-      if (isMountedRef.current && getBootstrapState().state === 'ready') {
-        refreshStatusAfterActiveGameSync(RunningApps.active())
-      }
-    })
-  }
-
-  useEffect(() => {
-    isMountedRef.current = true
-    const remainingBatteryTimeAutoDisabledListener = addEventListener(
-      REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
-      () => {
-        applySettingsUpdate((currentSettings) => ({
-          ...currentSettings,
-          remainingBatteryTimeFixEnabled: false,
-        }))
-      },
-    )
-
-    syncBootstrapIntoLocalState()
-    void startBootstrap().then(async () => {
-      if (!isMountedRef.current) {
-        return
-      }
-
-      syncBootstrapIntoLocalState()
-      if (getBootstrapState().state !== 'ready') {
-        return
-      }
-
-      const settingsRevisionAtRequest = settingsRevisionRef.current
-      try {
-        const nextSettings = await getSettings()
-        if (isMountedRef.current && settingsRevisionRef.current === settingsRevisionAtRequest) {
-          applySettingsUpdate(nextSettings)
-        }
-      } catch (error) {
-        console.error('Failed to refresh DeckyZone settings', error)
-      }
-      if (isMountedRef.current) {
-        refreshStatusAfterActiveGameSync(RunningApps.active())
-      }
-    })
-    setActiveGame((currentGame) => {
-      const nextActiveGame = RunningApps.activeAppInfo() ?? getActiveGame()
-      return areGamesEqual(currentGame, nextActiveGame) ? currentGame : nextActiveGame
-    })
-    const unregisterActiveGameListener = RunningApps.listenActiveChange((nextActiveGame) => {
-      setActiveGame((currentGame) => (areGamesEqual(currentGame, nextActiveGame) ? currentGame : nextActiveGame))
-      refreshStatusAfterActiveGameSync(nextActiveGame?.appid ?? DEFAULT_APP_ID)
-    })
-    return () => {
-      isMountedRef.current = false
-      unregisterActiveGameListener()
-      removeEventListener(
-        REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
-        remainingBatteryTimeAutoDisabledListener,
-      )
-    }
-  }, [])
 
   if (bootstrap.state === 'loading') {
     return (
-      <PanelSection title="Controller">
-        <PanelSectionRow>
+      <SettingsSection title="Controller">
+        <SettingsRow>
           <SteamSpinner />
-        </PanelSectionRow>
-      </PanelSection>
+        </SettingsRow>
+      </SettingsSection>
     )
   }
 
   if (bootstrap.state === 'error') {
     return (
-      <PanelSection title="Controller">
-        <PanelSectionRow>
+      <SettingsSection title="Controller">
+        <SettingsRow>
           <div style={{ color: 'red' }}>{bootstrap.message}</div>
-        </PanelSectionRow>
-        <PanelSectionRow>
+        </SettingsRow>
+        <SettingsRow>
           <ButtonItem layout="below" onClick={handleRetryBootstrap}>
             Retry
           </ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
+        </SettingsRow>
+      </SettingsSection>
     )
   }
 
-  if (!status || !settings) {
-    return (
-      <PanelSection title="Controller">
-        <PanelSectionRow>
-          <SteamSpinner />
-        </PanelSectionRow>
-      </PanelSection>
-    )
-  }
+  const { settings, status } = bootstrap.snapshot
 
   const controllerPanel = (
     <ErrorBoundary title="Controller">
@@ -738,14 +581,27 @@ function Content() {
 }
 
 export default definePlugin(() => {
-  routerHook.addRoute(DECKYZONE_ROUTE, SystemInformationPage, { exact: false })
+  const SettingsRoute = () => (
+    <DeckyZoneStateProvider store={deckyZoneState}>
+      <SettingsSurfaceProvider surface="settings">
+        <SystemInformationPage
+          onResetPlugin={handleResetPlugin}
+          onRetryBootstrap={handleRetryBootstrap}
+        />
+      </SettingsSurfaceProvider>
+    </DeckyZoneStateProvider>
+  )
+
+  routerHook.addRoute(DECKYZONE_ROUTE, SettingsRoute, { exact: false })
   registerBrightnessDialFixListeners()
   RunningApps.register()
+  deckyZoneState.setActiveGame(RunningApps.activeAppInfo())
   updateNoticeGeneration += 1
   notifiedUpdateVersion = null
   const currentUpdateNoticeGeneration = updateNoticeGeneration
   const bootstrap = startBootstrap()
   startUpdateNoticeAfterBootstrap(bootstrap, currentUpdateNoticeGeneration)
+  void refreshStateAfterBootstrap(bootstrap)
   const unregisterHomeNavigationListener = addEventListener('zotac_home_short_pressed', () => {
     if (!homeButtonEnabled) {
       return
@@ -754,15 +610,30 @@ export default definePlugin(() => {
     Navigation.Navigate('/library/home')
     Navigation.CloseSideMenus()
   })
+  const remainingBatteryTimeAutoDisabledListener = addEventListener(
+    REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
+    () => {
+      deckyZoneState.updateSettings((currentSettings) => ({
+        ...currentSettings,
+        remainingBatteryTimeFixEnabled: false,
+      }))
+    },
+  )
   const unregisterActiveGameSync = RunningApps.listenActiveChange((nextActiveGame) => {
+    deckyZoneState.setActiveGame(nextActiveGame)
     void syncActiveGameTarget(nextActiveGame?.appid ?? DEFAULT_APP_ID)
   })
-  void syncActiveGameTarget(RunningApps.active())
 
   return {
     name: 'DeckyZone',
     titleView: <QuickAccessTitleView title="DeckyZone" />,
-    content: <Content />,
+    content: (
+      <DeckyZoneStateProvider store={deckyZoneState}>
+        <SettingsSurfaceProvider surface="quick-access">
+          <Content />
+        </SettingsSurfaceProvider>
+      </DeckyZoneStateProvider>
+    ),
     icon: <ZotacIcon />,
     onDismount() {
       routerHook.removeRoute(DECKYZONE_ROUTE)
@@ -770,6 +641,10 @@ export default definePlugin(() => {
       resetBootstrap()
       resetStartupCheck()
       removeEventListener('zotac_home_short_pressed', unregisterHomeNavigationListener)
+      removeEventListener(
+        REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
+        remainingBatteryTimeAutoDisabledListener,
+      )
       unregisterActiveGameSync()
       RunningApps.unregister()
       cleanupBrightnessDialFixListeners()

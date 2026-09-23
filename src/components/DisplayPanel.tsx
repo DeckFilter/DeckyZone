@@ -1,10 +1,10 @@
 import { callable } from '@decky/api'
-import { PanelSection, PanelSectionRow, gamepadDialogClasses } from '@decky/ui'
 import { useState } from 'react'
 import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
 import { SteamExplainerToggleField } from './SteamExplainer'
+import { SettingsRow, SettingsSection } from './SettingsSurface'
 
 type Props = {
   settings: PluginSettings
@@ -15,13 +15,14 @@ const setGamescopeZotacProfileEnabled = callable<[boolean], PluginSettings>('set
 const setGamescopeGreenTintFixEnabled = callable<[boolean], PluginSettings>('set_gamescope_green_tint_fix_enabled')
 
 const RESTART_NOTE = 'reboot after changing this'
-const NATIVE_COLOR_TEMPERATURE_HINT = 'Tip: Settings -> Display -> Use Native Color Temperature'
 const DISPLAY_UPDATE_FAILED_NOTICE = "Couldn't update display."
 const DISPLAY_MISMATCH_NOTICE = 'Display change did not apply.'
 const DISPLAY_VERIFICATION_NOTICE = 'Display profile needs attention.'
 const DISPLAY_RESTART_REQUIRED_NOTICE = 'Restart to apply display change.'
 const ZOTAC_PROFILE_EXPLAINER =
   'Adds the Zotac OLED Gamescope profile when it is missing. Restart SteamOS after changing this setting.'
+const NATIVE_COLOR_TEMPERATURE_HINT =
+  "For best results, turn on Steam's Settings > Display > Use Native Color Temperature."
 
 function getGreenTintDescription(isBaseProfileAvailable: boolean) {
   if (!isBaseProfileAvailable) {
@@ -33,13 +34,13 @@ function getGreenTintDescription(isBaseProfileAvailable: boolean) {
 
 function getGreenTintExplainer(settings: PluginSettings, isBaseProfileAvailable: boolean) {
   if (!isBaseProfileAvailable) {
-    return 'The green tint fix requires the Zotac OLED profile. Enable the profile first, then restart SteamOS after changing this setting.'
+    return `The green tint fix requires the Zotac OLED profile. Enable the profile first, then restart SteamOS after changing this setting. ${NATIVE_COLOR_TEMPERATURE_HINT}`
   }
 
   const profile = settings.gamescopeZotacProfileBuiltIn
     ? 'built-in Zotac OLED profile'
     : 'Zotac OLED profile'
-  return `Adjusts the ${profile}'s white point to reduce its green tint. Restart SteamOS after changing this setting.`
+  return `Adjusts the ${profile}'s white point to reduce its green tint. Restart SteamOS after changing this setting. ${NATIVE_COLOR_TEMPERATURE_HINT}`
 }
 
 function getDisplayVerificationNotice(settings: PluginSettings) {
@@ -140,9 +141,9 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
   }
 
   return (
-    <PanelSection title="Display">
+    <SettingsSection title="Display">
       {!settings.gamescopeZotacProfileBuiltIn && (
-        <PanelSectionRow>
+        <SettingsRow>
           <SteamExplainerToggleField
             label="Enable Zotac OLED Profile"
             explainerTitle="Zotac OLED Profile"
@@ -151,9 +152,9 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
             onChange={(value: boolean) => void handleZotacProfileChange(value)}
             disabled={savingZotacProfile}
           />
-        </PanelSectionRow>
+        </SettingsRow>
       )}
-      <PanelSectionRow>
+      <SettingsRow>
         <SteamExplainerToggleField
           label="Enable Green Tint Fix"
           explainerTitle="Green Tint Fix"
@@ -163,11 +164,8 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
           disabled={savingGreenTintFix || !isBaseProfileAvailable}
           description={getGreenTintDescription(isBaseProfileAvailable)}
         />
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <div className={gamepadDialogClasses.FieldDescription}>{NATIVE_COLOR_TEMPERATURE_HINT}</div>
-      </PanelSectionRow>
-    </PanelSection>
+      </SettingsRow>
+    </SettingsSection>
   )
 }
 

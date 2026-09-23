@@ -1,8 +1,9 @@
 import { callable } from '@decky/api'
-import { PanelSection, PanelSectionRow, ToggleField } from '@decky/ui'
 import { useRef, useState } from 'react'
 import type { PluginSettings } from '../types/plugin'
 import { useDeckyToastNotice } from '../utils/toasts'
+import { SteamExplainerToggleField } from './SteamExplainer'
+import { SettingsRow, SettingsSection } from './SettingsSurface'
 
 type Props = {
   settings: PluginSettings
@@ -11,6 +12,8 @@ type Props = {
 
 const setLegacyLayoutEnabled = callable<[boolean], PluginSettings>('set_legacy_layout_enabled')
 const LAYOUT_UPDATE_FAILED_NOTICE = "Couldn't update layout."
+const LEGACY_LAYOUT_EXPLAINER =
+  'Shows every DeckyZone Quick Access Menu section in one scrolling list instead of icon tabs. This affects only the Quick Access Menu.'
 
 const LayoutPanel = ({ settings, onSettingsChange }: Props) => {
   const [saving, setSaving] = useState(false)
@@ -52,17 +55,18 @@ const LayoutPanel = ({ settings, onSettingsChange }: Props) => {
   }
 
   return (
-    <PanelSection title="Layout">
-      <PanelSectionRow>
-        <ToggleField
+    <SettingsSection title="Layout">
+      <SettingsRow>
+        <SteamExplainerToggleField
           label="Legacy Layout"
-          description="Show all sections in one scrolling list"
+          explainerTitle="Legacy Layout"
+          explainer={LEGACY_LAYOUT_EXPLAINER}
           checked={settings.legacyLayoutEnabled}
           disabled={saving}
           onChange={(enabled: boolean) => void handleLegacyLayoutChange(enabled)}
         />
-      </PanelSectionRow>
-    </PanelSection>
+      </SettingsRow>
+    </SettingsSection>
   )
 }
 

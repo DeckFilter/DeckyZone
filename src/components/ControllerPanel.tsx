@@ -1,7 +1,8 @@
 import { callable } from '@decky/api'
-import { PanelSection, PanelSectionRow } from '@decky/ui'
 import { useEffect, useRef, useState } from 'react'
+import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import { SteamExplainerToggleField } from './SteamExplainer'
+import { SettingsRow, SettingsSection } from './SettingsSurface'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
@@ -13,7 +14,7 @@ type Props = {
   activeGame: ActiveGame | null
   settings: PluginSettings
   status: PluginStatus
-  onSettingsChange: (nextSettings: PluginSettings) => void
+  onSettingsChange: (update: PluginSettingsUpdate) => void
   onStatusChange: (nextStatus: PluginStatus) => void
 }
 
@@ -560,7 +561,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     || (!settings.gyroMountMatrixFix.available && !settings.gyroMountMatrixFix.enabled)
 
   return (
-    <PanelSection title="Controller" spinner={controllerSpinner}>
+    <SettingsSection title="Controller" spinner={controllerSpinner}>
       <ControllerTogglesPanel
         settings={settings}
         savingStartup={savingStartup}
@@ -602,7 +603,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         onTrackpadModeChange={(value: TrackpadMode) => void handleTrackpadModeChange(value)}
       />
       {settings.gyroMountMatrixFix.visible && (
-        <PanelSectionRow>
+        <SettingsRow>
           <SteamExplainerToggleField
             label="Gyro Orientation Fix"
             explainerTitle="Gyro Orientation Fix"
@@ -612,9 +613,9 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
             disabled={gyroMountMatrixFixDisabled}
             description={getGyroMountMatrixFixDescription(settings)}
           />
-        </PanelSectionRow>
+        </SettingsRow>
       )}
-    </PanelSection>
+    </SettingsSection>
   )
 }
 

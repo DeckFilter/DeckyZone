@@ -1,5 +1,6 @@
-import { ButtonItem, Field, PanelSectionRow } from '@decky/ui'
+import { ButtonItem, Field } from '@decky/ui'
 import type { ControllerMode, PluginSettings } from '../../types/plugin'
+import { SettingsRow, useSettingsItemLayout } from '../SettingsSurface'
 import { SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
@@ -82,6 +83,7 @@ const ControllerTogglesPanel = ({
   onHomeButtonToggleChange,
   onBrightnessDialFixToggleChange,
 }: Props) => {
+  const itemLayout = useSettingsItemLayout()
   const controllerModeConfirmed = isControllerModeConfirmed(settings)
   const controllerModeBlocked = !controllerModeConfirmed
   const controllerModeDisplay = getControllerModeDisplay(settings)
@@ -91,7 +93,7 @@ const ControllerTogglesPanel = ({
 
   return (
     <>
-      <PanelSectionRow>
+      <SettingsRow>
         <SteamExplainerToggleField
           label="Enable Controller Features"
           explainerTitle="Controller Features"
@@ -101,26 +103,26 @@ const ControllerTogglesPanel = ({
           disabled={savingStartup || !settings.inputplumberAvailable || controllerModeBlocked}
           description={getStartupDescription(settings, controllerModeBlocked)}
         />
-      </PanelSectionRow>
+      </SettingsRow>
       {showControllerModeStatus && (
         <>
-          <PanelSectionRow>
+          <SettingsRow>
             <Field focusable disabled label="Controller Mode" description={controllerModeDisplay.description}>
               {controllerModeDisplay.value}
             </Field>
-          </PanelSectionRow>
+          </SettingsRow>
           {showControllerModeSwitchButton && (
-            <PanelSectionRow>
-              <ButtonItem layout="below" onClick={() => onControllerModeChange('gamepad')} disabled={savingControllerMode}>
+            <SettingsRow>
+              <ButtonItem layout={itemLayout} onClick={() => onControllerModeChange('gamepad')} disabled={savingControllerMode}>
                 {savingControllerMode ? CONTROLLER_MODE_SWITCH_BUTTON_PENDING : CONTROLLER_MODE_SWITCH_BUTTON}
               </ButtonItem>
-            </PanelSectionRow>
+            </SettingsRow>
           )}
         </>
       )}
       {showControllerFeatureControls && (
         <>
-          <PanelSectionRow>
+          <SettingsRow>
             <SteamExplainerToggleField
               label="Enable Home Button"
               explainerTitle="Home Button"
@@ -130,8 +132,8 @@ const ControllerTogglesPanel = ({
               disabled={savingHomeButton || !settings.inputplumberAvailable}
               description={settings.inputplumberAvailable ? undefined : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
             />
-          </PanelSectionRow>
-          <PanelSectionRow>
+          </SettingsRow>
+          <SettingsRow>
             <SteamExplainerToggleField
               label="Enable Brightness Dial"
               explainerTitle="Brightness Dial"
@@ -141,7 +143,7 @@ const ControllerTogglesPanel = ({
               disabled={savingBrightnessDialFix || !settings.inputplumberAvailable}
               description={settings.inputplumberAvailable ? undefined : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
             />
-          </PanelSectionRow>
+          </SettingsRow>
         </>
       )}
     </>

@@ -1,4 +1,5 @@
-import { ButtonItem, PanelSectionRow } from '@decky/ui'
+import { ButtonItem } from '@decky/ui'
+import { SettingsRow, useSettingsItemLayout } from '../SettingsSurface'
 import { SteamExplainerSliderField, SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
@@ -35,9 +36,11 @@ const RumblePanel = ({
   onRumbleIntensityChange,
   onTestRumble,
 }: Props) => {
+  const itemLayout = useSettingsItemLayout()
+
   return (
     <>
-      <PanelSectionRow>
+      <SettingsRow>
         <SteamExplainerToggleField
           label="Rumble Controls"
           explainerTitle="Rumble Controls"
@@ -46,10 +49,10 @@ const RumblePanel = ({
           onChange={(value: boolean) => onRumbleToggleChange(value)}
           disabled={savingRumble}
         />
-      </PanelSectionRow>
+      </SettingsRow>
       {rumbleEnabled && (
         <>
-          <PanelSectionRow>
+          <SettingsRow>
             <SteamExplainerSliderField
               label="Intensity"
               explainerTitle="Rumble Intensity"
@@ -64,10 +67,10 @@ const RumblePanel = ({
               onChange={onRumbleIntensityChange}
               disabled={savingRumble || savingRumbleIntensity || !rumbleEnabled || !rumbleAvailable}
             />
-          </PanelSectionRow>
-          <PanelSectionRow>
+          </SettingsRow>
+          <SettingsRow>
             <ButtonItem
-              layout="below"
+              layout={itemLayout}
               onClick={() => onTestRumble()}
               disabled={
                 savingRumble ||
@@ -80,7 +83,7 @@ const RumblePanel = ({
             >
               {testingRumble ? 'Testing Rumble...' : 'Test Rumble'}
             </ButtonItem>
-          </PanelSectionRow>
+          </SettingsRow>
         </>
       )}
     </>

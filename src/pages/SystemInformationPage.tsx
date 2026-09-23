@@ -4,6 +4,7 @@ import {
   ConfirmModal,
   DialogBody,
   DialogControlsSection,
+  DialogControlsSectionHeader,
   Field,
   Focusable,
   GamepadButton,
@@ -20,12 +21,23 @@ import {
   useRef,
   useState,
 } from 'react'
-import { FaCog, FaDesktop, FaGamepad } from 'react-icons/fa'
+import { FaCog, FaDesktop, FaGamepad, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
+import ControllerPanel from '../components/ControllerPanel'
+import DisplayPanel from '../components/DisplayPanel'
+import ErrorBoundary from '../components/ErrorBoundary'
+import InterfacePanel from '../components/InterfacePanel'
+import LayoutPanel from '../components/LayoutPanel'
+import PerformancePanel from '../components/PerformancePanel'
+import TroubleshootingPanel, { type ResetPluginOutcome } from '../components/TroubleshootingPanel'
+import UpdatesPanel from '../components/UpdatesPanel'
 import {
+  DECKYZONE_CONTROLLER_ROUTE,
   DECKYZONE_DISPLAY_ROUTE,
-  DECKYZONE_INPUT_ROUTE,
-  DECKYZONE_SYSTEM_ROUTE,
+  DECKYZONE_GENERAL_ROUTE,
+  DECKYZONE_INTERFACE_ROUTE,
+  DECKYZONE_PERFORMANCE_ROUTE,
 } from '../routes'
+import { useDeckyZoneState } from '../state/DeckyZoneState'
 import type { DebugInfoSnapshot, SystemReport } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
 
@@ -52,6 +64,11 @@ type SnapshotPageProps = {
   error: string | null
   isLoading: boolean
   children: (snapshot: DebugInfoSnapshot) => ReactNode
+}
+
+type Props = {
+  onResetPlugin: () => Promise<ResetPluginOutcome>
+  onRetryBootstrap: () => void
 }
 
 type CopyState = 'idle' | 'success' | 'error'
@@ -369,17 +386,33 @@ const SystemReportModal = ({ closeModal, reportText }: SystemReportModalProps) =
   )
 }
 
-const SnapshotPage = ({ snapshot, error, isLoading, children }: SnapshotPageProps) => {
+const SnapshotSection = ({
+  snapshot,
+  error,
+  isLoading,
+  title,
+  children,
+}: SnapshotPageProps & { title: string }) => {
   return (
-    <DialogBody>
-      {isLoading && !snapshot && <SteamSpinner />}
+    <>
+      {isLoading && !snapshot && (
+        <DialogControlsSection>
+          <DialogControlsSectionHeader>{title}</DialogControlsSectionHeader>
+          <SteamSpinner />
+        </DialogControlsSection>
+      )}
       {error && <ErrorField message={error} />}
-      {snapshot && <DialogControlsSection>{children(snapshot)}</DialogControlsSection>}
-    </DialogBody>
+      {snapshot && (
+        <DialogControlsSection>
+          <DialogControlsSectionHeader>{title}</DialogControlsSectionHeader>
+          {children(snapshot)}
+        </DialogControlsSection>
+      )}
+    </>
   )
 }
 
-const SystemPage = ({
+const GeneralInformationSection = ({
   snapshot,
   error: snapshotError,
   isLoading: isSnapshotLoading,
@@ -424,21 +457,23 @@ const SystemPage = ({
   }
 
   return (
-    <DialogBody>
-      {isSnapshotLoading && !snapshot && <SteamSpinner />}
+    <>
+      {isSnapshotLoading && !snapshot && (
+        <DialogControlsSection>
+          <DialogControlsSectionHeader>System Information</DialogControlsSectionHeader>
+          <SteamSpinner />
+        </DialogControlsSection>
+      )}
       {snapshotError && <ErrorField message={snapshotError} />}
       {snapshot && (
         <DialogControlsSection>
+          <DialogControlsSectionHeader>System Information</DialogControlsSectionHeader>
           <SnapshotRow label="Product" value={formatValue(snapshot.deviceIdentity.productName)} />
           <SnapshotRow label="Operating System" value={formatValue(snapshot.osContext.prettyName)} />
           <SnapshotRow label="Kernel" value={formatValue(snapshot.osContext.kernelRelease)} />
           <SnapshotRow
-            label="System RAM"
-            value={formatGigabytes(snapshot.memory.systemRamGb)}
-          />
-          <SnapshotRow
-            label="VRAM"
-            value={formatGigabytes(snapshot.memory.activeVramGb)}
+            label="DeckyZone Status"
+            value={formatValue(snapshot.deckyZoneStatus.message)}
             bottomSeparator="none"
           />
         </DialogControlsSection>
@@ -447,6 +482,7 @@ const SystemPage = ({
       {reportError && <ErrorField message={reportError} />}
 
       <DialogControlsSection>
+        <DialogControlsSectionHeader>Support</DialogControlsSectionHeader>
         <ButtonItem
           layout="inline"
           label="System Report"
@@ -456,13 +492,13 @@ const SystemPage = ({
           {isGeneratingReport ? 'Generating…' : 'Create Report'}
         </ButtonItem>
       </DialogControlsSection>
-    </DialogBody>
+    </>
   )
 }
 
-const InputPage = (props: Omit<SnapshotPageProps, 'children'>) => {
+const ControllerInformationSection = (props: Omit<SnapshotPageProps, 'children'>) => {
   return (
-    <SnapshotPage {...props}>
+    <SnapshotSection {...props} title="Controller Information">
       {(snapshot) => (
         <>
           <SnapshotRow label="InputPlumber" value={formatValue(snapshot.inputPlumber.version)} />
@@ -488,13 +524,13 @@ const InputPage = (props: Omit<SnapshotPageProps, 'children'>) => {
           />
         </>
       )}
-    </SnapshotPage>
+    </SnapshotSection>
   )
 }
 
-const DisplayPage = (props: Omit<SnapshotPageProps, 'children'>) => {
+const DisplayInformationSection = (props: Omit<SnapshotPageProps, 'children'>) => {
   return (
-    <SnapshotPage {...props}>
+    <SnapshotSection {...props} title="Display Information">
       {(snapshot) => (
         <>
           <SnapshotRow label="Gamescope" value={formatValue(snapshot.gamescope.version)} />
@@ -512,70 +548,184 @@ const DisplayPage = (props: Omit<SnapshotPageProps, 'children'>) => {
           )}
         </>
       )}
-    </SnapshotPage>
+    </SnapshotSection>
   )
 }
 
-const SystemInformationPage = () => {
+const PerformanceInformationSection = (props: Omit<SnapshotPageProps, 'children'>) => {
+  return (
+    <SnapshotSection {...props} title="Performance Information">
+      {(snapshot) => (
+        <>
+          <SnapshotRow label="System RAM" value={formatGigabytes(snapshot.memory.systemRamGb)} />
+          <SnapshotRow
+            label="Active VRAM"
+            value={formatGigabytes(snapshot.memory.activeVramGb)}
+            bottomSeparator="none"
+          />
+        </>
+      )}
+    </SnapshotSection>
+  )
+}
+
+const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
+  const { activeGame, bootstrap, settingsRevision, store, uiRevision } = useDeckyZoneState()
   const [snapshot, setSnapshot] = useState<DebugInfoSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const isMountedRef = useRef(true)
+  const requestGenerationRef = useRef(0)
 
   useEffect(() => {
     isMountedRef.current = true
-    const loadDebugInfo = async () => {
+    const generation = ++requestGenerationRef.current
+    const delay = snapshot ? 250 : 0
+    const timeoutId = setTimeout(() => {
       setIsLoading(true)
       setError(null)
-      try {
-        const nextSnapshot = await getDebugInfo()
-        if (!isMountedRef.current) {
-          return
-        }
+      void getDebugInfo()
+        .then((nextSnapshot) => {
+          if (isMountedRef.current && generation === requestGenerationRef.current) {
+            setSnapshot(nextSnapshot)
+          }
+        })
+        .catch((error) => {
+          if (!isMountedRef.current || generation !== requestGenerationRef.current) {
+            return
+          }
 
-        setSnapshot(nextSnapshot)
-      } catch (error) {
-        if (!isMountedRef.current) {
-          return
-        }
+          console.error('[DeckyZone:SystemInformation] Failed to load information', error)
+          setError("DeckyZone couldn't load system information.")
+        })
+        .finally(() => {
+          if (isMountedRef.current && generation === requestGenerationRef.current) {
+            setIsLoading(false)
+          }
+        })
+    }, delay)
 
-        console.error('[DeckyZone:SystemInformation] Failed to load information', error)
-        setError("DeckyZone couldn't load system information.")
-      } finally {
-        if (isMountedRef.current) {
-          setIsLoading(false)
-        }
-      }
-    }
-
-    void loadDebugInfo()
     return () => {
-      isMountedRef.current = false
+      clearTimeout(timeoutId)
     }
+  }, [settingsRevision])
+
+  useEffect(() => () => {
+    isMountedRef.current = false
+    requestGenerationRef.current += 1
   }, [])
 
+  if (bootstrap.state === 'loading') {
+    return (
+      <DialogBody>
+        <DialogControlsSection>
+          <SteamSpinner />
+        </DialogControlsSection>
+      </DialogBody>
+    )
+  }
+
+  if (bootstrap.state === 'error') {
+    return (
+      <DialogBody>
+        <DialogControlsSection>
+          <Field label="Error">
+            <span style={{ color: 'red' }}>{bootstrap.message}</span>
+          </Field>
+          <ButtonItem layout="inline" onClick={onRetryBootstrap}>
+            Retry
+          </ButtonItem>
+        </DialogControlsSection>
+      </DialogBody>
+    )
+  }
+
+  const { settings, status } = bootstrap.snapshot
+
   const snapshotPageProps = { snapshot, error, isLoading }
+  const applySettingsUpdate = (update: Parameters<typeof store.updateSettings>[0]) => {
+    store.updateSettings(update)
+  }
 
   return (
     <SidebarNavigation
+      key={`deckyzone-settings:${uiRevision}`}
       pages={[
         {
-          title: 'System',
+          title: 'General',
           icon: <FaCog />,
-          content: <SystemPage {...snapshotPageProps} />,
-          route: DECKYZONE_SYSTEM_ROUTE,
+          content: (
+            <DialogBody>
+              <ErrorBoundary title="Layout">
+                <LayoutPanel settings={settings} onSettingsChange={applySettingsUpdate} />
+              </ErrorBoundary>
+              <ErrorBoundary title="Updates">
+                <UpdatesPanel installedVersionNum={settings.pluginVersionNum ?? ''} />
+              </ErrorBoundary>
+              <ErrorBoundary title="Troubleshooting">
+                <TroubleshootingPanel onResetPlugin={onResetPlugin} showOpenSettings={false} />
+              </ErrorBoundary>
+              <GeneralInformationSection {...snapshotPageProps} />
+            </DialogBody>
+          ),
+          route: DECKYZONE_GENERAL_ROUTE,
         },
         {
-          title: 'Input',
+          title: 'Controller',
           icon: <FaGamepad />,
-          content: <InputPage {...snapshotPageProps} />,
-          route: DECKYZONE_INPUT_ROUTE,
+          content: (
+            <DialogBody>
+              <ErrorBoundary title="Controller">
+                <ControllerPanel
+                  activeGame={activeGame}
+                  settings={settings}
+                  status={status}
+                  onSettingsChange={applySettingsUpdate}
+                  onStatusChange={(nextStatus) => store.updateStatus(nextStatus)}
+                />
+              </ErrorBoundary>
+              <ControllerInformationSection {...snapshotPageProps} />
+            </DialogBody>
+          ),
+          route: DECKYZONE_CONTROLLER_ROUTE,
+        },
+        {
+          title: 'Interface',
+          icon: <FaSlidersH />,
+          content: (
+            <DialogBody>
+              <ErrorBoundary title="Interface">
+                <InterfacePanel settings={settings} onSettingsChange={applySettingsUpdate} />
+              </ErrorBoundary>
+            </DialogBody>
+          ),
+          route: DECKYZONE_INTERFACE_ROUTE,
         },
         {
           title: 'Display',
           icon: <FaDesktop />,
-          content: <DisplayPage {...snapshotPageProps} />,
+          content: (
+            <DialogBody>
+              <ErrorBoundary title="Display">
+                <DisplayPanel settings={settings} onSettingsChange={applySettingsUpdate} />
+              </ErrorBoundary>
+              <DisplayInformationSection {...snapshotPageProps} />
+            </DialogBody>
+          ),
           route: DECKYZONE_DISPLAY_ROUTE,
+        },
+        {
+          title: 'Performance',
+          icon: <FaTachometerAlt />,
+          content: (
+            <DialogBody>
+              <ErrorBoundary title="Performance">
+                <PerformancePanel settings={settings} onSettingsChange={applySettingsUpdate} />
+              </ErrorBoundary>
+              <PerformanceInformationSection {...snapshotPageProps} />
+            </DialogBody>
+          ),
+          route: DECKYZONE_PERFORMANCE_ROUTE,
         },
       ]}
     />

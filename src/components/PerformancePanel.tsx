@@ -1,16 +1,16 @@
 import { callable } from '@decky/api'
-import { PanelSection, PanelSectionRow, gamepadDialogClasses } from '@decky/ui'
+import { gamepadDialogClasses } from '@decky/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
 import { SteamExplainerDropdownItem } from './SteamExplainer'
+import { SettingsRow, SettingsSection } from './SettingsSurface'
 
 type Props = {
   settings: PluginSettings
-  onSettingsChange: (
-    update: PluginSettings | ((currentSettings: PluginSettings) => PluginSettings)
-  ) => void
+  onSettingsChange: (update: PluginSettingsUpdate) => void
 }
 
 type VramOption = { data: number; label: string }
@@ -155,8 +155,8 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
   }
 
   return (
-    <PanelSection title="Performance">
-      <PanelSectionRow>
+    <SettingsSection title="Performance">
+      <SettingsRow>
         <SteamExplainerDropdownItem
           controlled
           layout="below"
@@ -171,13 +171,13 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
           onChange={(option: VramOption) => void handleVramChange(option.data)}
           disabled={savingVram || !settings.vram.available || vramDraftGb === null}
         />
-      </PanelSectionRow>
+      </SettingsRow>
       {vramRebootHint && (
-        <PanelSectionRow>
+        <SettingsRow>
           <div className={gamepadDialogClasses.FieldDescription}>{vramRebootHint}</div>
-        </PanelSectionRow>
+        </SettingsRow>
       )}
-    </PanelSection>
+    </SettingsSection>
   )
 }
 

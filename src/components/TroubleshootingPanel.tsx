@@ -1,18 +1,20 @@
-import { ButtonItem, ConfirmModal, Navigation, PanelSection, PanelSectionRow, Spinner, showModal } from '@decky/ui'
+import { ButtonItem, ConfirmModal, Navigation, Spinner, showModal } from '@decky/ui'
 import { useState } from 'react'
-import { openSystemInformation } from '../routes'
+import { openDeckyZoneSettings } from '../routes'
 import type { PluginResetResult } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
+import { SettingsRow, SettingsSection, useSettingsItemLayout, useSettingsSurface } from './SettingsSurface'
 
 type Props = {
   onResetPlugin: () => Promise<ResetPluginOutcome>
+  showOpenSettings?: boolean
 }
 
 type ResetPluginConfirmModalProps = Props & {
   closeModal?: () => void
 }
 
-type ResetPluginOutcome = {
+export type ResetPluginOutcome = {
   result: PluginResetResult
   glyphCleanupFailed: boolean
 }
@@ -106,20 +108,26 @@ const ResetPluginConfirmModal = ({
   )
 }
 
-const TroubleshootingPanel = ({ onResetPlugin }: Props) => {
+const TroubleshootingPanel = ({ onResetPlugin, showOpenSettings = true }: Props) => {
+  const itemLayout = useSettingsItemLayout()
+  const surface = useSettingsSurface()
+
   return (
-    <PanelSection title="Troubleshooting">
-      <PanelSectionRow>
+    <SettingsSection title="Troubleshooting">
+      {showOpenSettings && (
+        <SettingsRow>
+          <ButtonItem
+            layout={itemLayout}
+            onClick={openDeckyZoneSettings}
+          >
+            Open Settings
+          </ButtonItem>
+        </SettingsRow>
+      )}
+      <SettingsRow>
         <ButtonItem
-          layout="below"
-          onClick={openSystemInformation}
-        >
-          Open System Information
-        </ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow>
-        <ButtonItem
-          layout="below"
+          layout={itemLayout}
+          description={surface === 'settings' ? 'Clears saved settings and removes active runtime changes' : undefined}
           onClick={() => {
             showModal(
               <ResetPluginConfirmModal
@@ -130,8 +138,8 @@ const TroubleshootingPanel = ({ onResetPlugin }: Props) => {
         >
           Reset Plugin
         </ButtonItem>
-      </PanelSectionRow>
-    </PanelSection>
+      </SettingsRow>
+    </SettingsSection>
   )
 }
 

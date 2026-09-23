@@ -1,5 +1,5 @@
-import { PanelSectionRow } from '@decky/ui'
 import type { ActiveGame } from '../../types/plugin'
+import { SettingsRow } from '../SettingsSurface'
 import { SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
@@ -96,7 +96,7 @@ const PerGameSettingsPanel = ({
 
   return (
     <>
-      <PanelSectionRow>
+      <SettingsRow>
         <SteamExplainerToggleField
           label="Enable Per-Game Settings"
           explainerTitle="Per-Game Settings"
@@ -105,9 +105,9 @@ const PerGameSettingsPanel = ({
           onChange={(value: boolean) => onPerGameSettingsToggleChange(value)}
           disabled={!activeGame || savingPerGameSettings || !inputplumberAvailable}
         />
-      </PanelSectionRow>
+      </SettingsRow>
       {activeGame && isPerGameSettingsEnabled && (
-        <PanelSectionRow>
+        <SettingsRow>
           <SteamExplainerToggleField
             label="Button Prompt Fix"
             explainerTitle="Button Prompt Fix"
@@ -116,7 +116,7 @@ const PerGameSettingsPanel = ({
             onChange={(value: boolean) => onButtonPromptFixToggleChange(value)}
             disabled={savingPerGameSettings || savingButtonPromptFix || !inputplumberAvailable}
           />
-        </PanelSectionRow>
+        </SettingsRow>
       )}
     </>
   )

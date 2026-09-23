@@ -1,16 +1,15 @@
 import { callable } from "@decky/api"
-import { PanelSection, PanelSectionRow } from "@decky/ui"
 import { useRef, useState } from "react"
 import { applyZotacGlyphsRuntimeEnabled } from "../glyphs/zotacGlyphRuntime"
+import type { PluginSettingsUpdate } from "../state/DeckyZoneState"
 import type { PluginSettings } from "../types/plugin"
 import { useDeckyToastNotice } from "../utils/toasts"
 import { SteamExplainerToggleField } from "./SteamExplainer"
+import { SettingsRow, SettingsSection } from "./SettingsSurface"
 
 type Props = {
   settings: PluginSettings
-  onSettingsChange: (
-    update: PluginSettings | ((currentSettings: PluginSettings) => PluginSettings)
-  ) => void
+  onSettingsChange: (update: PluginSettingsUpdate) => void
 }
 
 const setZotacGlyphsEnabled = callable<[boolean], PluginSettings>("set_zotac_glyphs_enabled")
@@ -96,8 +95,8 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
   }
 
   return (
-    <PanelSection title="Interface">
-      <PanelSectionRow>
+    <SettingsSection title="Interface">
+      <SettingsRow>
         <SteamExplainerToggleField
           label="Enable Zotac Glyphs"
           explainerTitle="Zotac Glyphs"
@@ -106,8 +105,8 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
           onChange={(value: boolean) => void handleZotacGlyphsChange(value)}
           disabled={savingZotacGlyphs}
         />
-      </PanelSectionRow>
-      <PanelSectionRow>
+      </SettingsRow>
+      <SettingsRow>
         <SteamExplainerToggleField
           label="Enable Battery Time Fix"
           explainerTitle="Battery Time Fix"
@@ -116,8 +115,8 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
           onChange={(value: boolean) => void handleRemainingBatteryTimeFixChange(value)}
           disabled={savingRemainingBatteryTimeFix}
         />
-      </PanelSectionRow>
-    </PanelSection>
+      </SettingsRow>
+    </SettingsSection>
   )
 }
 

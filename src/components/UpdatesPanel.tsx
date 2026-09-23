@@ -1,5 +1,5 @@
 import { callable } from '@decky/api'
-import { ButtonItem, Field, PanelSection, PanelSectionRow } from '@decky/ui'
+import { ButtonItem, Field } from '@decky/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   checkLatestVersion,
@@ -9,6 +9,7 @@ import {
   type VersionCache,
 } from '../utils/pluginUpdates'
 import { useDeckyToastNotice } from '../utils/toasts'
+import { SettingsRow, SettingsSection, useSettingsItemLayout, useSettingsSurface } from './SettingsSurface'
 
 const otaUpdate = callable<[], boolean>('ota_update')
 
@@ -38,6 +39,8 @@ const getLastCheckText = (lastCheckTime: number): string => {
 }
 
 const UpdatesPanel = ({ installedVersionNum }: Props) => {
+  const itemLayout = useSettingsItemLayout()
+  const surface = useSettingsSurface()
   const [latestVersionNum, setLatestVersionNum] = useState('')
   const [lastCheckTime, setLastCheckTime] = useState<number | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
@@ -149,35 +152,41 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
   }
 
   return (
-    <PanelSection title="Updates">
-      <PanelSectionRow>
-        <ButtonItem layout="below" onClick={() => void handleUpdate()} disabled={isUpdating || !latestVersionNum}>
+    <SettingsSection title="Updates">
+      <SettingsRow>
+        <ButtonItem layout={itemLayout} onClick={() => void handleUpdate()} disabled={isUpdating || !latestVersionNum}>
           {isUpdating ? 'Installing...' : updateButtonText}
         </ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow>
+      </SettingsRow>
+      <SettingsRow>
         <ButtonItem
-          layout="below"
+          layout={itemLayout}
           onClick={() => void loadLatestVersion()}
           disabled={isLoadingLatestVersion || isUpdating}
-          description={lastCheckTime ? `Last check: ${getLastCheckText(lastCheckTime)}` : 'Checks for the latest published version'}
+          description={
+            lastCheckTime
+              ? `Last check: ${getLastCheckText(lastCheckTime)}`
+              : surface === 'settings'
+                ? 'Checks for the latest published version'
+                : undefined
+          }
         >
           {isLoadingLatestVersion ? 'Checking...' : 'Check Version'}
         </ButtonItem>
-      </PanelSectionRow>
-      <PanelSectionRow>
+      </SettingsRow>
+      <SettingsRow>
         <Field focusable disabled label="Installed Version">
           {installedVersionNum || 'Unknown'}
         </Field>
-      </PanelSectionRow>
+      </SettingsRow>
       {Boolean(latestVersionNum) && (
-        <PanelSectionRow>
+        <SettingsRow>
           <Field focusable disabled label="Latest Version">
             {latestVersionNum}
           </Field>
-        </PanelSectionRow>
+        </SettingsRow>
       )}
-    </PanelSection>
+    </SettingsSection>
   )
 }
 
