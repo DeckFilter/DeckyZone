@@ -2,7 +2,7 @@ import { callable } from '@decky/api'
 import { useEffect, useRef, useState } from 'react'
 import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import { SteamExplainerToggleField } from './SteamExplainer'
-import { SettingsRow, SettingsSection } from './SettingsSurface'
+import { SettingsGroup, SettingsPanel, SettingsRow } from './SettingsSurface'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
@@ -561,61 +561,69 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     || (!settings.gyroMountMatrixFix.available && !settings.gyroMountMatrixFix.enabled)
 
   return (
-    <SettingsSection title="Controller" spinner={controllerSpinner}>
-      <ControllerTogglesPanel
-        settings={settings}
-        savingStartup={savingStartup}
-        savingControllerMode={savingControllerMode}
-        savingHomeButton={savingHomeButton}
-        savingBrightnessDialFix={savingBrightnessDialFix}
-        onStartupToggleChange={(value: boolean) => void handleStartupToggleChange(value)}
-        onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
-        onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
-        onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
-      />
-      <PerGameSettingsPanel
-        activeGame={activeGame}
-        inputplumberAvailable={settings.inputplumberAvailable}
-        isPerGameSettingsEnabled={isPerGameSettingsEnabled}
-        isButtonPromptFixEnabled={isButtonPromptFixEnabled}
-        savingPerGameSettings={savingPerGameSettings}
-        savingButtonPromptFix={savingButtonPromptFix}
-        onPerGameSettingsToggleChange={(value: boolean) => void handlePerGameSettingsToggleChange(value)}
-        onButtonPromptFixToggleChange={(value: boolean) => void handleButtonPromptFixToggleChange(value)}
-      />
-      <RumblePanel
-        inputplumberAvailable={settings.inputplumberAvailable}
-        rumbleEnabled={activeRumbleEnabled}
-        rumbleAvailable={settings.rumbleAvailable}
-        savingRumble={savingRumble}
-        savingRumbleIntensity={savingRumbleIntensity}
-        testingRumble={testingRumble}
-        rumbleIntensityDraft={rumbleIntensityDraft}
-        onRumbleToggleChange={(value: boolean) => void handleRumbleToggleChange(value)}
-        onRumbleIntensityChange={handleRumbleIntensityChange}
-        onTestRumble={() => void handleTestRumble()}
-      />
-      <TrackpadPanel
-        inputplumberAvailable={settings.inputplumberAvailable}
-        controllerModeBlocked={controllerModeBlocked}
-        savingTrackpads={savingTrackpads}
-        trackpadMode={activeTrackpadMode}
-        onTrackpadModeChange={(value: TrackpadMode) => void handleTrackpadModeChange(value)}
-      />
-      {settings.gyroMountMatrixFix.visible && (
-        <SettingsRow>
-          <SteamExplainerToggleField
-            label="Gyro Orientation Fix"
-            explainerTitle="Gyro Orientation Fix"
-            explainer={GYRO_MOUNT_MATRIX_FIX_EXPLAINER}
-            checked={settings.gyroMountMatrixFix.enabled}
-            onChange={(value: boolean) => void handleGyroMountMatrixFixToggleChange(value)}
-            disabled={gyroMountMatrixFixDisabled}
-            description={getGyroMountMatrixFixDescription(settings)}
-          />
-        </SettingsRow>
-      )}
-    </SettingsSection>
+    <SettingsPanel title="Controller" spinner={controllerSpinner}>
+      <SettingsGroup>
+        <ControllerTogglesPanel
+          settings={settings}
+          savingStartup={savingStartup}
+          savingControllerMode={savingControllerMode}
+          savingHomeButton={savingHomeButton}
+          savingBrightnessDialFix={savingBrightnessDialFix}
+          onStartupToggleChange={(value: boolean) => void handleStartupToggleChange(value)}
+          onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
+          onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
+          onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
+        />
+      </SettingsGroup>
+      <SettingsGroup title="Game Overrides">
+        <PerGameSettingsPanel
+          activeGame={activeGame}
+          inputplumberAvailable={settings.inputplumberAvailable}
+          isPerGameSettingsEnabled={isPerGameSettingsEnabled}
+          isButtonPromptFixEnabled={isButtonPromptFixEnabled}
+          savingPerGameSettings={savingPerGameSettings}
+          savingButtonPromptFix={savingButtonPromptFix}
+          onPerGameSettingsToggleChange={(value: boolean) => void handlePerGameSettingsToggleChange(value)}
+          onButtonPromptFixToggleChange={(value: boolean) => void handleButtonPromptFixToggleChange(value)}
+        />
+      </SettingsGroup>
+      <SettingsGroup title="Input">
+        <TrackpadPanel
+          inputplumberAvailable={settings.inputplumberAvailable}
+          controllerModeBlocked={controllerModeBlocked}
+          savingTrackpads={savingTrackpads}
+          trackpadMode={activeTrackpadMode}
+          onTrackpadModeChange={(value: TrackpadMode) => void handleTrackpadModeChange(value)}
+        />
+        {settings.gyroMountMatrixFix.visible && (
+          <SettingsRow>
+            <SteamExplainerToggleField
+              label="Gyro Orientation Fix"
+              explainerTitle="Gyro Orientation Fix"
+              explainer={GYRO_MOUNT_MATRIX_FIX_EXPLAINER}
+              checked={settings.gyroMountMatrixFix.enabled}
+              onChange={(value: boolean) => void handleGyroMountMatrixFixToggleChange(value)}
+              disabled={gyroMountMatrixFixDisabled}
+              description={getGyroMountMatrixFixDescription(settings)}
+            />
+          </SettingsRow>
+        )}
+      </SettingsGroup>
+      <SettingsGroup title="Rumble">
+        <RumblePanel
+          inputplumberAvailable={settings.inputplumberAvailable}
+          rumbleEnabled={activeRumbleEnabled}
+          rumbleAvailable={settings.rumbleAvailable}
+          savingRumble={savingRumble}
+          savingRumbleIntensity={savingRumbleIntensity}
+          testingRumble={testingRumble}
+          rumbleIntensityDraft={rumbleIntensityDraft}
+          onRumbleToggleChange={(value: boolean) => void handleRumbleToggleChange(value)}
+          onRumbleIntensityChange={handleRumbleIntensityChange}
+          onTestRumble={() => void handleTestRumble()}
+        />
+      </SettingsGroup>
+    </SettingsPanel>
   )
 }
 

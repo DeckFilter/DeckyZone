@@ -141,7 +141,7 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
   }
 
   return (
-    <SettingsSection title="Display">
+    <SettingsSection title="Display" settingsTitle={null}>
       {!settings.gamescopeZotacProfileBuiltIn && (
         <SettingsRow>
           <SteamExplainerToggleField

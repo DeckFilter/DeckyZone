@@ -15,6 +15,7 @@ const otaUpdate = callable<[], boolean>('ota_update')
 
 type Props = {
   installedVersionNum: string
+  onLatestVersionChange: (latestVersionNum: string) => void
 }
 
 const getLastCheckText = (lastCheckTime: number): string => {
@@ -38,7 +39,7 @@ const getLastCheckText = (lastCheckTime: number): string => {
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
-const UpdatesPanel = ({ installedVersionNum }: Props) => {
+const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => {
   const itemLayout = useSettingsItemLayout()
   const surface = useSettingsSurface()
   const [latestVersionNum, setLatestVersionNum] = useState('')
@@ -56,6 +57,7 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
 
     setLatestVersionNum(versionInfo.latestVersionNum)
     setLastCheckTime(versionInfo.lastCheckTime)
+    onLatestVersionChange(versionInfo.latestVersionNum)
   }
 
   useDeckyToastNotice(
@@ -123,7 +125,7 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
 
   const updateButtonText = useMemo(() => {
     if (!latestVersionNum) {
-      return 'Reinstall Plugin'
+      return null
     }
 
     const versionCompare = compareVersions(latestVersionNum, installedVersionNum)
@@ -133,7 +135,7 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
     if (versionCompare < 0) {
       return `Rollback to ${latestVersionNum}`
     }
-    return 'Reinstall Plugin'
+    return null
   }, [installedVersionNum, latestVersionNum])
 
   const handleUpdate = async () => {
@@ -153,11 +155,13 @@ const UpdatesPanel = ({ installedVersionNum }: Props) => {
 
   return (
     <SettingsSection title="Updates">
-      <SettingsRow>
-        <ButtonItem layout={itemLayout} onClick={() => void handleUpdate()} disabled={isUpdating || !latestVersionNum}>
-          {isUpdating ? 'Installing...' : updateButtonText}
-        </ButtonItem>
-      </SettingsRow>
+      {updateButtonText && (
+        <SettingsRow>
+          <ButtonItem layout={itemLayout} onClick={() => void handleUpdate()} disabled={isUpdating}>
+            {isUpdating ? 'Installing...' : updateButtonText}
+          </ButtonItem>
+        </SettingsRow>
+      )}
       <SettingsRow>
         <ButtonItem
           layout={itemLayout}

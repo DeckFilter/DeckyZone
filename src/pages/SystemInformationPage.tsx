@@ -39,6 +39,7 @@ import {
 } from '../routes'
 import { useDeckyZoneState } from '../state/DeckyZoneState'
 import type { DebugInfoSnapshot, SystemReport } from '../types/plugin'
+import { compareVersions } from '../utils/pluginUpdates'
 import { showDeckyToast } from '../utils/toasts'
 
 const getDebugInfo = callable<[], DebugInfoSnapshot>('get_debug_info')
@@ -151,18 +152,6 @@ const formatControllerMode = (value: DebugInfoSnapshot['inputPlumber']['controll
   }
 
   return value === 'gamepad' ? 'Gamepad' : 'Desktop'
-}
-
-const formatGyroFix = (state: DebugInfoSnapshot['inputPlumber']['gyroMountMatrixFix']) => {
-  if (state.builtIn) {
-    return 'Built in'
-  }
-
-  if (state.enabled) {
-    return 'Enabled'
-  }
-
-  return state.available ? 'Disabled' : 'Unavailable'
 }
 
 const formatDisplayProfile = (gamescope: DebugInfoSnapshot['gamescope']) => {
@@ -470,10 +459,9 @@ const GeneralInformationSection = ({
           <SettingsDialogSubHeader>System Information</SettingsDialogSubHeader>
           <SnapshotRow label="Product" value={formatValue(snapshot.deviceIdentity.productName)} />
           <SnapshotRow label="Operating System" value={formatValue(snapshot.osContext.prettyName)} />
-          <SnapshotRow label="Kernel" value={formatValue(snapshot.osContext.kernelRelease)} />
           <SnapshotRow
-            label="DeckyZone Status"
-            value={formatValue(snapshot.deckyZoneStatus.message)}
+            label="Kernel"
+            value={formatValue(snapshot.osContext.kernelRelease)}
             bottomSeparator="none"
           />
         </DialogControlsSection>
@@ -498,7 +486,7 @@ const GeneralInformationSection = ({
 
 const ControllerInformationSection = (props: Omit<SnapshotPageProps, 'children'>) => {
   return (
-    <SnapshotSection {...props} title="Controller Information">
+    <SnapshotSection {...props} title="Information">
       {(snapshot) => (
         <>
           <SnapshotRow label="InputPlumber" value={formatValue(snapshot.inputPlumber.version)} />
@@ -514,10 +502,6 @@ const ControllerInformationSection = (props: Omit<SnapshotPageProps, 'children'>
             )}
           />
           <SnapshotRow
-            label="Gyro Orientation Fix"
-            value={formatGyroFix(snapshot.inputPlumber.gyroMountMatrixFix)}
-          />
-          <SnapshotRow
             label="Controller Status"
             value={formatValue(snapshot.inputPlumber.controllerRuntimeState)}
             bottomSeparator="none"
@@ -530,17 +514,13 @@ const ControllerInformationSection = (props: Omit<SnapshotPageProps, 'children'>
 
 const DisplayInformationSection = (props: Omit<SnapshotPageProps, 'children'>) => {
   return (
-    <SnapshotSection {...props} title="Display Information">
+    <SnapshotSection {...props} title="Information">
       {(snapshot) => (
         <>
           <SnapshotRow label="Gamescope" value={formatValue(snapshot.gamescope.version)} />
           <SnapshotRow
             label="OLED Profile"
             value={formatDisplayProfile(snapshot.gamescope)}
-          />
-          <SnapshotRow
-            label="Green Tint Fix"
-            value={snapshot.gamescope.greenTintFixEnabled ? 'Enabled' : 'Disabled'}
             bottomSeparator={displayProfileNeedsAttention(snapshot.gamescope) ? 'standard' : 'none'}
           />
           {displayProfileNeedsAttention(snapshot.gamescope) && (
@@ -552,26 +532,10 @@ const DisplayInformationSection = (props: Omit<SnapshotPageProps, 'children'>) =
   )
 }
 
-const PerformanceInformationSection = (props: Omit<SnapshotPageProps, 'children'>) => {
-  return (
-    <SnapshotSection {...props} title="Performance Information">
-      {(snapshot) => (
-        <>
-          <SnapshotRow label="System RAM" value={formatGigabytes(snapshot.memory.systemRamGb)} />
-          <SnapshotRow
-            label="Active VRAM"
-            value={formatGigabytes(snapshot.memory.activeVramGb)}
-            bottomSeparator="none"
-          />
-        </>
-      )}
-    </SnapshotSection>
-  )
-}
-
 const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
   const { activeGame, bootstrap, settingsRevision, store, uiRevision } = useDeckyZoneState()
   const [snapshot, setSnapshot] = useState<DebugInfoSnapshot | null>(null)
+  const [latestVersionNum, setLatestVersionNum] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const isMountedRef = useRef(true)
@@ -641,6 +605,9 @@ const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
   }
 
   const { settings, status } = bootstrap.snapshot
+  const installedVersionNum = settings.pluginVersionNum ?? ''
+  const showReinstallPlugin = Boolean(latestVersionNum)
+    && compareVersions(latestVersionNum, installedVersionNum) === 0
 
   const snapshotPageProps = { snapshot, error, isLoading }
   const applySettingsUpdate = (update: Parameters<typeof store.updateSettings>[0]) => {
@@ -656,16 +623,23 @@ const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
           icon: <FaCog />,
           content: (
             <DialogBody>
+              <ErrorBoundary title="Updates">
+                <UpdatesPanel
+                  installedVersionNum={installedVersionNum}
+                  onLatestVersionChange={setLatestVersionNum}
+                />
+              </ErrorBoundary>
+              <GeneralInformationSection {...snapshotPageProps} />
+              <ErrorBoundary title="Troubleshooting">
+                <TroubleshootingPanel
+                  onResetPlugin={onResetPlugin}
+                  showOpenSettings={false}
+                  showReinstallPlugin={showReinstallPlugin}
+                />
+              </ErrorBoundary>
               <ErrorBoundary title="Layout">
                 <LayoutPanel settings={settings} onSettingsChange={applySettingsUpdate} />
               </ErrorBoundary>
-              <ErrorBoundary title="Updates">
-                <UpdatesPanel installedVersionNum={settings.pluginVersionNum ?? ''} />
-              </ErrorBoundary>
-              <ErrorBoundary title="Troubleshooting">
-                <TroubleshootingPanel onResetPlugin={onResetPlugin} showOpenSettings={false} />
-              </ErrorBoundary>
-              <GeneralInformationSection {...snapshotPageProps} />
             </DialogBody>
           ),
           route: DECKYZONE_GENERAL_ROUTE,
@@ -720,9 +694,29 @@ const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
           content: (
             <DialogBody>
               <ErrorBoundary title="Performance">
-                <PerformancePanel settings={settings} onSettingsChange={applySettingsUpdate} />
+                {error && <ErrorField message={error} />}
+                <PerformancePanel
+                  settings={settings}
+                  settingsLeadingRows={(
+                    <>
+                      {isLoading && !snapshot && <SteamSpinner />}
+                      {snapshot && (
+                        <>
+                          <SnapshotRow
+                            label="System RAM"
+                            value={formatGigabytes(snapshot.memory.systemRamGb)}
+                          />
+                          <SnapshotRow
+                            label="Active VRAM"
+                            value={formatGigabytes(snapshot.memory.activeVramGb)}
+                          />
+                        </>
+                      )}
+                    </>
+                  )}
+                  onSettingsChange={applySettingsUpdate}
+                />
               </ErrorBoundary>
-              <PerformanceInformationSection {...snapshotPageProps} />
             </DialogBody>
           ),
           route: DECKYZONE_PERFORMANCE_ROUTE,

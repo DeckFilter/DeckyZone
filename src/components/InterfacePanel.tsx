@@ -95,7 +95,7 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
   }
 
   return (
-    <SettingsSection title="Interface">
+    <SettingsSection title="Interface" settingsTitle={null}>
       <SettingsRow>
         <SteamExplainerToggleField
           label="Enable Zotac Glyphs"

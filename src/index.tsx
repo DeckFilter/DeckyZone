@@ -411,6 +411,7 @@ function handleRetryBootstrap() {
 function Content() {
   const { activeGame, bootstrap, store, uiRevision } = useDeckyZoneState()
   const [activeTab, setActiveTab] = useState(currentMainTab)
+  const [latestVersionNum, setLatestVersionNum] = useState('')
 
   const applySettingsUpdate = (update: PluginSettingsUpdate) => {
     store.updateSettings(update)
@@ -446,6 +447,9 @@ function Content() {
   }
 
   const { settings, status } = bootstrap.snapshot
+  const installedVersionNum = settings.pluginVersionNum ?? ''
+  const showReinstallPlugin = Boolean(latestVersionNum)
+    && compareVersions(latestVersionNum, installedVersionNum) === 0
 
   const controllerPanel = (
     <ErrorBoundary title="Controller">
@@ -492,12 +496,18 @@ function Content() {
   )
   const troubleshootingPanel = (
     <ErrorBoundary title="Troubleshooting">
-      <TroubleshootingPanel onResetPlugin={handleResetPlugin} />
+      <TroubleshootingPanel
+        onResetPlugin={handleResetPlugin}
+        showReinstallPlugin={showReinstallPlugin}
+      />
     </ErrorBoundary>
   )
   const updatesPanel = (
     <ErrorBoundary title="Updates">
-      <UpdatesPanel installedVersionNum={settings.pluginVersionNum ?? ''} />
+      <UpdatesPanel
+        installedVersionNum={installedVersionNum}
+        onLatestVersionChange={setLatestVersionNum}
+      />
     </ErrorBoundary>
   )
 
@@ -508,9 +518,9 @@ function Content() {
         {interfacePanel}
         {displayPanel}
         {performancePanel}
-        {layoutPanel}
-        {troubleshootingPanel}
         {updatesPanel}
+        {troubleshootingPanel}
+        {layoutPanel}
       </Fragment>
     )
   }
@@ -567,9 +577,9 @@ function Content() {
               title: <TabIcon label="More"><FaEllipsisH size={20} /></TabIcon>,
               content: (
                 <div style={tabContentStyle}>
-                  {layoutPanel}
-                  {troubleshootingPanel}
                   {updatesPanel}
+                  {troubleshootingPanel}
+                  {layoutPanel}
                 </div>
               ),
             },

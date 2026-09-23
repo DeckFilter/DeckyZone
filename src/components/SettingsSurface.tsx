@@ -31,10 +31,25 @@ export const useSettingsItemLayout = () => (
 type SettingsSectionProps = {
   children: ReactNode
   title: string
+  settingsTitle?: ReactNode | null
   spinner?: boolean
 }
 
-export const SettingsSection = ({ children, title, spinner = false }: SettingsSectionProps) => {
+const SettingsHeader = ({ children, spinner = false }: { children: ReactNode; spinner?: boolean }) => (
+  <SettingsDialogSubHeader>
+    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {children}
+      {spinner && <Spinner width="18px" height="18px" />}
+    </span>
+  </SettingsDialogSubHeader>
+)
+
+export const SettingsSection = ({
+  children,
+  title,
+  settingsTitle,
+  spinner = false,
+}: SettingsSectionProps) => {
   const surface = useSettingsSurface()
 
   if (surface === 'quick-access') {
@@ -45,14 +60,47 @@ export const SettingsSection = ({ children, title, spinner = false }: SettingsSe
     )
   }
 
+  const resolvedSettingsTitle = settingsTitle === undefined ? title : settingsTitle
+
   return (
     <DialogControlsSection>
-      <SettingsDialogSubHeader>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {title}
-          {spinner && <Spinner width="18px" height="18px" />}
-        </span>
-      </SettingsDialogSubHeader>
+      {resolvedSettingsTitle !== null && (
+        <SettingsHeader spinner={spinner}>{resolvedSettingsTitle}</SettingsHeader>
+      )}
+      {children}
+    </DialogControlsSection>
+  )
+}
+
+type SettingsPanelProps = {
+  children: ReactNode
+  title: string
+  spinner?: boolean
+}
+
+export const SettingsPanel = ({ children, title, spinner = false }: SettingsPanelProps) => {
+  const surface = useSettingsSurface()
+
+  return surface === 'quick-access'
+    ? <PanelSection title={title} spinner={spinner}>{children}</PanelSection>
+    : <Fragment>{children}</Fragment>
+}
+
+type SettingsGroupProps = {
+  children: ReactNode
+  title?: ReactNode
+}
+
+export const SettingsGroup = ({ children, title }: SettingsGroupProps) => {
+  const surface = useSettingsSurface()
+
+  if (surface === 'quick-access') {
+    return <Fragment>{children}</Fragment>
+  }
+
+  return (
+    <DialogControlsSection>
+      {title !== undefined && <SettingsHeader>{title}</SettingsHeader>}
       {children}
     </DialogControlsSection>
   )

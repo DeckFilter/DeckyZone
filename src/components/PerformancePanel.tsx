@@ -1,15 +1,16 @@
 import { callable } from '@decky/api'
 import { gamepadDialogClasses } from '@decky/ui'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
 import { SteamExplainerDropdownItem } from './SteamExplainer'
-import { SettingsRow, SettingsSection } from './SettingsSurface'
+import { SettingsRow, SettingsSection, useSettingsSurface } from './SettingsSurface'
 
 type Props = {
   settings: PluginSettings
+  settingsLeadingRows?: ReactNode
   onSettingsChange: (update: PluginSettingsUpdate) => void
 }
 
@@ -64,7 +65,8 @@ function getOptimisticVramSettings(settings: PluginSettings, pendingVramGb: numb
   }
 }
 
-const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
+const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: Props) => {
+  const surface = useSettingsSurface()
   const [savingVram, setSavingVram] = useState(false)
   const savingVramRef = useRef(false)
   const [vramDraftGb, setVramDraftGb] = useState(() => getVramValue(settings))
@@ -78,6 +80,8 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
     [settings.vram.minVramGb, settings.vram.maxVramGb],
   )
   const vramRebootHint = getVramRebootHint(settings)
+  const vramDescription = getVramDescription(settings)
+    ?? (surface === 'settings' ? vramRebootHint ?? undefined : undefined)
 
   useEffect(() => {
     setVramDraftGb(getVramValue(settings))
@@ -155,7 +159,8 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
   }
 
   return (
-    <SettingsSection title="Performance">
+    <SettingsSection title="Performance" settingsTitle={null}>
+      {surface === 'settings' && settingsLeadingRows}
       <SettingsRow>
         <SteamExplainerDropdownItem
           controlled
@@ -164,7 +169,7 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
           menuLabel="VRAM Size"
           explainerTitle="VRAM Size"
           explainer={VRAM_EXPLAINER}
-          description={getVramDescription(settings)}
+          description={vramDescription}
           rgOptions={vramOptions}
           strDefaultLabel={vramDraftGb === null ? VRAM_UNKNOWN_LABEL : getVramOptionLabel(vramDraftGb)}
           selectedOption={vramDraftGb}
@@ -172,7 +177,7 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
           disabled={savingVram || !settings.vram.available || vramDraftGb === null}
         />
       </SettingsRow>
-      {vramRebootHint && (
+      {surface === 'quick-access' && vramRebootHint && (
         <SettingsRow>
           <div className={gamepadDialogClasses.FieldDescription}>{vramRebootHint}</div>
         </SettingsRow>
