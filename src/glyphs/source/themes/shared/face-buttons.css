@@ -16,34 +16,6 @@ img[src="/steaminputglyphs/sc_button_steam.svg"] {
     height: 25px;
 }
 
-/* A/South */
-img[src="/steaminputglyphs/ps_button_x.svg"],
-img[src="/steaminputglyphs/shared_button_a.svg"],
-img[src="/steaminputglyphs/shared_color_button_a.svg"] {
-    content: var(--button-a-image, url("/__deckyzone_glyph_assets__/shared/a.svg"));
-}
-
-/* B/East */
-img[src="/steaminputglyphs/ps_button_circle.svg"],
-img[src="/steaminputglyphs/shared_button_b.svg"],
-img[src="/steaminputglyphs/shared_color_button_b.svg"] {
-    content: var(--button-b-image, url("/__deckyzone_glyph_assets__/shared/b.svg"));
-}
-
-/* X/West */
-img[src="/steaminputglyphs/ps_button_square.svg"],
-img[src="/steaminputglyphs/shared_button_x.svg"],
-img[src="/steaminputglyphs/shared_color_button_x.svg"] {
-    content: var(--button-x-image, url("/__deckyzone_glyph_assets__/shared/x.svg"));
-}
-
-/* Y/North */
-img[src="/steaminputglyphs/ps_button_triangle.svg"],
-img[src="/steaminputglyphs/shared_button_y.svg"],
-img[src="/steaminputglyphs/shared_color_button_y.svg"] {
-    content: var(--button-y-image, url("/__deckyzone_glyph_assets__/shared/y.svg"));
-}
-
 /* View/Select */
 img[src="/steaminputglyphs/xbox_button_select.svg"],
 img[src="/steaminputglyphs/xbox360_button_select.svg"],
@@ -58,9 +30,4 @@ img[src="/steaminputglyphs/xbox360_button_start.svg"],
 img[src="/steaminputglyphs/ps5_button_options.svg"],
 img[src="/steaminputglyphs/sd_button_menu.svg"] {
     content: var(--override-menu-image, var(--button-menu-image));
-}
-
-/* Trackpad */
-img[src="/steaminputglyphs/sd_ltrackpad_swipe.svg"] {
-    content: url("/__deckyzone_glyph_assets__/shared/trackpad.svg");
 }

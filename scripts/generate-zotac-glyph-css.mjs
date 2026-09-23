@@ -15,8 +15,6 @@ const cssFiles = [
   "themes/zotac/zone.css",
   "themes/shared/controller-image.css",
   "themes/shared/face-buttons.css",
-  "themes/shared/dpad.css",
-  "themes/shared/sticks.css",
   "themes/shared/shoulder-buttons.css",
   "themes/shared/l4-r4.css",
   "themes/shared/hide-l5-r5.css",
@@ -36,21 +34,11 @@ function getAssetMimeType(assetPath) {
 
 function resolveAssetPath(themeAssetRelativePath) {
   const directPath = resolve(sourceRoot, "assets", themeAssetRelativePath);
-  if (existsSync(directPath)) {
-    return directPath;
+  if (!existsSync(directPath)) {
+    throw new Error(`Missing vendored glyph asset: ${themeAssetRelativePath}`);
   }
 
-  // Upstream sticks.css references right-stick directional icons as .png even
-  // though the shipped assets are .svg. Normalize that mismatch here so the
-  // generated built-in bundle stays aligned with the actual vendored files.
-  if (directPath.endsWith(".png")) {
-    const svgFallbackPath = directPath.slice(0, -4) + ".svg";
-    if (existsSync(svgFallbackPath)) {
-      return svgFallbackPath;
-    }
-  }
-
-  throw new Error(`Missing vendored glyph asset: ${themeAssetRelativePath}`);
+  return directPath;
 }
 
 function assetPathToDataUri(assetPath) {
