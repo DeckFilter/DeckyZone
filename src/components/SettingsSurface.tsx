@@ -1,11 +1,11 @@
 import {
   DialogControlsSection,
-  DialogControlsSectionHeader,
   PanelSection,
   PanelSectionRow,
   Spinner,
 } from '@decky/ui'
 import { createContext, Fragment, type ReactNode, useContext } from 'react'
+import SettingsDialogSubHeader from './SettingsDialogSubHeader'
 
 export type SettingsSurface = 'quick-access' | 'settings'
 
@@ -47,12 +47,12 @@ export const SettingsSection = ({ children, title, spinner = false }: SettingsSe
 
   return (
     <DialogControlsSection>
-      <DialogControlsSectionHeader>
+      <SettingsDialogSubHeader>
         <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {title}
           {spinner && <Spinner width="18px" height="18px" />}
         </span>
-      </DialogControlsSectionHeader>
+      </SettingsDialogSubHeader>
       {children}
     </DialogControlsSection>
   )

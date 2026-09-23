@@ -4,7 +4,6 @@ import {
   ConfirmModal,
   DialogBody,
   DialogControlsSection,
-  DialogControlsSectionHeader,
   Field,
   Focusable,
   GamepadButton,
@@ -28,6 +27,7 @@ import ErrorBoundary from '../components/ErrorBoundary'
 import InterfacePanel from '../components/InterfacePanel'
 import LayoutPanel from '../components/LayoutPanel'
 import PerformancePanel from '../components/PerformancePanel'
+import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
 import TroubleshootingPanel, { type ResetPluginOutcome } from '../components/TroubleshootingPanel'
 import UpdatesPanel from '../components/UpdatesPanel'
 import {
@@ -397,14 +397,14 @@ const SnapshotSection = ({
     <>
       {isLoading && !snapshot && (
         <DialogControlsSection>
-          <DialogControlsSectionHeader>{title}</DialogControlsSectionHeader>
+          <SettingsDialogSubHeader>{title}</SettingsDialogSubHeader>
           <SteamSpinner />
         </DialogControlsSection>
       )}
       {error && <ErrorField message={error} />}
       {snapshot && (
         <DialogControlsSection>
-          <DialogControlsSectionHeader>{title}</DialogControlsSectionHeader>
+          <SettingsDialogSubHeader>{title}</SettingsDialogSubHeader>
           {children(snapshot)}
         </DialogControlsSection>
       )}
@@ -460,14 +460,14 @@ const GeneralInformationSection = ({
     <>
       {isSnapshotLoading && !snapshot && (
         <DialogControlsSection>
-          <DialogControlsSectionHeader>System Information</DialogControlsSectionHeader>
+          <SettingsDialogSubHeader>System Information</SettingsDialogSubHeader>
           <SteamSpinner />
         </DialogControlsSection>
       )}
       {snapshotError && <ErrorField message={snapshotError} />}
       {snapshot && (
         <DialogControlsSection>
-          <DialogControlsSectionHeader>System Information</DialogControlsSectionHeader>
+          <SettingsDialogSubHeader>System Information</SettingsDialogSubHeader>
           <SnapshotRow label="Product" value={formatValue(snapshot.deviceIdentity.productName)} />
           <SnapshotRow label="Operating System" value={formatValue(snapshot.osContext.prettyName)} />
           <SnapshotRow label="Kernel" value={formatValue(snapshot.osContext.kernelRelease)} />
@@ -482,7 +482,7 @@ const GeneralInformationSection = ({
       {reportError && <ErrorField message={reportError} />}
 
       <DialogControlsSection>
-        <DialogControlsSectionHeader>Support</DialogControlsSectionHeader>
+        <SettingsDialogSubHeader>Support</SettingsDialogSubHeader>
         <ButtonItem
           layout="inline"
           label="System Report"
