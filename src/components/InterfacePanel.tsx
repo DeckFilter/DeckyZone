@@ -1,9 +1,10 @@
 import { callable } from "@decky/api"
-import { PanelSection, PanelSectionRow, ToggleField } from "@decky/ui"
+import { PanelSection, PanelSectionRow } from "@decky/ui"
 import { useRef, useState } from "react"
 import { applyZotacGlyphsRuntimeEnabled } from "../glyphs/zotacGlyphRuntime"
 import type { PluginSettings } from "../types/plugin"
 import { useDeckyToastNotice } from "../utils/toasts"
+import { SteamExplainerToggleField } from "./SteamExplainer"
 
 type Props = {
   settings: PluginSettings
@@ -17,9 +18,10 @@ const setRemainingBatteryTimeFixEnabled = callable<[boolean], PluginSettings>(
   "set_remaining_battery_time_fix_enabled",
 )
 
-const ZOTAC_GLYPHS_DESCRIPTION = "Applies Zotac controller glyphs and images"
-const REMAINING_BATTERY_TIME_FIX_DESCRIPTION =
-  "Shows UPower's remaining-time estimate in Steam"
+const ZOTAC_GLYPHS_EXPLAINER =
+  "Shows Zotac controller button glyphs and controller images throughout the Steam interface."
+const REMAINING_BATTERY_TIME_FIX_EXPLAINER =
+  "Passes UPower's charging and discharging estimates to Steam through /run/vpower. The fix turns itself off when Valve's vpower service starts providing valid estimates."
 const INTERFACE_UPDATE_FAILED_NOTICE = "Couldn't update setting."
 const GLYPH_APPLY_FAILED_NOTICE = "Couldn't apply glyphs live."
 
@@ -96,21 +98,23 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
   return (
     <PanelSection title="Interface">
       <PanelSectionRow>
-        <ToggleField
+        <SteamExplainerToggleField
           label="Enable Zotac Glyphs"
+          explainerTitle="Zotac Glyphs"
+          explainer={ZOTAC_GLYPHS_EXPLAINER}
           checked={settings.zotacGlyphsEnabled}
           onChange={(value: boolean) => void handleZotacGlyphsChange(value)}
           disabled={savingZotacGlyphs}
-          description={ZOTAC_GLYPHS_DESCRIPTION}
         />
       </PanelSectionRow>
       <PanelSectionRow>
-        <ToggleField
+        <SteamExplainerToggleField
           label="Enable Battery Time Fix"
+          explainerTitle="Battery Time Fix"
+          explainer={REMAINING_BATTERY_TIME_FIX_EXPLAINER}
           checked={settings.remainingBatteryTimeFixEnabled}
           onChange={(value: boolean) => void handleRemainingBatteryTimeFixChange(value)}
           disabled={savingRemainingBatteryTimeFix}
-          description={REMAINING_BATTERY_TIME_FIX_DESCRIPTION}
         />
       </PanelSectionRow>
     </PanelSection>

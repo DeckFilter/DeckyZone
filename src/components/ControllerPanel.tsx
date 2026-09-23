@@ -1,6 +1,7 @@
 import { callable } from '@decky/api'
-import { PanelSection, PanelSectionRow, ToggleField } from '@decky/ui'
+import { PanelSection, PanelSectionRow } from '@decky/ui'
 import { useEffect, useRef, useState } from 'react'
+import { SteamExplainerToggleField } from './SteamExplainer'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
@@ -46,7 +47,8 @@ const GYRO_MOUNT_MATRIX_FIX_ACTION_FAILED_NOTICE = "Couldn't update gyro orienta
 const RUMBLE_ACTION_FAILED_NOTICE = "Couldn't update vibration."
 const RUMBLE_TEST_FAILED_NOTICE = "Couldn't send vibration test."
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
-const GYRO_MOUNT_MATRIX_FIX_AVAILABLE_DESCRIPTION = 'Corrects gyro axes; restarts InputPlumber'
+const GYRO_MOUNT_MATRIX_FIX_EXPLAINER =
+  'Corrects the Zotac gyro axes with a temporary InputPlumber mount-matrix override. Changing this setting restarts InputPlumber.'
 const GYRO_MOUNT_MATRIX_FIX_ENABLED_DESCRIPTION = 'Temporary override is active'
 const GYRO_MOUNT_MATRIX_FIX_BUILT_IN_DESCRIPTION = 'Built in now; turn off to remove override'
 
@@ -84,7 +86,7 @@ function getGyroMountMatrixFixDescription(settings: PluginSettings) {
     return GYRO_MOUNT_MATRIX_FIX_ENABLED_DESCRIPTION
   }
 
-  return GYRO_MOUNT_MATRIX_FIX_AVAILABLE_DESCRIPTION
+  return undefined
 }
 
 async function syncActiveGameTarget(appId: string) {
@@ -601,8 +603,10 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       />
       {settings.gyroMountMatrixFix.visible && (
         <PanelSectionRow>
-          <ToggleField
+          <SteamExplainerToggleField
             label="Gyro Orientation Fix"
+            explainerTitle="Gyro Orientation Fix"
+            explainer={GYRO_MOUNT_MATRIX_FIX_EXPLAINER}
             checked={settings.gyroMountMatrixFix.enabled}
             onChange={(value: boolean) => void handleGyroMountMatrixFixToggleChange(value)}
             disabled={gyroMountMatrixFixDisabled}

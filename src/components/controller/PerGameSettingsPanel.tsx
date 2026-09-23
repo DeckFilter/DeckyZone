@@ -1,6 +1,6 @@
-import { PanelSectionRow, ToggleField } from '@decky/ui'
-import type { ReactNode } from 'react'
+import { PanelSectionRow } from '@decky/ui'
 import type { ActiveGame } from '../../types/plugin'
+import { SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
   activeGame: ActiveGame | null
@@ -13,9 +13,12 @@ type Props = {
   onButtonPromptFixToggleChange: (enabled: boolean) => void
 }
 
-const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
-const NO_ACTIVE_GAME_PER_GAME_SETTINGS_DESCRIPTION = 'Launch a game to enable per-game settings'
-const BUTTON_PROMPT_FIX_DESCRIPTION = 'Fixes button prompts and glyphs'
+const INPUTPLUMBER_UNAVAILABLE_MESSAGE = 'InputPlumber is not available'
+const NO_ACTIVE_GAME_PER_GAME_SETTINGS_MESSAGE = 'Launch a game to enable per-game settings'
+const PER_GAME_SETTINGS_EXPLAINER =
+  'Stores separate button prompt, trackpad, and rumble settings for the running game. Other games keep using the global settings.'
+const BUTTON_PROMPT_FIX_EXPLAINER =
+  "Switches the running game's virtual controller to Xbox Elite so Steam uses compatible button prompts and glyphs."
 // TODO: Re-enable these remap options after M1/M2 remap behavior is fully confirmed on-device.
 // const M1_REMAP_DESCRIPTION = 'Maps M1 while this fix is on'
 // const M2_REMAP_DESCRIPTION = 'Maps M2 while this fix is on'
@@ -39,51 +42,22 @@ const BUTTON_PROMPT_FIX_DESCRIPTION = 'Fixes button prompts and glyphs'
 //   { data: 'dpad_right', label: 'D-Pad Right' },
 // ] as const
 
-function getActiveGameIconSource(activeGame: ActiveGame | null) {
+function getPerGameSettingsExplainer(activeGame: ActiveGame | null, inputplumberAvailable: boolean) {
+  if (!inputplumberAvailable) {
+    return `${PER_GAME_SETTINGS_EXPLAINER} ${INPUTPLUMBER_UNAVAILABLE_MESSAGE}.`
+  }
+
   if (!activeGame) {
-    return null
+    return `${PER_GAME_SETTINGS_EXPLAINER} ${NO_ACTIVE_GAME_PER_GAME_SETTINGS_MESSAGE}.`
   }
 
-  if (activeGame.icon_data && activeGame.icon_data_format) {
-    return `data:image/${activeGame.icon_data_format};base64,${activeGame.icon_data}`
-  }
-
-  if (activeGame.icon_hash) {
-    return `/assets/${activeGame.appid}/${activeGame.icon_hash}.jpg?c=${activeGame.local_cache_version ?? ''}`
-  }
-
-  return null
+  return `${PER_GAME_SETTINGS_EXPLAINER} Current game: ${activeGame.display_name}.`
 }
 
-function renderActiveGameDescription(activeGame: ActiveGame | null, description: string): ReactNode {
-  if (!activeGame) {
-    return description
-  }
-
-  const iconSource = getActiveGameIconSource(activeGame)
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-      {iconSource ? <img src={iconSource} width={20} height={20} style={{ borderRadius: '4px', flexShrink: 0 }} /> : null}
-      <div
-        style={{
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {description}
-      </div>
-    </div>
-  )
-}
-
-function getPerGameSettingsDescription(activeGame: ActiveGame | null): ReactNode {
-  if (!activeGame) {
-    return NO_ACTIVE_GAME_PER_GAME_SETTINGS_DESCRIPTION
-  }
-
-  return renderActiveGameDescription(activeGame, activeGame.display_name)
+function getButtonPromptFixExplainer(inputplumberAvailable: boolean) {
+  return inputplumberAvailable
+    ? BUTTON_PROMPT_FIX_EXPLAINER
+    : `${BUTTON_PROMPT_FIX_EXPLAINER} ${INPUTPLUMBER_UNAVAILABLE_MESSAGE}.`
 }
 
 const PerGameSettingsPanel = ({
@@ -123,22 +97,24 @@ const PerGameSettingsPanel = ({
   return (
     <>
       <PanelSectionRow>
-        <ToggleField
+        <SteamExplainerToggleField
           label="Enable Per-Game Settings"
+          explainerTitle="Per-Game Settings"
+          explainer={getPerGameSettingsExplainer(activeGame, inputplumberAvailable)}
           checked={isPerGameSettingsEnabled}
           onChange={(value: boolean) => onPerGameSettingsToggleChange(value)}
           disabled={!activeGame || savingPerGameSettings || !inputplumberAvailable}
-          description={inputplumberAvailable ? getPerGameSettingsDescription(activeGame) : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
         />
       </PanelSectionRow>
       {activeGame && isPerGameSettingsEnabled && (
         <PanelSectionRow>
-          <ToggleField
+          <SteamExplainerToggleField
             label="Button Prompt Fix"
+            explainerTitle="Button Prompt Fix"
+            explainer={getButtonPromptFixExplainer(inputplumberAvailable)}
             checked={isButtonPromptFixEnabled}
             onChange={(value: boolean) => onButtonPromptFixToggleChange(value)}
             disabled={savingPerGameSettings || savingButtonPromptFix || !inputplumberAvailable}
-            description={inputplumberAvailable ? BUTTON_PROMPT_FIX_DESCRIPTION : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
           />
         </PanelSectionRow>
       )}
