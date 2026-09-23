@@ -45,6 +45,7 @@ const RumblePanel = ({
           label="Rumble Controls"
           explainerTitle="Rumble Controls"
           explainer={getRumbleExplainer(rumbleAvailable)}
+          settingsDescription={rumbleAvailable ? 'Enables controller vibration' : RUMBLE_UNAVAILABLE_MESSAGE}
           checked={rumbleEnabled}
           onChange={(value: boolean) => onRumbleToggleChange(value)}
           disabled={savingRumble}
@@ -57,6 +58,7 @@ const RumblePanel = ({
               label="Intensity"
               explainerTitle="Rumble Intensity"
               explainer={RUMBLE_INTENSITY_EXPLAINER}
+              settingsDescription="Sets vibration strength"
               value={rumbleIntensityDraft}
               min={0}
               max={100}

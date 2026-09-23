@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { openDeckyZoneSettings } from '../routes'
 import type { PluginResetResult } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
-import { SettingsRow, SettingsSection, useSettingsItemLayout, useSettingsSurface } from './SettingsSurface'
+import { SteamExplainerButtonItem } from './SteamExplainer'
+import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
 
 type Props = {
   onResetPlugin: () => Promise<ResetPluginOutcome>
@@ -24,6 +25,8 @@ export type ResetPluginOutcome = {
 const RESET_FAILED_NOTICE = 'Reset failed.'
 const RESET_COMPLETE_NOTICE = 'Plugin reset complete.'
 const REINSTALL_FAILED_NOTICE = 'Reinstall failed.'
+const REINSTALL_EXPLAINER = 'Downloads and reinstalls the latest published DeckyZone release.'
+const RESET_EXPLAINER = 'Clears saved settings and removes active runtime changes.'
 const otaUpdate = callable<[], boolean>('ota_update')
 
 const titleStyle = {
@@ -118,7 +121,6 @@ const TroubleshootingPanel = ({
   showReinstallPlugin = false,
 }: Props) => {
   const itemLayout = useSettingsItemLayout()
-  const surface = useSettingsSurface()
   const [isReinstalling, setIsReinstalling] = useState(false)
   const reinstallingRef = useRef(false)
   const isMountedRef = useRef(true)
@@ -174,20 +176,24 @@ const TroubleshootingPanel = ({
       )}
       {showReinstallPlugin && (
         <SettingsRow>
-          <ButtonItem
+          <SteamExplainerButtonItem
             layout={itemLayout}
             disabled={isReinstalling}
-            description={surface === 'settings' ? 'Downloads and reinstalls the latest published release' : undefined}
+            explainerTitle="Reinstall Plugin"
+            explainer={REINSTALL_EXPLAINER}
+            settingsDescription="Reinstalls DeckyZone"
             onClick={() => void handleReinstall()}
           >
             {isReinstalling ? 'Reinstalling...' : 'Reinstall Plugin'}
-          </ButtonItem>
+          </SteamExplainerButtonItem>
         </SettingsRow>
       )}
       <SettingsRow>
-        <ButtonItem
+        <SteamExplainerButtonItem
           layout={itemLayout}
-          description={surface === 'settings' ? 'Clears saved settings and removes active runtime changes' : undefined}
+          explainerTitle="Reset Plugin"
+          explainer={RESET_EXPLAINER}
+          settingsDescription="Restores default settings"
           onClick={() => {
             showModal(
               <ResetPluginConfirmModal
@@ -197,7 +203,7 @@ const TroubleshootingPanel = ({
           }}
         >
           Reset Plugin
-        </ButtonItem>
+        </SteamExplainerButtonItem>
       </SettingsRow>
     </SettingsSection>
   )

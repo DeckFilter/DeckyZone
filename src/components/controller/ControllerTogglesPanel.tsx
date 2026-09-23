@@ -98,6 +98,7 @@ const ControllerTogglesPanel = ({
           label="Enable Controller Features"
           explainerTitle="Controller Features"
           explainer={CONTROLLER_FEATURES_EXPLAINER}
+          settingsDescription="Runs DeckyZone controller features"
           checked={settings.startupApplyEnabled}
           onChange={(value: boolean) => onStartupToggleChange(value)}
           disabled={savingStartup || !settings.inputplumberAvailable || controllerModeBlocked}
@@ -127,6 +128,7 @@ const ControllerTogglesPanel = ({
               label="Enable Home Button"
               explainerTitle="Home Button"
               explainer={HOME_BUTTON_EXPLAINER}
+              settingsDescription="Opens Steam Home"
               checked={settings.homeButtonEnabled}
               onChange={(value: boolean) => onHomeButtonToggleChange(value)}
               disabled={savingHomeButton || !settings.inputplumberAvailable}
@@ -138,6 +140,7 @@ const ControllerTogglesPanel = ({
               label="Enable Brightness Dial"
               explainerTitle="Brightness Dial"
               explainer={BRIGHTNESS_DIAL_EXPLAINER}
+              settingsDescription="Controls brightness with the right dial"
               checked={settings.brightnessDialFixEnabled}
               onChange={(value: boolean) => onBrightnessDialFixToggleChange(value)}
               disabled={savingBrightnessDialFix || !settings.inputplumberAvailable}

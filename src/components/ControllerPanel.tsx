@@ -601,6 +601,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
               label="Gyro Orientation Fix"
               explainerTitle="Gyro Orientation Fix"
               explainer={GYRO_MOUNT_MATRIX_FIX_EXPLAINER}
+              settingsDescription="Corrects Zotac gyro orientation"
               checked={settings.gyroMountMatrixFix.enabled}
               onChange={(value: boolean) => void handleGyroMountMatrixFixToggleChange(value)}
               disabled={gyroMountMatrixFixDisabled}

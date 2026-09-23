@@ -112,17 +112,3 @@ export const SettingsRow = ({ children }: { children: ReactNode }) => {
     ? <PanelSectionRow>{children}</PanelSectionRow>
     : <Fragment>{children}</Fragment>
 }
-
-export function getSettingsDescription(explainer: ReactNode, description?: ReactNode) {
-  if (!description) {
-    return explainer
-  }
-
-  return (
-    <>
-      {explainer}
-      <br />
-      {description}
-    </>
-  )
-}

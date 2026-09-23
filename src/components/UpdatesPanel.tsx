@@ -9,9 +9,11 @@ import {
   type VersionCache,
 } from '../utils/pluginUpdates'
 import { useDeckyToastNotice } from '../utils/toasts'
-import { SettingsRow, SettingsSection, useSettingsItemLayout, useSettingsSurface } from './SettingsSurface'
+import { SteamExplainerButtonItem } from './SteamExplainer'
+import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
 
 const otaUpdate = callable<[], boolean>('ota_update')
+const CHECK_VERSION_EXPLAINER = 'Checks GitHub for the latest published DeckyZone release.'
 
 type Props = {
   installedVersionNum: string
@@ -41,7 +43,6 @@ const getLastCheckText = (lastCheckTime: number): string => {
 
 const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => {
   const itemLayout = useSettingsItemLayout()
-  const surface = useSettingsSurface()
   const [latestVersionNum, setLatestVersionNum] = useState('')
   const [lastCheckTime, setLastCheckTime] = useState<number | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
@@ -163,20 +164,17 @@ const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => 
         </SettingsRow>
       )}
       <SettingsRow>
-        <ButtonItem
+        <SteamExplainerButtonItem
           layout={itemLayout}
           onClick={() => void loadLatestVersion()}
           disabled={isLoadingLatestVersion || isUpdating}
-          description={
-            lastCheckTime
-              ? `Last check: ${getLastCheckText(lastCheckTime)}`
-              : surface === 'settings'
-                ? 'Checks for the latest published version'
-                : undefined
-          }
+          explainerTitle="Check Version"
+          explainer={CHECK_VERSION_EXPLAINER}
+          settingsDescription="Looks for updates"
+          description={lastCheckTime ? `Last check: ${getLastCheckText(lastCheckTime)}` : undefined}
         >
           {isLoadingLatestVersion ? 'Checking...' : 'Check Version'}
-        </ButtonItem>
+        </SteamExplainerButtonItem>
       </SettingsRow>
       <SettingsRow>
         <Field focusable disabled label="Installed Version">

@@ -1,10 +1,11 @@
-import { DropdownItem, SliderField, ToggleField } from '@decky/ui'
+import { ButtonItem, DropdownItem, SliderField, ToggleField } from '@decky/ui'
 import type { ComponentProps, ReactNode } from 'react'
-import { getSettingsDescription, useSettingsSurface } from './SettingsSurface'
+import { useSettingsSurface } from './SettingsSurface'
 
 type SteamExplainerProps = {
   explainer?: ReactNode
   explainerTitle?: ReactNode
+  settingsDescription?: ReactNode
 }
 
 type SteamExplainerDropdownItemProps = ComponentProps<typeof DropdownItem>
@@ -13,49 +14,73 @@ type SteamExplainerDropdownItemProps = ComponentProps<typeof DropdownItem>
 
 type SteamExplainerToggleFieldProps = ComponentProps<typeof ToggleField> & SteamExplainerProps
 type SteamExplainerSliderFieldProps = ComponentProps<typeof SliderField> & SteamExplainerProps
+type SteamExplainerButtonItemProps = ComponentProps<typeof ButtonItem> & SteamExplainerProps
 
-export const SteamExplainerDropdownItem = (props: SteamExplainerDropdownItemProps) => {
+export const SteamExplainerDropdownItem = ({
+  settingsDescription,
+  ...props
+}: SteamExplainerDropdownItemProps) => {
   const surface = useSettingsSurface()
   if (surface === 'quick-access') {
     return <DropdownItem {...props} />
   }
 
-  const { explainer, explainerTitle: _explainerTitle, description, ...dropdownProps } = props
   return (
     <DropdownItem
-      {...dropdownProps}
+      {...props}
       layout="inline"
-      description={getSettingsDescription(explainer, description)}
+      description={props.description ?? settingsDescription}
     />
   )
 }
 
-export const SteamExplainerToggleField = (props: SteamExplainerToggleFieldProps) => {
+export const SteamExplainerToggleField = ({
+  settingsDescription,
+  ...props
+}: SteamExplainerToggleFieldProps) => {
   const surface = useSettingsSurface()
   if (surface === 'quick-access') {
     return <ToggleField {...props} />
   }
 
-  const { explainer, explainerTitle: _explainerTitle, description, ...toggleProps } = props
   return (
     <ToggleField
-      {...toggleProps}
-      description={getSettingsDescription(explainer, description)}
+      {...props}
+      description={props.description ?? settingsDescription}
     />
   )
 }
 
-export const SteamExplainerSliderField = (props: SteamExplainerSliderFieldProps) => {
+export const SteamExplainerSliderField = ({
+  settingsDescription,
+  ...props
+}: SteamExplainerSliderFieldProps) => {
   const surface = useSettingsSurface()
   if (surface === 'quick-access') {
     return <SliderField {...props} />
   }
 
-  const { explainer, explainerTitle: _explainerTitle, description, ...sliderProps } = props
   return (
     <SliderField
-      {...sliderProps}
-      description={getSettingsDescription(explainer, description)}
+      {...props}
+      description={props.description ?? settingsDescription}
+    />
+  )
+}
+
+export const SteamExplainerButtonItem = ({
+  settingsDescription,
+  ...props
+}: SteamExplainerButtonItemProps) => {
+  const surface = useSettingsSurface()
+  if (surface === 'quick-access') {
+    return <ButtonItem {...props} />
+  }
+
+  return (
+    <ButtonItem
+      {...props}
+      description={props.description ?? settingsDescription}
     />
   )
 }

@@ -101,6 +101,7 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
           label="Enable Zotac Glyphs"
           explainerTitle="Zotac Glyphs"
           explainer={ZOTAC_GLYPHS_EXPLAINER}
+          settingsDescription="Uses Zotac controller icons"
           checked={settings.zotacGlyphsEnabled}
           onChange={(value: boolean) => void handleZotacGlyphsChange(value)}
           disabled={savingZotacGlyphs}
@@ -111,6 +112,7 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
           label="Enable Battery Time Fix"
           explainerTitle="Battery Time Fix"
           explainer={REMAINING_BATTERY_TIME_FIX_EXPLAINER}
+          settingsDescription="Shows charging and remaining time"
           checked={settings.remainingBatteryTimeFixEnabled}
           onChange={(value: boolean) => void handleRemainingBatteryTimeFixChange(value)}
           disabled={savingRemainingBatteryTimeFix}

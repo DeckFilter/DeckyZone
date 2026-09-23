@@ -60,6 +60,18 @@ function getButtonPromptFixExplainer(inputplumberAvailable: boolean) {
     : `${BUTTON_PROMPT_FIX_EXPLAINER} ${INPUTPLUMBER_UNAVAILABLE_MESSAGE}.`
 }
 
+function getPerGameSettingsDescription(activeGame: ActiveGame | null, inputplumberAvailable: boolean) {
+  if (!inputplumberAvailable) {
+    return INPUTPLUMBER_UNAVAILABLE_MESSAGE
+  }
+
+  if (!activeGame) {
+    return NO_ACTIVE_GAME_PER_GAME_SETTINGS_MESSAGE
+  }
+
+  return `Overrides settings for ${activeGame.display_name}`
+}
+
 const PerGameSettingsPanel = ({
   activeGame,
   inputplumberAvailable,
@@ -101,6 +113,7 @@ const PerGameSettingsPanel = ({
           label="Enable Per-Game Settings"
           explainerTitle="Per-Game Settings"
           explainer={getPerGameSettingsExplainer(activeGame, inputplumberAvailable)}
+          settingsDescription={getPerGameSettingsDescription(activeGame, inputplumberAvailable)}
           checked={isPerGameSettingsEnabled}
           onChange={(value: boolean) => onPerGameSettingsToggleChange(value)}
           disabled={!activeGame || savingPerGameSettings || !inputplumberAvailable}
@@ -112,6 +125,7 @@ const PerGameSettingsPanel = ({
             label="Button Prompt Fix"
             explainerTitle="Button Prompt Fix"
             explainer={getButtonPromptFixExplainer(inputplumberAvailable)}
+            settingsDescription="Uses compatible Xbox button prompts"
             checked={isButtonPromptFixEnabled}
             onChange={(value: boolean) => onButtonPromptFixToggleChange(value)}
             disabled={savingPerGameSettings || savingButtonPromptFix || !inputplumberAvailable}

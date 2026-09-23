@@ -35,6 +35,18 @@ function getTrackpadExplainer(inputplumberAvailable: boolean, controllerModeBloc
   return TRACKPAD_MODE_EXPLAINER
 }
 
+function getTrackpadDescription(inputplumberAvailable: boolean, controllerModeBlocked: boolean) {
+  if (!inputplumberAvailable) {
+    return INPUTPLUMBER_UNAVAILABLE_MESSAGE
+  }
+
+  if (controllerModeBlocked) {
+    return NO_GAMEPAD_MODE_MESSAGE
+  }
+
+  return 'Configures both trackpads'
+}
+
 const TrackpadPanel = ({
   inputplumberAvailable,
   controllerModeBlocked,
@@ -59,6 +71,7 @@ const TrackpadPanel = ({
         menuLabel="Trackpad Mode"
         explainerTitle="Trackpad Mode"
         explainer={getTrackpadExplainer(inputplumberAvailable, controllerModeBlocked)}
+        settingsDescription={getTrackpadDescription(inputplumberAvailable, controllerModeBlocked)}
         rgOptions={TRACKPAD_MODE_OPTIONS}
         strDefaultLabel={selectedTrackpadOption?.label ?? 'Default'}
         selectedOption={selectedTrackpadOption?.data ?? trackpadModeValue}

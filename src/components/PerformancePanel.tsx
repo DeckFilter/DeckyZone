@@ -169,6 +169,7 @@ const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: P
           menuLabel="VRAM Size"
           explainerTitle="VRAM Size"
           explainer={VRAM_EXPLAINER}
+          settingsDescription="Reserves memory for the integrated GPU"
           description={vramDescription}
           rgOptions={vramOptions}
           strDefaultLabel={vramDraftGb === null ? VRAM_UNKNOWN_LABEL : getVramOptionLabel(vramDraftGb)}

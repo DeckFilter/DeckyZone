@@ -61,6 +61,7 @@ const LayoutPanel = ({ settings, onSettingsChange }: Props) => {
           label="Legacy Layout"
           explainerTitle="Legacy Layout"
           explainer={LEGACY_LAYOUT_EXPLAINER}
+          settingsDescription="Changes the Quick Access Menu layout"
           checked={settings.legacyLayoutEnabled}
           disabled={saving}
           onChange={(enabled: boolean) => void handleLegacyLayoutChange(enabled)}

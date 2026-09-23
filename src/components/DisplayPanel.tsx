@@ -148,6 +148,7 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
             label="Enable Zotac OLED Profile"
             explainerTitle="Zotac OLED Profile"
             explainer={ZOTAC_PROFILE_EXPLAINER}
+            settingsDescription="Adds the Zotac OLED profile"
             checked={settings.gamescopeZotacProfileInstalled}
             onChange={(value: boolean) => void handleZotacProfileChange(value)}
             disabled={savingZotacProfile}
@@ -159,6 +160,7 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
           label="Enable Green Tint Fix"
           explainerTitle="Green Tint Fix"
           explainer={getGreenTintExplainer(settings, isBaseProfileAvailable)}
+          settingsDescription="Corrects the OLED panel's green tint"
           checked={settings.gamescopeGreenTintFixEnabled}
           onChange={(value: boolean) => void handleGreenTintFixChange(value)}
           disabled={savingGreenTintFix || !isBaseProfileAvailable}
