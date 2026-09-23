@@ -69,6 +69,40 @@ class LegacyLayoutSettingsTests(unittest.TestCase):
 
         self.assertFalse(self.plugin_settings.get_legacy_layout_enabled())
 
+    def test_hide_unsupported_buttons_defaults_to_disabled_and_persists_changes(self):
+        self.assertFalse(self.plugin_settings.get_hide_unsupported_buttons_enabled())
+
+        self.assertTrue(
+            self.plugin_settings.set_hide_unsupported_buttons_enabled(True)
+        )
+        self.assertTrue(self.plugin_settings.get_hide_unsupported_buttons_enabled())
+        self.assertEqual(
+            self.plugin_settings.setting_file.persisted_settings[
+                self.plugin_settings.HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY
+            ],
+            True,
+        )
+
+    def test_hide_unsupported_buttons_migration_preserves_existing_glyph_behavior(self):
+        self.plugin_settings.setting_file.persisted_settings = {
+            self.plugin_settings.ZOTAC_GLYPHS_ENABLED_KEY: True,
+        }
+
+        self.assertTrue(
+            self.plugin_settings.migrate_hide_unsupported_buttons_setting()
+        )
+        self.assertEqual(
+            self.plugin_settings.setting_file.persisted_settings[
+                self.plugin_settings.HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY
+            ],
+            True,
+        )
+
+        self.plugin_settings.set_zotac_glyphs_enabled(False)
+        self.assertTrue(
+            self.plugin_settings.migrate_hide_unsupported_buttons_setting()
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

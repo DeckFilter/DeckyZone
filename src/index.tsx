@@ -20,7 +20,11 @@ import { SettingsRow, SettingsSection, SettingsSurfaceProvider } from './compone
 import TroubleshootingPanel from "./components/TroubleshootingPanel"
 import UpdatesPanel from "./components/UpdatesPanel"
 import ZotacIcon from "./components/ZotacIcon"
-import { cleanupZotacGlyphsRuntime, syncStoredZotacGlyphsRuntimeEnabled } from "./glyphs/zotacGlyphRuntime"
+import {
+  cleanupZotacUiRuntime,
+  syncStoredHideUnsupportedButtonsRuntimeEnabled,
+  syncStoredZotacGlyphsRuntimeEnabled,
+} from "./glyphs/zotacGlyphRuntime"
 import { DECKYZONE_ROUTE } from './routes'
 import {
   DeckyZoneState,
@@ -93,6 +97,7 @@ function applySettingsRuntime(settings: PluginSettings) {
   setBrightnessDialFixRuntimeEnabled(settings.brightnessDialFixEnabled)
   setHomeButtonRuntimeEnabled(settings.homeButtonEnabled)
   syncStoredZotacGlyphsRuntimeEnabled(settings.zotacGlyphsEnabled)
+  syncStoredHideUnsupportedButtonsRuntimeEnabled(settings.hideUnsupportedButtonsEnabled)
 }
 
 const deckyZoneState = new DeckyZoneState(applySettingsRuntime)
@@ -354,7 +359,7 @@ async function handleResetPlugin() {
   let glyphCleanupFailed = false
 
   try {
-    await cleanupZotacGlyphsRuntime()
+    await cleanupZotacUiRuntime()
   } catch {
     glyphCleanupFailed = true
   }
@@ -658,7 +663,7 @@ export default definePlugin(() => {
       unregisterActiveGameSync()
       RunningApps.unregister()
       cleanupBrightnessDialFixListeners()
-      void cleanupZotacGlyphsRuntime()
+      void cleanupZotacUiRuntime()
       console.log('DeckyZone unloaded')
     },
   }

@@ -10,6 +10,7 @@ BRIGHTNESS_DIAL_FIX_ENABLED_KEY = "brightnessDialFixEnabled"
 TRACKPAD_MODE_KEY = "trackpadMode"
 LEGACY_TRACKPADS_DISABLED_KEY = "trackpadsDisabled"
 ZOTAC_GLYPHS_ENABLED_KEY = "zotacGlyphsEnabled"
+HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY = "hideUnsupportedButtonsEnabled"
 REMAINING_BATTERY_TIME_FIX_ENABLED_KEY = "remainingBatteryTimeFixEnabled"
 LEGACY_LAYOUT_ENABLED_KEY = "legacyLayoutEnabled"
 RUMBLE_ENABLED_KEY = "rumbleEnabled"
@@ -29,6 +30,7 @@ DEFAULT_HOME_BUTTON_ENABLED = False
 DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED = False
 DEFAULT_TRACKPAD_MODE = trackpad_modes.DEFAULT_TRACKPAD_MODE
 DEFAULT_ZOTAC_GLYPHS_ENABLED = False
+DEFAULT_HIDE_UNSUPPORTED_BUTTONS_ENABLED = False
 DEFAULT_REMAINING_BATTERY_TIME_FIX_ENABLED = False
 DEFAULT_LEGACY_LAYOUT_ENABLED = False
 DEFAULT_RUMBLE_ENABLED = False
@@ -266,6 +268,39 @@ def get_zotac_glyphs_enabled():
 def set_zotac_glyphs_enabled(enabled):
     _write_setting(ZOTAC_GLYPHS_ENABLED_KEY, bool(enabled))
     return get_zotac_glyphs_enabled()
+
+
+def get_hide_unsupported_buttons_enabled():
+    settings = _read_settings()
+    return bool(
+        settings.get(
+            HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY,
+            DEFAULT_HIDE_UNSUPPORTED_BUTTONS_ENABLED,
+        )
+    )
+
+
+def set_hide_unsupported_buttons_enabled(enabled):
+    _write_setting(HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY, bool(enabled))
+    return get_hide_unsupported_buttons_enabled()
+
+
+def migrate_hide_unsupported_buttons_setting():
+    settings = _read_settings()
+    if HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY in settings:
+        return bool(settings[HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY])
+
+    return bool(
+        _write_setting(
+            HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY,
+            bool(
+                settings.get(
+                    ZOTAC_GLYPHS_ENABLED_KEY,
+                    DEFAULT_ZOTAC_GLYPHS_ENABLED,
+                )
+            ),
+        )
+    )
 
 
 def get_remaining_battery_time_fix_enabled():

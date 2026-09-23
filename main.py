@@ -796,6 +796,9 @@ class DeckyZoneService:
             "gyroMountMatrixFix": self._get_gyro_mount_matrix_fix_state(),
             "trackpadMode": self.settings_store.get_trackpad_mode(),
             "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
+            "hideUnsupportedButtonsEnabled": (
+                self.settings_store.get_hide_unsupported_buttons_enabled()
+            ),
             "remainingBatteryTimeFixEnabled": (
                 self.settings_store.get_remaining_battery_time_fix_enabled()
             ),
@@ -3403,6 +3406,10 @@ class DeckyZoneService:
         self.settings_store.set_zotac_glyphs_enabled(enabled)
         return self._current_settings()
 
+    async def set_hide_unsupported_buttons_enabled(self, enabled):
+        self.settings_store.set_hide_unsupported_buttons_enabled(enabled)
+        return self._current_settings()
+
     async def _disable_remaining_battery_time_fix_for_native_support(self):
         self.settings_store.set_remaining_battery_time_fix_enabled(False)
         self.logger.info(
@@ -4337,6 +4344,9 @@ class Plugin:
     async def set_zotac_glyphs_enabled(self, enabled):
         return await self.service.set_zotac_glyphs_enabled(enabled)
 
+    async def set_hide_unsupported_buttons_enabled(self, enabled):
+        return await self.service.set_hide_unsupported_buttons_enabled(enabled)
+
     async def set_remaining_battery_time_fix_enabled(self, enabled):
         return await self.service.set_remaining_battery_time_fix_enabled(enabled)
 
@@ -4480,6 +4490,7 @@ class Plugin:
             os.path.join(decky.DECKY_HOME, "settings", "deckyzone.json"),
             os.path.join(decky.DECKY_USER_HOME, ".config", "deckyzone"),
         )
+        plugin_settings.migrate_hide_unsupported_buttons_setting()
         decky.migrate_runtime(
             os.path.join(decky.DECKY_HOME, "deckyzone"),
             os.path.join(decky.DECKY_USER_HOME, ".local", "share", "deckyzone"),

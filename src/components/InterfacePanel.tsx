@@ -1,6 +1,9 @@
 import { callable } from "@decky/api"
 import { useRef, useState } from "react"
-import { applyZotacGlyphsRuntimeEnabled } from "../glyphs/zotacGlyphRuntime"
+import {
+  applyHideUnsupportedButtonsRuntimeEnabled,
+  applyZotacGlyphsRuntimeEnabled,
+} from "../glyphs/zotacGlyphRuntime"
 import type { PluginSettingsUpdate } from "../state/DeckyZoneState"
 import type { PluginSettings } from "../types/plugin"
 import { useDeckyToastNotice } from "../utils/toasts"
@@ -13,19 +16,28 @@ type Props = {
 }
 
 const setZotacGlyphsEnabled = callable<[boolean], PluginSettings>("set_zotac_glyphs_enabled")
+const setHideUnsupportedButtonsEnabled = callable<[boolean], PluginSettings>(
+  "set_hide_unsupported_buttons_enabled",
+)
 const setRemainingBatteryTimeFixEnabled = callable<[boolean], PluginSettings>(
   "set_remaining_battery_time_fix_enabled",
 )
 
 const ZOTAC_GLYPHS_EXPLAINER =
   "Shows Zotac controller button glyphs and controller images throughout the Steam interface."
+const HIDE_UNSUPPORTED_BUTTONS_EXPLAINER =
+  "Hides the L5 and R5 controls that Steam shows in controller layouts even though the Zotac Zone has only M1 and M2 rear buttons."
 const REMAINING_BATTERY_TIME_FIX_EXPLAINER =
   "Passes UPower's charging and discharging estimates to Steam through /run/vpower. The fix turns itself off when Valve's vpower service starts providing valid estimates."
 const INTERFACE_UPDATE_FAILED_NOTICE = "Couldn't update setting."
 const GLYPH_APPLY_FAILED_NOTICE = "Couldn't apply glyphs live."
+const BUTTON_HIDING_APPLY_FAILED_NOTICE = "Couldn't update hidden buttons live."
 
 const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
   const [savingZotacGlyphs, setSavingZotacGlyphs] = useState(false)
+  const savingZotacGlyphsRef = useRef(false)
+  const [savingHideUnsupportedButtons, setSavingHideUnsupportedButtons] = useState(false)
+  const savingHideUnsupportedButtonsRef = useRef(false)
   const [savingRemainingBatteryTimeFix, setSavingRemainingBatteryTimeFix] =
     useState(false)
   const savingRemainingBatteryTimeFixRef = useRef(false)
@@ -43,25 +55,80 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
   )
 
   const handleZotacGlyphsChange = async (enabled: boolean) => {
+    if (savingZotacGlyphsRef.current) {
+      return
+    }
+
+    const previousEnabled = settings.zotacGlyphsEnabled
+    savingZotacGlyphsRef.current = true
     setSavingZotacGlyphs(true)
     setInterfaceNotice(null)
+    onSettingsChange((currentSettings) => ({
+      ...currentSettings,
+      zotacGlyphsEnabled: enabled,
+    }))
 
     try {
       const nextSettings = await setZotacGlyphsEnabled(enabled)
       onSettingsChange(nextSettings)
     } catch {
       setInterfaceNotice(INTERFACE_UPDATE_FAILED_NOTICE)
+      onSettingsChange((currentSettings) => ({
+        ...currentSettings,
+        zotacGlyphsEnabled: previousEnabled,
+      }))
+      savingZotacGlyphsRef.current = false
       setSavingZotacGlyphs(false)
       return
     }
-
-    setSavingZotacGlyphs(false)
 
     try {
       await applyZotacGlyphsRuntimeEnabled(enabled)
       setInterfaceNotice(null)
     } catch {
       setInterfaceNotice(GLYPH_APPLY_FAILED_NOTICE)
+    } finally {
+      savingZotacGlyphsRef.current = false
+      setSavingZotacGlyphs(false)
+    }
+  }
+
+  const handleHideUnsupportedButtonsChange = async (enabled: boolean) => {
+    if (savingHideUnsupportedButtonsRef.current) {
+      return
+    }
+
+    const previousEnabled = settings.hideUnsupportedButtonsEnabled
+    savingHideUnsupportedButtonsRef.current = true
+    setSavingHideUnsupportedButtons(true)
+    setInterfaceNotice(null)
+    onSettingsChange((currentSettings) => ({
+      ...currentSettings,
+      hideUnsupportedButtonsEnabled: enabled,
+    }))
+
+    try {
+      const nextSettings = await setHideUnsupportedButtonsEnabled(enabled)
+      onSettingsChange(nextSettings)
+    } catch {
+      setInterfaceNotice(INTERFACE_UPDATE_FAILED_NOTICE)
+      onSettingsChange((currentSettings) => ({
+        ...currentSettings,
+        hideUnsupportedButtonsEnabled: previousEnabled,
+      }))
+      savingHideUnsupportedButtonsRef.current = false
+      setSavingHideUnsupportedButtons(false)
+      return
+    }
+
+    try {
+      await applyHideUnsupportedButtonsRuntimeEnabled(enabled)
+      setInterfaceNotice(null)
+    } catch {
+      setInterfaceNotice(BUTTON_HIDING_APPLY_FAILED_NOTICE)
+    } finally {
+      savingHideUnsupportedButtonsRef.current = false
+      setSavingHideUnsupportedButtons(false)
     }
   }
 
@@ -105,6 +172,17 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
           checked={settings.zotacGlyphsEnabled}
           onChange={(value: boolean) => void handleZotacGlyphsChange(value)}
           disabled={savingZotacGlyphs}
+        />
+      </SettingsRow>
+      <SettingsRow>
+        <SteamExplainerToggleField
+          label="Hide Unsupported Buttons"
+          explainerTitle="Unsupported Buttons"
+          explainer={HIDE_UNSUPPORTED_BUTTONS_EXPLAINER}
+          settingsDescription="Hides unused L5 and R5 controls"
+          checked={settings.hideUnsupportedButtonsEnabled}
+          onChange={(value: boolean) => void handleHideUnsupportedButtonsChange(value)}
+          disabled={savingHideUnsupportedButtons}
         />
       </SettingsRow>
       <SettingsRow>

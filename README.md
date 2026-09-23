@@ -54,9 +54,12 @@ Trackpad modes:
 | Feature                    | SteamOS `main` | Bazzite | Nobara | CachyOS |
 | -------------------------- | -------------- | ------- | ------ | ------- |
 | Enable Zotac Glyphs        | ✅             | ✅      | ❓     | ❓      |
+| Hide Unsupported Buttons   | ✅             | ✅      | ❓     | ❓      |
 | Remaining Battery Time Fix | ❓             | ❓      | ❓     | ❓      |
 
 Zotac Glyphs applies Zotac controller button glyphs and controller images in Steam UI.
+
+Hide Unsupported Buttons removes the unused L5 and R5 controls from Steam's controller layout screens. Existing installations inherit the previous Zotac Glyphs behavior when this separate setting is first added.
 
 Remaining Battery Time Fix passes UPower's charging and discharging estimates to Steam through `/run/vpower` while leaving Valve's `vpower` service running. It turns itself off after `vpower` provides valid estimates for both states.
 

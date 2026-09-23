@@ -1,20 +1,23 @@
 import { executeInTab, fetchNoCors, injectCssIntoTab, removeCssFromTab } from "@decky/api"
-import { ZOTAC_GLYPH_CSS } from "./generated/zotacGlyphCss"
+import {
+  ZOTAC_GLYPH_CSS,
+  ZOTAC_UNSUPPORTED_BUTTONS_CSS,
+} from "./generated/zotacGlyphCss"
 
 const RECONCILE_INTERVAL_MS = 3000
 const TAB_OPERATION_TIMEOUT_MS = 1500
 const TAB_DISCOVERY_URL = "http://localhost:8080/json"
-const ZOTAC_GLYPH_ACTIVE_CHECK_CODE = `(() => window.getComputedStyle(document.documentElement).getPropertyValue('--deckyzone-zotac-glyphs-active').trim())()`
 
 type InspectableTab = {
   title?: string
   url?: string
 }
 
-let zotacGlyphsDesiredEnabled = false
-let zotacGlyphsReconcileTimer: ReturnType<typeof setInterval> | null = null
-let zotacGlyphsReconcileInFlight = false
-const injectedCssIdsByTab = new Map<string, string[]>()
+type CssFeatureOptions = {
+  activeMarker: string
+  css: string
+  label: string
+}
 
 function withTabOperationTimeout<T>(value: PromiseLike<T> | T, tabName: string, action: string) {
   return Promise.race<T>([
@@ -27,7 +30,7 @@ function withTabOperationTimeout<T>(value: PromiseLike<T> | T, tabName: string, 
   ])
 }
 
-async function resolveZotacGlyphTargetTabs() {
+async function resolveZotacUiTargetTabs() {
   try {
     const response = await withTabOperationTimeout(fetchNoCors(TAB_DISCOVERY_URL), "cef-debugger", "tab discovery")
     if (!response.ok) {
@@ -64,139 +67,230 @@ async function resolveZotacGlyphTargetTabs() {
   }
 }
 
-async function isZotacGlyphCssActiveInTab(tabName: string) {
-  try {
-    const result = await withTabOperationTimeout(
-      executeInTab(tabName, false, ZOTAC_GLYPH_ACTIVE_CHECK_CODE),
-      tabName,
-      "glyph activity check",
-    )
-    return result.success && result.result === "1"
-  } catch {
-    return false
-  }
-}
+function createCssFeatureRuntime({ activeMarker, css, label }: CssFeatureOptions) {
+  const activeCheckCode = `(() => window.getComputedStyle(document.documentElement).getPropertyValue('${activeMarker}').trim())()`
+  const injectedCssIdsByTab = new Map<string, string>()
+  let desiredEnabled = false
+  let generation = 0
+  let reconcileTimer: ReturnType<typeof setInterval> | null = null
+  let reconcileQueue = Promise.resolve()
+  let backgroundReconcilePending = false
 
-async function removeInjectedCssForTab(tabName: string) {
-  const cssIds = injectedCssIdsByTab.get(tabName) ?? []
-  if (!cssIds.length) {
-    return
-  }
-
-  for (const cssId of cssIds) {
+  async function isCssActiveInTab(tabName: string) {
     try {
-      await withTabOperationTimeout(removeCssFromTab(tabName, cssId), tabName, "glyph CSS removal")
+      const result = await withTabOperationTimeout(
+        executeInTab(tabName, false, activeCheckCode),
+        tabName,
+        `${label} activity check`,
+      )
+      return result.success && result.result === "1"
+    } catch {
+      return false
+    }
+  }
+
+  async function removeInjectedCssForTab(tabName: string) {
+    const cssId = injectedCssIdsByTab.get(tabName)
+    if (!cssId) {
+      return
+    }
+
+    try {
+      await withTabOperationTimeout(removeCssFromTab(tabName, cssId), tabName, `${label} CSS removal`)
     } catch {
       // Ignore missing tabs or stale css ids during cleanup/reconcile.
     }
+
+    injectedCssIdsByTab.delete(tabName)
   }
 
-  injectedCssIdsByTab.delete(tabName)
-}
-
-async function removeInjectedCssFromAllTabs() {
-  const tabs = Array.from(injectedCssIdsByTab.keys())
-  for (const tabName of tabs) {
-    await removeInjectedCssForTab(tabName)
-  }
-}
-
-async function ensureZotacGlyphCssForTab(tabName: string) {
-  if (await isZotacGlyphCssActiveInTab(tabName)) {
-    return true
-  }
-
-  await removeInjectedCssForTab(tabName)
-
-  try {
-    const cssId = await withTabOperationTimeout(injectCssIntoTab(tabName, ZOTAC_GLYPH_CSS), tabName, "glyph CSS injection")
-    injectedCssIdsByTab.set(tabName, [cssId])
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function reconcileZotacGlyphCss(requireAtLeastOneApplied = false) {
-  if (!zotacGlyphsDesiredEnabled) {
-    return
-  }
-
-  const targetTabs = await resolveZotacGlyphTargetTabs()
-  let appliedToAtLeastOneTab = false
-
-  for (const tabName of targetTabs) {
-    // Treat an already-active style the same as a fresh injection.
-    if (await ensureZotacGlyphCssForTab(tabName)) {
-      appliedToAtLeastOneTab = true
+  async function removeInjectedCssFromAllTabs() {
+    const tabs = Array.from(injectedCssIdsByTab.keys())
+    for (const tabName of tabs) {
+      await removeInjectedCssForTab(tabName)
     }
   }
 
-  if (requireAtLeastOneApplied && !appliedToAtLeastOneTab) {
-    throw new Error("No supported Steam UI tabs were available for Zotac glyph injection")
+  async function ensureCssForTab(tabName: string, requestedGeneration: number) {
+    if (!desiredEnabled || generation !== requestedGeneration) {
+      return false
+    }
+
+    if (await isCssActiveInTab(tabName)) {
+      return true
+    }
+
+    await removeInjectedCssForTab(tabName)
+    if (!desiredEnabled || generation !== requestedGeneration) {
+      return false
+    }
+
+    try {
+      const cssId = await withTabOperationTimeout(
+        injectCssIntoTab(tabName, css),
+        tabName,
+        `${label} CSS injection`,
+      )
+
+      if (!desiredEnabled || generation !== requestedGeneration) {
+        try {
+          await withTabOperationTimeout(
+            removeCssFromTab(tabName, cssId),
+            tabName,
+            `${label} stale CSS removal`,
+          )
+        } catch {
+          // Ignore tabs that disappeared while the setting changed.
+        }
+        return false
+      }
+
+      injectedCssIdsByTab.set(tabName, cssId)
+      return true
+    } catch {
+      return false
+    }
   }
+
+  async function reconcileCss(requireAtLeastOneApplied = false) {
+    if (!desiredEnabled) {
+      return
+    }
+
+    const requestedGeneration = generation
+    const targetTabs = await resolveZotacUiTargetTabs()
+    let appliedToAtLeastOneTab = false
+
+    for (const tabName of targetTabs) {
+      if (await ensureCssForTab(tabName, requestedGeneration)) {
+        appliedToAtLeastOneTab = true
+      }
+    }
+
+    if (
+      requireAtLeastOneApplied &&
+      desiredEnabled &&
+      generation === requestedGeneration &&
+      !appliedToAtLeastOneTab
+    ) {
+      throw new Error(`No supported Steam UI tabs were available for ${label} CSS injection`)
+    }
+  }
+
+  function runReconcile(requireAtLeastOneApplied = false) {
+    const operation = reconcileQueue.then(() => reconcileCss(requireAtLeastOneApplied))
+    reconcileQueue = operation.catch(() => undefined)
+    return operation
+  }
+
+  async function removeCssAfterPendingReconcile() {
+    await reconcileQueue
+    await removeInjectedCssFromAllTabs()
+  }
+
+  function requestBackgroundReconcile() {
+    if (backgroundReconcilePending) {
+      return
+    }
+
+    backgroundReconcilePending = true
+    void runReconcile(false).finally(() => {
+      backgroundReconcilePending = false
+    })
+  }
+
+  function startReconcileTimer() {
+    if (reconcileTimer !== null) {
+      return
+    }
+
+    reconcileTimer = setInterval(() => {
+      requestBackgroundReconcile()
+    }, RECONCILE_INTERVAL_MS)
+  }
+
+  function stopReconcileTimer() {
+    if (reconcileTimer === null) {
+      return
+    }
+
+    clearInterval(reconcileTimer)
+    reconcileTimer = null
+  }
+
+  function setDesiredEnabled(enabled: boolean) {
+    if (desiredEnabled !== enabled) {
+      generation += 1
+    }
+    desiredEnabled = enabled
+  }
+
+  function syncStoredEnabled(enabled: boolean) {
+    setDesiredEnabled(enabled)
+
+    if (enabled) {
+      startReconcileTimer()
+      requestBackgroundReconcile()
+      return
+    }
+
+    stopReconcileTimer()
+    void removeCssAfterPendingReconcile()
+  }
+
+  async function applyEnabled(enabled: boolean) {
+    setDesiredEnabled(enabled)
+
+    if (enabled) {
+      startReconcileTimer()
+      await runReconcile(true)
+      return
+    }
+
+    stopReconcileTimer()
+    await removeCssAfterPendingReconcile()
+  }
+
+  async function cleanup() {
+    setDesiredEnabled(false)
+    stopReconcileTimer()
+    await removeCssAfterPendingReconcile()
+  }
+
+  return { applyEnabled, cleanup, syncStoredEnabled }
 }
 
-async function runZotacGlyphsReconcile(requireAtLeastOneApplied = false) {
-  if (zotacGlyphsReconcileInFlight) {
-    return
-  }
+const zotacGlyphsRuntime = createCssFeatureRuntime({
+  activeMarker: "--deckyzone-zotac-glyphs-active",
+  css: ZOTAC_GLYPH_CSS,
+  label: "Zotac glyph",
+})
 
-  zotacGlyphsReconcileInFlight = true
-  try {
-    await reconcileZotacGlyphCss(requireAtLeastOneApplied)
-  } finally {
-    zotacGlyphsReconcileInFlight = false
-  }
-}
-
-function startZotacGlyphsReconcileTimer() {
-  if (zotacGlyphsReconcileTimer !== null) {
-    return
-  }
-
-  zotacGlyphsReconcileTimer = setInterval(() => {
-    void runZotacGlyphsReconcile(false)
-  }, RECONCILE_INTERVAL_MS)
-}
-
-function stopZotacGlyphsReconcileTimer() {
-  if (zotacGlyphsReconcileTimer === null) {
-    return
-  }
-
-  clearInterval(zotacGlyphsReconcileTimer)
-  zotacGlyphsReconcileTimer = null
-}
+const unsupportedButtonsRuntime = createCssFeatureRuntime({
+  activeMarker: "--deckyzone-hide-unsupported-buttons-active",
+  css: ZOTAC_UNSUPPORTED_BUTTONS_CSS,
+  label: "unsupported button hiding",
+})
 
 export function syncStoredZotacGlyphsRuntimeEnabled(enabled: boolean) {
-  zotacGlyphsDesiredEnabled = enabled
+  zotacGlyphsRuntime.syncStoredEnabled(enabled)
+}
 
-  if (enabled) {
-    startZotacGlyphsReconcileTimer()
-    void runZotacGlyphsReconcile(false)
-    return
-  }
-
-  stopZotacGlyphsReconcileTimer()
-  void removeInjectedCssFromAllTabs()
+export function syncStoredHideUnsupportedButtonsRuntimeEnabled(enabled: boolean) {
+  unsupportedButtonsRuntime.syncStoredEnabled(enabled)
 }
 
 export async function applyZotacGlyphsRuntimeEnabled(enabled: boolean) {
-  zotacGlyphsDesiredEnabled = enabled
-
-  if (enabled) {
-    startZotacGlyphsReconcileTimer()
-    await reconcileZotacGlyphCss(true)
-    return
-  }
-
-  stopZotacGlyphsReconcileTimer()
-  await removeInjectedCssFromAllTabs()
+  await zotacGlyphsRuntime.applyEnabled(enabled)
 }
 
-export async function cleanupZotacGlyphsRuntime() {
-  zotacGlyphsDesiredEnabled = false
-  stopZotacGlyphsReconcileTimer()
-  await removeInjectedCssFromAllTabs()
+export async function applyHideUnsupportedButtonsRuntimeEnabled(enabled: boolean) {
+  await unsupportedButtonsRuntime.applyEnabled(enabled)
+}
+
+export async function cleanupZotacUiRuntime() {
+  await Promise.all([
+    zotacGlyphsRuntime.cleanup(),
+    unsupportedButtonsRuntime.cleanup(),
+  ])
 }
