@@ -203,6 +203,10 @@ class SupportReportRedactionTests(unittest.TestCase):
                     "prettyName": "SteamOS",
                     "kernelRelease": "6.11-test",
                 },
+                "firmware": {
+                    "ecVersion": "1.5",
+                    "displayVersion": None,
+                },
                 "memory": {
                     "systemRamGb": 12,
                     "activeVramGb": 4,
@@ -237,6 +241,8 @@ class SupportReportRedactionTests(unittest.TestCase):
         self.assertIn("Section: Recent DeckyZone log", text)
         self.assertIn("System RAM: 12 GB", text)
         self.assertIn("Active VRAM: 4 GB", text)
+        self.assertIn("EC firmware: 1.5", text)
+        self.assertIn("Display firmware: Unavailable", text)
         self.assertEqual(text.count("Operating system: SteamOS"), 1)
         self.assertEqual(text.count("Kernel: 6.11-test"), 1)
         self.assertNotIn("Existing debug snapshot", text)

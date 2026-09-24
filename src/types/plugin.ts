@@ -56,6 +56,10 @@ export type DebugInfoSnapshot = {
     prettyName: string | null
     kernelRelease: string | null
   }
+  firmware: {
+    ecVersion: string | null
+    displayVersion: string | null
+  }
   memory: {
     systemRamGb: number | null
     activeVramGb: number | null

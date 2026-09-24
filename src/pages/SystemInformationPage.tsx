@@ -465,6 +465,14 @@ const GeneralInformationSection = ({
             value={formatValue(snapshot.osContext.kernelRelease)}
           />
           <SnapshotRow
+            label="EC Firmware"
+            value={formatValue(snapshot.firmware.ecVersion)}
+          />
+          <SnapshotRow
+            label="Display Firmware"
+            value={formatValue(snapshot.firmware.displayVersion)}
+          />
+          <SnapshotRow
             label="DeckyZone Version"
             value={formatValue(pluginVersion)}
             bottomSeparator="none"

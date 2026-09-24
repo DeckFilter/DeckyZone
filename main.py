@@ -12,6 +12,7 @@ from pathlib import Path
 
 import decky
 import controller_targets
+import firmware_info
 import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_device_profile
 import inputplumber_target_sync
@@ -424,6 +425,7 @@ class DeckyZoneService:
         inputplumber_available = bool(self.probe_inputplumber_available())
         inputplumber_version = self._get_binary_version("inputplumber")
         gamescope_version = self._get_binary_version("gamescope")
+        firmware_versions = firmware_info.read_firmware_versions(self.read_text)
         system_ram_gb = None
         active_vram_gb = None
 
@@ -483,6 +485,7 @@ class DeckyZoneService:
                 "prettyName": self._get_os_pretty_name(),
                 "kernelRelease": self._get_kernel_release(),
             },
+            "firmware": firmware_versions,
             "memory": {
                 "systemRamGb": system_ram_gb,
                 "activeVramGb": active_vram_gb,

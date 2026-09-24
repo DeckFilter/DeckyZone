@@ -75,7 +75,7 @@ Green Tint Compensation only changes the Gamescope profile's white point. It doe
 
 #### Display research resources
 
-- [Zotac display and EC firmware update guide](https://www.zotac.com/us/faq/zotac-gaming-zone-how-update-display-firmware-or-battery-indicator-firmware)
+- [Zotac display and EC firmware update guide](https://www.zotac.com/de/faq/zotac-gaming-zone-how-update-display-firmware-or-battery-indicator-firmware)
 - [DXQ7D0023 / Chipone ICNA3512 panel driver](https://github.com/csvke/panel-chipone-icna3512)
 - [ICNA3512 panel initialization reference](https://github.com/csvke/panel-chipone-icna3512/blob/master/reference/video_120HZ_DSC%E4%BB%A3%E7%A0%81/20240620_ICNA3512_GVO_G1700_1080x1920_12bit_befor_OP1_V03_GammaRetune_90_120Hz_HDR_10bitDSC.txt)
 - [Gamescope AYANEO 3 OLED display pull request](https://github.com/ValveSoftware/gamescope/pull/2347)
@@ -129,7 +129,6 @@ These are ideas, not promised features.
 ### Troubleshooting / Tips & Tricks
 
 - Camera detected status
-- EC and display firmware details
 - Battery warning to help prevent BIOS reset
 
 ## Credits

@@ -687,6 +687,7 @@ def build_support_report(
     snapshot = debug_snapshot or {}
     os_context = snapshot.get("osContext") or {}
     device_identity = snapshot.get("deviceIdentity") or {}
+    firmware = snapshot.get("firmware") or {}
     memory = snapshot.get("memory") or {}
     input_plumber = snapshot.get("inputPlumber") or {}
     gyro_fix = input_plumber.get("gyroMountMatrixFix") or {}
@@ -757,6 +758,10 @@ def build_support_report(
             ("Product", device_identity.get("productName")),
             ("Board vendor", device_identity.get("boardVendor")),
             ("Board", device_identity.get("boardName")),
+            (
+                "EC firmware",
+                _safe_string(firmware.get("ecVersion"), fallback="Unavailable"),
+            ),
         ),
     )
     input_entries = [
@@ -786,6 +791,10 @@ def build_support_report(
         report_lines,
         "Display",
         (
+            (
+                "Display firmware",
+                _safe_string(firmware.get("displayVersion"), fallback="Unavailable"),
+            ),
             ("Gamescope version", gamescope.get("version")),
             ("Built-in profile", gamescope.get("builtInAvailable")),
             ("Managed profile", gamescope.get("managedProfileInstalled")),
