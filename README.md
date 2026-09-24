@@ -71,6 +71,8 @@ Remaining Battery Time Fix passes UPower's charging and discharging estimates to
 
 Display changes require a reboot after toggling them. `HDR / Washed out colors` was fixed out of the box in my SteamOS `main`, SteamOS 3.8.1 Preview, Bazzite, Nobara, and CachyOS testing.
 
+Green Tint Compensation only changes the Gamescope profile's white point. It does not correct the panel's brightness-dependent tint. On my unit, manual testing found the issue from 12% through 35% brightness; 11% and 36% looked neutral. The exact range may vary between panels.
+
 ### Performance
 
 | Feature   | SteamOS `main` | Bazzite | Nobara | CachyOS |

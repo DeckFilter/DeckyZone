@@ -24,8 +24,10 @@ const ZOTAC_PROFILE_EXPLAINER =
   'Adds the Zotac OLED Gamescope profile when it is missing.'
 const NATIVE_COLOR_TEMPERATURE_HINT =
   'For the most accurate OLED colors, enable Use Native Color Temperature in Steam Settings > Display.'
+const LOW_BRIGHTNESS_TINT_NOTE =
+  "Green Tint Compensation only changes the OLED profile's white point. It does not correct the separate panel tint observed from 12% through 35% brightness on the author's unit."
 const GREEN_TINT_COMMUNITY_NOTE =
-  "This white-point adjustment came from the community. I don't see a noticeable difference on my unit. Owners of other handhelds believed to use the same AMOLED panel have reported similar low-brightness tint, which suggests it may be a panel characteristic."
+  "This white-point adjustment came from the community, but I don't see a noticeable improvement on my unit. It does not correct the brightness-dependent panel tint I observed from 12% through 35%. Owners of other handhelds believed to use the same AMOLED panel have reported similar low-brightness tint, which suggests it may be a panel characteristic."
 
 function getGreenTintDescription(isBaseProfileAvailable: boolean) {
   if (!isBaseProfileAvailable) {
@@ -147,7 +149,10 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
   return (
     <>
       {surface === 'settings' && (
-        <SettingsDialogBodyText>{NATIVE_COLOR_TEMPERATURE_HINT}</SettingsDialogBodyText>
+        <>
+          <SettingsDialogBodyText>{NATIVE_COLOR_TEMPERATURE_HINT}</SettingsDialogBodyText>
+          <SettingsDialogBodyText>{LOW_BRIGHTNESS_TINT_NOTE}</SettingsDialogBodyText>
+        </>
       )}
       <SettingsSection title="Display" settingsTitle={null}>
         {!settings.gamescopeZotacProfileBuiltIn && (
