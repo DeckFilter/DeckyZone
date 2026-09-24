@@ -24,7 +24,7 @@ const setRemainingBatteryTimeFixEnabled = callable<[boolean], PluginSettings>(
 )
 
 const ZOTAC_GLYPHS_EXPLAINER =
-  "Shows Zotac controller button glyphs and controller images throughout the Steam interface."
+  "Replaces supported Steam controller images and button glyphs with Zotac versions."
 const HIDE_UNSUPPORTED_BUTTONS_EXPLAINER =
   "Hides the L5 and R5 controls that Steam shows in controller layouts even though the Zotac Zone has only M1 and M2 rear buttons."
 const REMAINING_BATTERY_TIME_FIX_EXPLAINER =
@@ -190,7 +190,7 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
           label="Enable Battery Time Fix"
           explainerTitle="Battery Time Fix"
           explainer={REMAINING_BATTERY_TIME_FIX_EXPLAINER}
-          settingsDescription="Shows charging and remaining time"
+          settingsDescription="Shows time to full or empty"
           checked={settings.remainingBatteryTimeFixEnabled}
           onChange={(value: boolean) => void handleRemainingBatteryTimeFixChange(value)}
           disabled={savingRemainingBatteryTimeFix}

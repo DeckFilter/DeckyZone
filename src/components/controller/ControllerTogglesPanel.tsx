@@ -98,7 +98,7 @@ const ControllerTogglesPanel = ({
           label="Enable Controller Features"
           explainerTitle="Controller Features"
           explainer={CONTROLLER_FEATURES_EXPLAINER}
-          settingsDescription="Runs DeckyZone controller features"
+          settingsDescription="Enables Home Button and Brightness Dial"
           checked={settings.startupApplyEnabled}
           onChange={(value: boolean) => onStartupToggleChange(value)}
           disabled={savingStartup || !settings.inputplumberAvailable || controllerModeBlocked}

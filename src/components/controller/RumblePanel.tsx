@@ -16,7 +16,7 @@ type Props = {
 }
 
 const RUMBLE_EXPLAINER =
-  'Enables controller vibration. Use Intensity below to adjust its strength and Test Rumble to preview it.'
+  "Lets DeckyZone set and periodically reapply the controller's vibration strength. Use Intensity to adjust it and Test Rumble to preview it. Turning this off stops DeckyZone from managing rumble gain."
 const RUMBLE_INTENSITY_EXPLAINER = 'Adjusts vibration strength. 75% is recommended; 100% is very strong.'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available'
 
@@ -45,7 +45,7 @@ const RumblePanel = ({
           label="Rumble Controls"
           explainerTitle="Rumble Controls"
           explainer={getRumbleExplainer(rumbleAvailable)}
-          settingsDescription={rumbleAvailable ? 'Enables controller vibration' : RUMBLE_UNAVAILABLE_MESSAGE}
+          settingsDescription={rumbleAvailable ? 'Lets DeckyZone manage vibration strength' : RUMBLE_UNAVAILABLE_MESSAGE}
           checked={rumbleEnabled}
           onChange={(value: boolean) => onRumbleToggleChange(value)}
           disabled={savingRumble}
