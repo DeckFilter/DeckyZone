@@ -1,4 +1,4 @@
-import { ButtonItem } from '@decky/ui'
+import { ButtonItem, type NotchLabel } from '@decky/ui'
 import { SettingsRow, useSettingsItemLayout } from '../SettingsSurface'
 import { SteamExplainerSliderField, SteamExplainerToggleField } from '../SteamExplainer'
 
@@ -19,6 +19,10 @@ const RUMBLE_EXPLAINER =
   "Lets DeckyZone set and periodically reapply the controller's vibration strength. Use Intensity to adjust it and Test Rumble to preview it. Turning this off stops DeckyZone from managing rumble gain."
 const RUMBLE_INTENSITY_EXPLAINER = 'Adjusts vibration strength. 75% is recommended; 100% is very strong.'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available'
+const RUMBLE_NOTCH_LABELS: NotchLabel[] = [
+  { notchIndex: 0, label: '0', value: 0 },
+  { notchIndex: 20, label: '100', value: 100 },
+]
 
 function getRumbleExplainer(rumbleAvailable: boolean) {
   return rumbleAvailable ? RUMBLE_EXPLAINER : `${RUMBLE_EXPLAINER} ${RUMBLE_UNAVAILABLE_MESSAGE}.`
@@ -42,8 +46,8 @@ const RumblePanel = ({
     <>
       <SettingsRow>
         <SteamExplainerToggleField
-          label="Rumble Controls"
-          explainerTitle="Rumble Controls"
+          label="Custom Rumble Strength"
+          explainerTitle="Custom Rumble Strength"
           explainer={getRumbleExplainer(rumbleAvailable)}
           settingsDescription={rumbleAvailable ? 'Lets DeckyZone manage vibration strength' : RUMBLE_UNAVAILABLE_MESSAGE}
           checked={rumbleEnabled}
@@ -63,7 +67,9 @@ const RumblePanel = ({
               min={0}
               max={100}
               step={5}
-              notchTicksVisible
+              notchCount={21}
+              notchLabels={RUMBLE_NOTCH_LABELS}
+              notchTicksVisible={false}
               showValue
               resetValue={75}
               onChange={onRumbleIntensityChange}

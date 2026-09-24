@@ -5,18 +5,14 @@ import { SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
   settings: PluginSettings
-  savingStartup: boolean
   savingControllerMode: boolean
   savingHomeButton: boolean
   savingBrightnessDialFix: boolean
-  onStartupToggleChange: (enabled: boolean) => void
   onControllerModeChange: (mode: ControllerMode) => void
   onHomeButtonToggleChange: (enabled: boolean) => void
   onBrightnessDialFixToggleChange: (enabled: boolean) => void
 }
 
-const CONTROLLER_FEATURES_EXPLAINER =
-  "Turns on DeckyZone's InputPlumber-based controller runtime. Home Button and Brightness Dial depend on this setting and turn off with it."
 const NO_GAMEPAD_MODE_DESCRIPTION = 'No Gamepad mode detected'
 const CONTROLLER_MODE_GAMEPAD_DESCRIPTION = 'Current mode detected'
 const CONTROLLER_MODE_DESKTOP_HINT = 'Switch back to Gamepad'
@@ -32,7 +28,7 @@ function isControllerModeConfirmed(settings: PluginSettings) {
   return settings.controllerModeAvailable && settings.controllerMode === 'gamepad'
 }
 
-function getStartupDescription(settings: PluginSettings, controllerModeBlocked: boolean) {
+function getControllerFeatureDescription(settings: PluginSettings, controllerModeBlocked: boolean) {
   if (!settings.inputplumberAvailable) {
     return INPUTPLUMBER_UNAVAILABLE_DESCRIPTION
   }
@@ -74,11 +70,9 @@ function getControllerModeDisplay(settings: PluginSettings) {
 
 const ControllerTogglesPanel = ({
   settings,
-  savingStartup,
   savingControllerMode,
   savingHomeButton,
   savingBrightnessDialFix,
-  onStartupToggleChange,
   onControllerModeChange,
   onHomeButtonToggleChange,
   onBrightnessDialFixToggleChange,
@@ -89,22 +83,11 @@ const ControllerTogglesPanel = ({
   const controllerModeDisplay = getControllerModeDisplay(settings)
   const showControllerModeStatus = controllerModeBlocked
   const showControllerModeSwitchButton = settings.controllerModeAvailable && settings.controllerMode !== 'gamepad'
-  const showControllerFeatureControls = settings.startupApplyEnabled && controllerModeConfirmed
+  const featureDescription = getControllerFeatureDescription(settings, controllerModeBlocked)
+  const controllerFeatureDisabled = !settings.inputplumberAvailable || controllerModeBlocked
 
   return (
     <>
-      <SettingsRow>
-        <SteamExplainerToggleField
-          label="Enable Controller Features"
-          explainerTitle="Controller Features"
-          explainer={CONTROLLER_FEATURES_EXPLAINER}
-          settingsDescription="Enables Home Button and Brightness Dial"
-          checked={settings.startupApplyEnabled}
-          onChange={(value: boolean) => onStartupToggleChange(value)}
-          disabled={savingStartup || !settings.inputplumberAvailable || controllerModeBlocked}
-          description={getStartupDescription(settings, controllerModeBlocked)}
-        />
-      </SettingsRow>
       {showControllerModeStatus && (
         <>
           <SettingsRow>
@@ -121,34 +104,30 @@ const ControllerTogglesPanel = ({
           )}
         </>
       )}
-      {showControllerFeatureControls && (
-        <>
-          <SettingsRow>
-            <SteamExplainerToggleField
-              label="Enable Home Button"
-              explainerTitle="Home Button"
-              explainer={HOME_BUTTON_EXPLAINER}
-              settingsDescription="Opens Steam Home"
-              checked={settings.homeButtonEnabled}
-              onChange={(value: boolean) => onHomeButtonToggleChange(value)}
-              disabled={savingHomeButton || !settings.inputplumberAvailable}
-              description={settings.inputplumberAvailable ? undefined : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
-            />
-          </SettingsRow>
-          <SettingsRow>
-            <SteamExplainerToggleField
-              label="Enable Brightness Dial"
-              explainerTitle="Brightness Dial"
-              explainer={BRIGHTNESS_DIAL_EXPLAINER}
-              settingsDescription="Controls brightness with the right dial"
-              checked={settings.brightnessDialFixEnabled}
-              onChange={(value: boolean) => onBrightnessDialFixToggleChange(value)}
-              disabled={savingBrightnessDialFix || !settings.inputplumberAvailable}
-              description={settings.inputplumberAvailable ? undefined : INPUTPLUMBER_UNAVAILABLE_DESCRIPTION}
-            />
-          </SettingsRow>
-        </>
-      )}
+      <SettingsRow>
+        <SteamExplainerToggleField
+          label="Enable Home Button"
+          explainerTitle="Home Button"
+          explainer={HOME_BUTTON_EXPLAINER}
+          settingsDescription="Opens Steam Home"
+          checked={settings.homeButtonEnabled}
+          onChange={(value: boolean) => onHomeButtonToggleChange(value)}
+          disabled={savingHomeButton || controllerFeatureDisabled}
+          description={featureDescription}
+        />
+      </SettingsRow>
+      <SettingsRow>
+        <SteamExplainerToggleField
+          label="Enable Brightness Dial"
+          explainerTitle="Brightness Dial"
+          explainer={BRIGHTNESS_DIAL_EXPLAINER}
+          settingsDescription="Controls brightness with the right dial"
+          checked={settings.brightnessDialFixEnabled}
+          onChange={(value: boolean) => onBrightnessDialFixToggleChange(value)}
+          disabled={savingBrightnessDialFix || controllerFeatureDisabled}
+          description={featureDescription}
+        />
+      </SettingsRow>
     </>
   )
 }

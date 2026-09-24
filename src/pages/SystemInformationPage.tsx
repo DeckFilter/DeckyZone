@@ -405,7 +405,8 @@ const GeneralInformationSection = ({
   snapshot,
   error: snapshotError,
   isLoading: isSnapshotLoading,
-}: Omit<SnapshotPageProps, 'children'>) => {
+  pluginVersion,
+}: Omit<SnapshotPageProps, 'children'> & { pluginVersion: string }) => {
   const [reportError, setReportError] = useState<string | null>(null)
   const [isGeneratingReport, setIsGeneratingReport] = useState(false)
   const reportInFlightRef = useRef(false)
@@ -462,6 +463,10 @@ const GeneralInformationSection = ({
           <SnapshotRow
             label="Kernel"
             value={formatValue(snapshot.osContext.kernelRelease)}
+          />
+          <SnapshotRow
+            label="DeckyZone Version"
+            value={formatValue(pluginVersion)}
             bottomSeparator="none"
           />
         </DialogControlsSection>
@@ -629,7 +634,10 @@ const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
                   onLatestVersionChange={setLatestVersionNum}
                 />
               </ErrorBoundary>
-              <GeneralInformationSection {...snapshotPageProps} />
+              <GeneralInformationSection
+                {...snapshotPageProps}
+                pluginVersion={installedVersionNum}
+              />
               <ErrorBoundary title="Troubleshooting">
                 <TroubleshootingPanel
                   onResetPlugin={onResetPlugin}

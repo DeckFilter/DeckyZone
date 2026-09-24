@@ -19,7 +19,6 @@ type Props = {
 }
 
 const getStatus = callable<[], PluginStatus>('get_status')
-const setStartupApplyEnabled = callable<[boolean], PluginSettings>('set_startup_apply_enabled')
 const setControllerMode = callable<[ControllerMode], PluginSettings>('set_controller_mode')
 const setHomeButtonEnabled = callable<[boolean], PluginSettings>('set_home_button_enabled')
 const setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>('set_brightness_dial_fix_enabled')
@@ -114,7 +113,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [rumbleIntensityDraft, setRumbleIntensityDraft] = useState(settings.rumbleIntensity)
   const [controllerNotice, setControllerNotice] = useState<string | null>(null)
   const [perGameNotice, setPerGameNotice] = useState<string | null>(null)
-  const [savingStartup, setSavingStartup] = useState(false)
   const [savingControllerMode, setSavingControllerMode] = useState(false)
   const [savingHomeButton, setSavingHomeButton] = useState(false)
   const [savingBrightnessDialFix, setSavingBrightnessDialFix] = useState(false)
@@ -237,22 +235,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       clearPendingRumbleIntensitySave()
     }
   }, [])
-
-  const handleStartupToggleChange = async (enabled: boolean) => {
-    setControllerNotice(null)
-    setSavingStartup(true)
-    try {
-      const nextSettings = await setStartupApplyEnabled(enabled)
-      onSettingsChange(nextSettings)
-      setControllerNotice(null)
-      await loadStatus()
-      await syncActiveGameTarget(activeGame?.appid ?? DEFAULT_APP_ID)
-    } catch {
-      setControllerNotice(CONTROLLER_ACTION_FAILED_NOTICE)
-    } finally {
-      setSavingStartup(false)
-    }
-  }
 
   const handleHomeButtonToggleChange = async (enabled: boolean) => {
     setControllerNotice(null)
@@ -565,11 +547,9 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       <SettingsGroup>
         <ControllerTogglesPanel
           settings={settings}
-          savingStartup={savingStartup}
           savingControllerMode={savingControllerMode}
           savingHomeButton={savingHomeButton}
           savingBrightnessDialFix={savingBrightnessDialFix}
-          onStartupToggleChange={(value: boolean) => void handleStartupToggleChange(value)}
           onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
           onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
           onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}

@@ -789,7 +789,7 @@ def build_support_report(
             ("Gamescope version", gamescope.get("version")),
             ("Built-in profile", gamescope.get("builtInAvailable")),
             ("Managed profile", gamescope.get("managedProfileInstalled")),
-            ("Green tint fix", gamescope.get("greenTintFixEnabled")),
+            ("Green tint compensation", gamescope.get("greenTintFixEnabled")),
             ("Verification state", gamescope.get("verificationState")),
             ("Base asset available", gamescope.get("baseAssetAvailable")),
             ("Green tint asset available", gamescope.get("greenTintAssetAvailable")),

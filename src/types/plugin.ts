@@ -135,7 +135,6 @@ export type VramState = {
 }
 
 export type PluginSettings = {
-  startupApplyEnabled: boolean
   legacyLayoutEnabled: boolean
   controllerMode: ControllerMode | null
   controllerModeAvailable: boolean

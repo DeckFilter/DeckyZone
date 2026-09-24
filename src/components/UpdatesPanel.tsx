@@ -1,5 +1,5 @@
 import { callable } from '@decky/api'
-import { ButtonItem, Field } from '@decky/ui'
+import { DialogButton, Field } from '@decky/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   checkLatestVersion,
@@ -10,7 +10,7 @@ import {
 } from '../utils/pluginUpdates'
 import { useDeckyToastNotice } from '../utils/toasts'
 import { SteamExplainerButtonItem } from './SteamExplainer'
-import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
+import { SettingsRow, SettingsSection, useSettingsItemLayout, useSettingsSurface } from './SettingsSurface'
 
 const otaUpdate = callable<[], boolean>('ota_update')
 const CHECK_VERSION_EXPLAINER = 'Checks GitHub for the latest published DeckyZone release.'
@@ -43,12 +43,14 @@ const getLastCheckText = (lastCheckTime: number): string => {
 
 const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => {
   const itemLayout = useSettingsItemLayout()
+  const surface = useSettingsSurface()
   const [latestVersionNum, setLatestVersionNum] = useState('')
   const [lastCheckTime, setLastCheckTime] = useState<number | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [isLoadingLatestVersion, setIsLoadingLatestVersion] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
+  const [relativeTimeTick, setRelativeTimeTick] = useState(0)
   const isMountedRef = useRef(true)
 
   const applyLatestVersion = (versionInfo: VersionCache) => {
@@ -111,7 +113,9 @@ const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => 
     void checkLatestVersion(installedVersionNum)
       .then(applyLatestVersion)
       .catch(() => {
-        // Background checks are best-effort; the manual button reports failures.
+        if (isMountedRef.current) {
+          setVersionError('Failed to fetch latest version.')
+        }
       })
       .finally(() => {
         if (isMountedRef.current) {
@@ -123,6 +127,18 @@ const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => 
       isMountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    if (lastCheckTime === null) {
+      return
+    }
+
+    const intervalId = setInterval(() => {
+      setRelativeTimeTick((value) => value + 1)
+    }, 60 * 1000)
+
+    return () => clearInterval(intervalId)
+  }, [lastCheckTime])
 
   const updateButtonText = useMemo(() => {
     if (!latestVersionNum) {
@@ -154,40 +170,84 @@ const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => 
     }
   }
 
+  const updateStatusText = useMemo(() => {
+    if (isLoadingLatestVersion) {
+      return 'Checking for updates…'
+    }
+
+    if (versionError) {
+      return 'Couldn’t check for updates'
+    }
+
+    if (!latestVersionNum) {
+      return 'Not checked yet'
+    }
+
+    const versionCompare = compareVersions(latestVersionNum, installedVersionNum)
+    if (versionCompare > 0) {
+      return `Update available: ${latestVersionNum}`
+    }
+
+    if (versionCompare < 0) {
+      return 'Newer than latest release'
+    }
+
+    return lastCheckTime
+      ? `Up to date: last checked ${getLastCheckText(lastCheckTime)}`
+      : 'Up to date'
+  }, [
+    installedVersionNum,
+    isLoadingLatestVersion,
+    lastCheckTime,
+    latestVersionNum,
+    relativeTimeTick,
+    versionError,
+  ])
+
+  const actionText = isUpdating
+    ? 'Installing…'
+    : isLoadingLatestVersion
+      ? 'Checking…'
+      : versionError
+        ? 'Check for Updates'
+        : updateButtonText ?? 'Check for Updates'
+  const actionDisabled = isLoadingLatestVersion || isUpdating
+  const handleAction = () => {
+    if (updateButtonText && !versionError) {
+      void handleUpdate()
+      return
+    }
+
+    void loadLatestVersion()
+  }
+
   return (
     <SettingsSection title="Updates">
-      {updateButtonText && (
-        <SettingsRow>
-          <ButtonItem layout={itemLayout} onClick={() => void handleUpdate()} disabled={isUpdating}>
-            {isUpdating ? 'Installing...' : updateButtonText}
-          </ButtonItem>
-        </SettingsRow>
-      )}
       <SettingsRow>
-        <SteamExplainerButtonItem
-          layout={itemLayout}
-          onClick={() => void loadLatestVersion()}
-          disabled={isLoadingLatestVersion || isUpdating}
-          explainerTitle="Check Version"
-          explainer={CHECK_VERSION_EXPLAINER}
-          settingsDescription="Looks for updates"
-          description={lastCheckTime ? `Last check: ${getLastCheckText(lastCheckTime)}` : undefined}
-        >
-          {isLoadingLatestVersion ? 'Checking...' : 'Check Version'}
-        </SteamExplainerButtonItem>
-      </SettingsRow>
-      <SettingsRow>
-        <Field focusable disabled label="Installed Version">
-          {installedVersionNum || 'Unknown'}
-        </Field>
-      </SettingsRow>
-      {Boolean(latestVersionNum) && (
-        <SettingsRow>
-          <Field focusable disabled label="Latest Version">
-            {latestVersionNum}
+        {surface === 'settings' ? (
+          <Field
+            label="Software Updates"
+            description={updateStatusText}
+            childrenContainerWidth="fixed"
+          >
+            <DialogButton disabled={actionDisabled} onClick={handleAction}>
+              {actionText}
+            </DialogButton>
           </Field>
-        </SettingsRow>
-      )}
+        ) : (
+          <SteamExplainerButtonItem
+            layout={itemLayout}
+            label="Software Updates"
+            onClick={handleAction}
+            disabled={actionDisabled}
+            explainerTitle="Software Updates"
+            explainer={CHECK_VERSION_EXPLAINER}
+            description={updateStatusText}
+          >
+            {actionText}
+          </SteamExplainerButtonItem>
+        )}
+      </SettingsRow>
     </SettingsSection>
   )
 }

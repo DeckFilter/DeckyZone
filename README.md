@@ -26,7 +26,6 @@ All compatibility fixes are opt-in and can be disabled at any time.
 
 | Feature                               | SteamOS `main` | Bazzite | Nobara | CachyOS |
 | ------------------------------------- | -------------- | ------- | ------ | ------- |
-| Enable Controller Features            | ✅             | ❌      | ❓     | ❓      |
 | Controller Mode status and recovery   | ✅             | ❌      | ❓     | ❓      |
 | Home Button navigation                | ✅             | ❌      | ❓     | ❓      |
 | Brightness Dial control               | ✅             | ❌      | ❓     | ❓      |
@@ -39,7 +38,7 @@ All compatibility fixes are opt-in and can be disabled at any time.
 | Per-game Trackpad and Rumble settings | ✅             | ❌      | ❓     | ❓      |
 | Per-game Button Prompt Fix            | ✅             | ❌      | ❓     | ❓      |
 
-Controller Features is the master switch for the InputPlumber-based controller runtime. Home Button and Brightness Dial are dependent toggles: disabling Controller Features also turns both of them off.
+DeckyZone activates its InputPlumber controller runtime while Home Button, Brightness Dial, a non-default trackpad mode, or an active per-game controller override needs it. Returning the last dependent feature to its default restores the inherited controller target.
 
 Gyro Orientation Fix installs a temporary DeckyZone-owned InputPlumber Zotac IMU mount-matrix override until the upstream device profile includes the same matrix.
 
@@ -68,7 +67,7 @@ Remaining Battery Time Fix passes UPower's charging and discharging estimates to
 | Feature                   | SteamOS `main` | Bazzite | Nobara | CachyOS |
 | ------------------------- | -------------- | ------- | ------ | ------- |
 | Enable Zotac OLED Profile | Built in       | ✅      | ❓     | ❓      |
-| Enable Green Tint Fix     | ✅             | ✅      | ❓     | ❓      |
+| Green Tint Compensation   | ✅             | ✅      | ❓     | ❓      |
 
 Display changes require a reboot after toggling them. `HDR / Washed out colors` was fixed out of the box in my SteamOS `main`, SteamOS 3.8.1 Preview, Bazzite, Nobara, and CachyOS testing.
 

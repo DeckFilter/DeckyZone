@@ -20,7 +20,7 @@ const setVramSizeGb = callable<[number], PluginSettings>('set_vram_size_gb')
 
 const VRAM_DEFAULT_GB = 4
 const VRAM_EXPLAINER =
-  'Reserves system memory for the integrated GPU as a UMA framebuffer. Higher values leave less memory for games and SteamOS. Restart SteamOS after changing this setting.'
+  'Reserves system memory for the integrated GPU as a UMA framebuffer. Higher values leave less memory for games and SteamOS.'
 const VRAM_UNAVAILABLE_DESCRIPTION = 'Current VRAM setting is unavailable'
 const VRAM_UNKNOWN_LABEL = 'Unknown'
 const VRAM_UPDATE_FAILED_NOTICE = "Couldn't update VRAM size."
