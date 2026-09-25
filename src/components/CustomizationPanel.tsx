@@ -19,36 +19,27 @@ const setZotacGlyphsEnabled = callable<[boolean], PluginSettings>("set_zotac_gly
 const setHideUnsupportedButtonsEnabled = callable<[boolean], PluginSettings>(
   "set_hide_unsupported_buttons_enabled",
 )
-const setRemainingBatteryTimeFixEnabled = callable<[boolean], PluginSettings>(
-  "set_remaining_battery_time_fix_enabled",
-)
-
-const ZOTAC_GLYPHS_EXPLAINER =
-  "Replaces supported Steam controller images and button glyphs with Zotac versions."
+const ZOTAC_CONTROLLER_ARTWORK_EXPLAINER =
+  "Replaces supported Steam controller previews, calibration images, and button glyphs with Zotac versions."
 const HIDE_UNSUPPORTED_BUTTONS_EXPLAINER =
-  "Hides the L5 and R5 controls that Steam shows in controller layouts even though the Zotac Zone has only M1 and M2 rear buttons."
-const REMAINING_BATTERY_TIME_FIX_EXPLAINER =
-  "Passes UPower's charging and discharging estimates to Steam through /run/vpower. The fix turns itself off when Valve's vpower service starts providing valid estimates."
-const INTERFACE_UPDATE_FAILED_NOTICE = "Couldn't update setting."
-const GLYPH_APPLY_FAILED_NOTICE = "Couldn't apply glyphs live."
+  "Hides the L5 and R5 controls and Steam Input trackpad settings that do not work on the Zotac Zone. The Zone's trackpads remain available through DeckyZone's Trackpad Mode setting."
+const CUSTOMIZATION_UPDATE_FAILED_NOTICE = "Couldn't update setting."
+const CONTROLLER_ARTWORK_APPLY_FAILED_NOTICE = "Couldn't apply controller artwork live."
 const BUTTON_HIDING_APPLY_FAILED_NOTICE = "Couldn't update hidden buttons live."
 
-const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
+const CustomizationPanel = ({ settings, onSettingsChange }: Props) => {
   const [savingZotacGlyphs, setSavingZotacGlyphs] = useState(false)
   const savingZotacGlyphsRef = useRef(false)
   const [savingHideUnsupportedButtons, setSavingHideUnsupportedButtons] = useState(false)
   const savingHideUnsupportedButtonsRef = useRef(false)
-  const [savingRemainingBatteryTimeFix, setSavingRemainingBatteryTimeFix] =
-    useState(false)
-  const savingRemainingBatteryTimeFixRef = useRef(false)
-  const [interfaceNotice, setInterfaceNotice] = useState<string | null>(null)
+  const [customizationNotice, setCustomizationNotice] = useState<string | null>(null)
 
   useDeckyToastNotice(
-    interfaceNotice
+    customizationNotice
       ? {
-          activeKey: `interface:${interfaceNotice}`,
-          title: "Interface",
-          body: interfaceNotice,
+          activeKey: `customization:${customizationNotice}`,
+          title: "Customization",
+          body: customizationNotice,
           severity: "error",
         }
       : null,
@@ -62,7 +53,7 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
     const previousEnabled = settings.zotacGlyphsEnabled
     savingZotacGlyphsRef.current = true
     setSavingZotacGlyphs(true)
-    setInterfaceNotice(null)
+    setCustomizationNotice(null)
     onSettingsChange((currentSettings) => ({
       ...currentSettings,
       zotacGlyphsEnabled: enabled,
@@ -72,7 +63,7 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
       const nextSettings = await setZotacGlyphsEnabled(enabled)
       onSettingsChange(nextSettings)
     } catch {
-      setInterfaceNotice(INTERFACE_UPDATE_FAILED_NOTICE)
+      setCustomizationNotice(CUSTOMIZATION_UPDATE_FAILED_NOTICE)
       onSettingsChange((currentSettings) => ({
         ...currentSettings,
         zotacGlyphsEnabled: previousEnabled,
@@ -84,9 +75,9 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
 
     try {
       await applyZotacGlyphsRuntimeEnabled(enabled)
-      setInterfaceNotice(null)
+      setCustomizationNotice(null)
     } catch {
-      setInterfaceNotice(GLYPH_APPLY_FAILED_NOTICE)
+      setCustomizationNotice(CONTROLLER_ARTWORK_APPLY_FAILED_NOTICE)
     } finally {
       savingZotacGlyphsRef.current = false
       setSavingZotacGlyphs(false)
@@ -101,7 +92,7 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
     const previousEnabled = settings.hideUnsupportedButtonsEnabled
     savingHideUnsupportedButtonsRef.current = true
     setSavingHideUnsupportedButtons(true)
-    setInterfaceNotice(null)
+    setCustomizationNotice(null)
     onSettingsChange((currentSettings) => ({
       ...currentSettings,
       hideUnsupportedButtonsEnabled: enabled,
@@ -111,7 +102,7 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
       const nextSettings = await setHideUnsupportedButtonsEnabled(enabled)
       onSettingsChange(nextSettings)
     } catch {
-      setInterfaceNotice(INTERFACE_UPDATE_FAILED_NOTICE)
+      setCustomizationNotice(CUSTOMIZATION_UPDATE_FAILED_NOTICE)
       onSettingsChange((currentSettings) => ({
         ...currentSettings,
         hideUnsupportedButtonsEnabled: previousEnabled,
@@ -123,52 +114,23 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
 
     try {
       await applyHideUnsupportedButtonsRuntimeEnabled(enabled)
-      setInterfaceNotice(null)
+      setCustomizationNotice(null)
     } catch {
-      setInterfaceNotice(BUTTON_HIDING_APPLY_FAILED_NOTICE)
+      setCustomizationNotice(BUTTON_HIDING_APPLY_FAILED_NOTICE)
     } finally {
       savingHideUnsupportedButtonsRef.current = false
       setSavingHideUnsupportedButtons(false)
     }
   }
 
-  const handleRemainingBatteryTimeFixChange = async (enabled: boolean) => {
-    if (savingRemainingBatteryTimeFixRef.current) {
-      return
-    }
-
-    const previousEnabled = settings.remainingBatteryTimeFixEnabled
-    savingRemainingBatteryTimeFixRef.current = true
-    setSavingRemainingBatteryTimeFix(true)
-    setInterfaceNotice(null)
-    onSettingsChange((currentSettings) => ({
-      ...currentSettings,
-      remainingBatteryTimeFixEnabled: enabled,
-    }))
-
-    try {
-      const nextSettings = await setRemainingBatteryTimeFixEnabled(enabled)
-      onSettingsChange(nextSettings)
-    } catch {
-      setInterfaceNotice(INTERFACE_UPDATE_FAILED_NOTICE)
-      onSettingsChange((currentSettings) => ({
-        ...currentSettings,
-        remainingBatteryTimeFixEnabled: previousEnabled,
-      }))
-    } finally {
-      savingRemainingBatteryTimeFixRef.current = false
-      setSavingRemainingBatteryTimeFix(false)
-    }
-  }
-
   return (
-    <SettingsSection title="Interface" settingsTitle={null}>
+    <SettingsSection title="Customization" settingsTitle={null}>
       <SettingsRow>
         <SteamExplainerToggleField
-          label="Enable Zotac Glyphs"
-          explainerTitle="Zotac Glyphs"
-          explainer={ZOTAC_GLYPHS_EXPLAINER}
-          settingsDescription="Uses Zotac controller icons"
+          label="Zotac Controller Artwork"
+          explainerTitle="Zotac Controller Artwork"
+          explainer={ZOTAC_CONTROLLER_ARTWORK_EXPLAINER}
+          settingsDescription="Uses Zotac images and button glyphs"
           checked={settings.zotacGlyphsEnabled}
           onChange={(value: boolean) => void handleZotacGlyphsChange(value)}
           disabled={savingZotacGlyphs}
@@ -176,28 +138,17 @@ const InterfacePanel = ({ settings, onSettingsChange }: Props) => {
       </SettingsRow>
       <SettingsRow>
         <SteamExplainerToggleField
-          label="Hide Unsupported Buttons"
-          explainerTitle="Unsupported Buttons"
+          label="Hide Unsupported Controls"
+          explainerTitle="Unsupported Controls"
           explainer={HIDE_UNSUPPORTED_BUTTONS_EXPLAINER}
-          settingsDescription="Hides unused L5 and R5 controls"
+          settingsDescription="Hides unused buttons and trackpad settings"
           checked={settings.hideUnsupportedButtonsEnabled}
           onChange={(value: boolean) => void handleHideUnsupportedButtonsChange(value)}
           disabled={savingHideUnsupportedButtons}
-        />
-      </SettingsRow>
-      <SettingsRow>
-        <SteamExplainerToggleField
-          label="Enable Battery Time Fix"
-          explainerTitle="Battery Time Fix"
-          explainer={REMAINING_BATTERY_TIME_FIX_EXPLAINER}
-          settingsDescription="Shows time to full or empty"
-          checked={settings.remainingBatteryTimeFixEnabled}
-          onChange={(value: boolean) => void handleRemainingBatteryTimeFixChange(value)}
-          disabled={savingRemainingBatteryTimeFix}
         />
       </SettingsRow>
     </SettingsSection>
   )
 }
 
-export default InterfacePanel
+export default CustomizationPanel

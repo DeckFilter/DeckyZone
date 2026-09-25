@@ -18,25 +18,25 @@ curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh |
 
 ## Current Features
 
-Status key: ✅ tested/working, ❌ not currently working in my testing, ❓ untested or unknown.
+Status key: ✅ tested/working, ❌ not currently working in my testing, ❓ untested or unknown, — unavailable by design.
 
 All compatibility fixes are opt-in and can be disabled at any time.
 
 ### Controller
 
-| Feature                               | SteamOS `main` | Bazzite | Nobara | CachyOS |
-| ------------------------------------- | -------------- | ------- | ------ | ------- |
-| Controller Mode status and recovery   | ✅             | ❌      | ❓     | ❓      |
-| Home Button navigation                | ✅             | ❌      | ❓     | ❓      |
-| Brightness Dial control               | ✅             | ❌      | ❓     | ❓      |
-| Gyro Orientation Fix                  | ✅             | ❌      | ❓     | ❓      |
-| Trackpad Mode: Default                | ✅             | ❌      | ❓     | ❓      |
-| Trackpad Mode: Disabled               | ✅             | ❌      | ❓     | ❓      |
-| Trackpad Mode: Directional Buttons    | ✅             | ❌      | ❓     | ❓      |
-| Vibration / Rumble Intensity          | ✅             | ✅      | ❓     | ❓      |
-| Test Rumble                           | ✅             | ❌      | ❓     | ❓      |
-| Per-game Trackpad and Rumble settings | ✅             | ❌      | ❓     | ❓      |
-| Per-game Button Prompt Fix            | ✅             | ❌      | ❓     | ❓      |
+| Feature                               | SteamOS `main` | Bazzite | CachyOS |
+| ------------------------------------- | -------------- | ------- | ------- |
+| Controller Mode status and recovery   | ✅             | ✅      | ✅      |
+| Home Button navigation                | ✅             | ✅      | ✅      |
+| Brightness Dial control               | ✅             | ✅      | ✅      |
+| Gyro Orientation Fix                  | ✅             | ✅      | ✅      |
+| Trackpad Mode: Default                | ✅             | ✅      | ✅      |
+| Trackpad Mode: Disabled               | ✅             | ✅      | ✅      |
+| Trackpad Mode: Directional Buttons    | ✅             | ✅      | ✅      |
+| Vibration / Rumble Intensity          | ✅             | ✅      | ✅      |
+| Test Rumble                           | ✅             | ✅      | ✅      |
+| Per-game Trackpad and Rumble settings | ✅             | ✅      | ✅      |
+| Per-game Button Prompt Fix            | ✅             | ✅      | ✅      |
 
 DeckyZone activates its InputPlumber controller runtime while Home Button, Brightness Dial, a non-default trackpad mode, or an active per-game controller override needs it. Returning the last dependent feature to its default restores the inherited controller target.
 
@@ -48,28 +48,28 @@ Trackpad modes:
 - `Disabled`: turns off both trackpads.
 - `Directional Buttons`: left trackpad is D-pad, right trackpad is A/B/X/Y.
 
-### Interface
+### Customization
 
-| Feature                    | SteamOS `main` | Bazzite | Nobara | CachyOS |
-| -------------------------- | -------------- | ------- | ------ | ------- |
-| Enable Zotac Glyphs        | ✅             | ✅      | ❓     | ❓      |
-| Hide Unsupported Buttons   | ✅             | ✅      | ❓     | ❓      |
-| Remaining Battery Time Fix | ❓             | ❓      | ❓     | ❓      |
+| Feature                    | SteamOS `main` | Bazzite | CachyOS |
+| -------------------------- | -------------- | ------- | ------- |
+| Zotac Controller Artwork   | ✅             | ✅      | ✅      |
+| Hide Unsupported Controls  | ✅             | ✅      | ✅      |
+| Remaining Battery Time Fix | ❓             | —       | —       |
 
-Zotac Glyphs applies Zotac controller button glyphs and controller images in Steam UI.
+Zotac Controller Artwork replaces supported Steam controller previews, calibration images, and button glyphs with Zotac versions.
 
-Hide Unsupported Buttons removes the unused L5 and R5 controls from Steam's controller layout screens. Existing installations inherit the previous Zotac Glyphs behavior when this separate setting is first added.
+Hide Unsupported Controls removes the unused L5 and R5 controls and Steam Input trackpad settings that do not work with the Zotac Zone. The physical trackpads remain available through DeckyZone's Trackpad Mode setting. Existing installations inherit the previous controller-artwork behavior when this separate setting is first added.
 
-Remaining Battery Time Fix passes UPower's charging and discharging estimates to Steam through `/run/vpower` while leaving Valve's `vpower` service running. It turns itself off after `vpower` provides valid estimates for both states.
+Remaining Battery Time Fix is available only on SteamOS. It passes UPower's charging and discharging estimates to Steam through `/run/vpower` while leaving Valve's `vpower` service running. It turns itself off after `vpower` provides valid estimates for both states.
 
 ### Display
 
-| Feature                   | SteamOS `main` | Bazzite | Nobara | CachyOS |
-| ------------------------- | -------------- | ------- | ------ | ------- |
-| Enable Zotac OLED Profile | Built in       | ✅      | ❓     | ❓      |
-| Green Tint Compensation   | ✅             | ✅      | ❓     | ❓      |
+| Feature                   | SteamOS `main` | Bazzite | CachyOS |
+| ------------------------- | -------------- | ------- | ------- |
+| Enable Zotac OLED Profile | Built in       | ✅      | ✅      |
+| Green Tint Compensation   | ✅             | ✅      | ✅      |
 
-Display changes require a reboot after toggling them. `HDR / Washed out colors` was fixed out of the box in my SteamOS `main`, SteamOS 3.8.1 Preview, Bazzite, Nobara, and CachyOS testing.
+Display changes require a reboot after toggling them. `HDR / Washed out colors` was fixed out of the box in my SteamOS `main`, SteamOS 3.8.1 Preview, Bazzite, and CachyOS testing.
 
 Green Tint Compensation only changes the Gamescope profile's white point. It does not correct the panel's brightness-dependent tint. On my unit, manual testing found the issue from 12% through 35% brightness; 11% and 36% looked neutral. The exact range may vary between panels.
 
@@ -86,9 +86,9 @@ Green Tint Compensation only changes the Gamescope profile's white point. It doe
 
 ### Performance
 
-| Feature   | SteamOS `main` | Bazzite | Nobara | CachyOS |
-| --------- | -------------- | ------- | ------ | ------- |
-| VRAM Size | ❓             | ❓      | ❓     | ✅      |
+| Feature   | SteamOS `main` | Bazzite | CachyOS |
+| --------- | -------------- | ------- | ------- |
+| VRAM Size | ❓             | ✅      | ✅      |
 
 VRAM Size sets the UMA framebuffer size (4-8GB, same range as the Zotac launcher on Windows). The Zone stores this setting in a CMOS byte that the BIOS reads at boot, so changes require a reboot to apply. The panel shows both the active size and the pending size until then. Resetting the BIOS (e.g. after full battery drain) reverts it to the 4GB default.
 

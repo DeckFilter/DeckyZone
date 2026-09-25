@@ -263,7 +263,7 @@ function createCssFeatureRuntime({ activeMarker, css, label }: CssFeatureOptions
 const zotacGlyphsRuntime = createCssFeatureRuntime({
   activeMarker: "--deckyzone-zotac-glyphs-active",
   css: ZOTAC_GLYPH_CSS,
-  label: "Zotac glyph",
+  label: "Zotac controller artwork",
 })
 
 const unsupportedButtonsRuntime = createCssFeatureRuntime({

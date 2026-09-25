@@ -31,7 +31,7 @@ import {
 import ControllerPanel from '../components/ControllerPanel'
 import DisplayPanel from '../components/DisplayPanel'
 import ErrorBoundary from '../components/ErrorBoundary'
-import InterfacePanel from '../components/InterfacePanel'
+import CustomizationPanel from '../components/CustomizationPanel'
 import LayoutPanel from '../components/LayoutPanel'
 import PerformancePanel from '../components/PerformancePanel'
 import ProductSpecificationsPage from './ProductSpecificationsPage'
@@ -42,7 +42,7 @@ import {
   DECKYZONE_CONTROLLER_ROUTE,
   DECKYZONE_DISPLAY_ROUTE,
   DECKYZONE_GENERAL_ROUTE,
-  DECKYZONE_INTERFACE_ROUTE,
+  DECKYZONE_CUSTOMIZATION_ROUTE,
   DECKYZONE_PERFORMANCE_ROUTE,
   DECKYZONE_SPECIFICATIONS_ROUTE,
 } from '../routes'
@@ -656,16 +656,16 @@ const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
           route: DECKYZONE_CONTROLLER_ROUTE,
         },
         {
-          title: 'Interface',
+          title: 'Customization',
           icon: <FaSlidersH />,
           content: (
             <DialogBody>
-              <ErrorBoundary title="Interface">
-                <InterfacePanel settings={settings} onSettingsChange={applySettingsUpdate} />
+              <ErrorBoundary title="Customization">
+                <CustomizationPanel settings={settings} onSettingsChange={applySettingsUpdate} />
               </ErrorBoundary>
             </DialogBody>
           ),
-          route: DECKYZONE_INTERFACE_ROUTE,
+          route: DECKYZONE_CUSTOMIZATION_ROUTE,
         },
         {
           title: 'Display',

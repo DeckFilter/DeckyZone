@@ -149,6 +149,7 @@ export type PluginSettings = {
   zotacGlyphsEnabled: boolean
   hideUnsupportedButtonsEnabled: boolean
   remainingBatteryTimeFixEnabled: boolean
+  remainingBatteryTimeFixAvailable: boolean
   gamescopeZotacProfileBuiltIn: boolean
   gamescopeZotacProfileInstalled: boolean
   gamescopeGreenTintFixEnabled: boolean

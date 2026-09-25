@@ -16,6 +16,7 @@ import firmware_info
 import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_device_profile
 import inputplumber_target_sync
+import os_release
 import plugin_update
 import plugin_settings
 import remaining_battery_time
@@ -670,25 +671,17 @@ class DeckyZoneService:
             return None
 
     def _get_os_pretty_name(self):
-        for candidate_path in OS_RELEASE_CANDIDATE_PATHS:
-            content = self._read_optional_text(candidate_path)
-            if not content:
-                continue
+        return os_release.read_value(
+            self.read_text,
+            "PRETTY_NAME",
+            OS_RELEASE_CANDIDATE_PATHS,
+        )
 
-            for line in content.splitlines():
-                if not line.startswith("PRETTY_NAME="):
-                    continue
-
-                value = line.split("=", 1)[1].strip()
-                if (
-                    len(value) >= 2
-                    and value[0] == value[-1]
-                    and value[0] in {'"', "'"}
-                ):
-                    value = value[1:-1]
-                return value or None
-
-        return None
+    def _is_steamos(self):
+        return os_release.is_steamos(
+            self.read_text,
+            OS_RELEASE_CANDIDATE_PATHS,
+        )
 
     def _get_display_profile_settings(self):
         try:
@@ -786,6 +779,7 @@ class DeckyZoneService:
     def _current_settings(self):
         display_profile_settings = self._get_display_profile_settings()
         controller_mode_snapshot = self._get_controller_mode_snapshot()
+        remaining_battery_time_fix_available = self._is_steamos()
         return {
             "legacyLayoutEnabled": self.settings_store.get_legacy_layout_enabled(),
             "controllerMode": controller_mode_snapshot["mode"],
@@ -799,7 +793,11 @@ class DeckyZoneService:
                 self.settings_store.get_hide_unsupported_buttons_enabled()
             ),
             "remainingBatteryTimeFixEnabled": (
-                self.settings_store.get_remaining_battery_time_fix_enabled()
+                remaining_battery_time_fix_available
+                and self.settings_store.get_remaining_battery_time_fix_enabled()
+            ),
+            "remainingBatteryTimeFixAvailable": (
+                remaining_battery_time_fix_available
             ),
             "gamescopeZotacProfileBuiltIn": display_profile_settings["gamescopeZotacProfileBuiltIn"],
             "gamescopeZotacProfileInstalled": display_profile_settings["gamescopeZotacProfileInstalled"],
@@ -3411,6 +3409,9 @@ class DeckyZoneService:
             )
 
     async def start_remaining_battery_time_bridge(self, retry_on_error=False):
+        if not self._is_steamos():
+            return False
+
         return await self.remaining_battery_time_controller.start(
             retry_on_error=retry_on_error,
         )
@@ -3425,6 +3426,10 @@ class DeckyZoneService:
             if not enabled or not self._remaining_battery_time_accepting_changes:
                 await self.stop_remaining_battery_time_bridge()
                 self.settings_store.set_remaining_battery_time_fix_enabled(False)
+                return self._current_settings()
+
+            if not self._is_steamos():
+                await self.stop_remaining_battery_time_bridge()
                 return self._current_settings()
 
             try:

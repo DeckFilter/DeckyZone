@@ -12,7 +12,7 @@ import ControllerPanel from "./components/ControllerPanel"
 import SystemInformationPage from "./pages/SystemInformationPage"
 import DisplayPanel from "./components/DisplayPanel"
 import ErrorBoundary from "./components/ErrorBoundary"
-import InterfacePanel from "./components/InterfacePanel"
+import CustomizationPanel from "./components/CustomizationPanel"
 import LayoutPanel from './components/LayoutPanel'
 import PerformancePanel from "./components/PerformancePanel"
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
@@ -467,9 +467,9 @@ function Content() {
       />
     </ErrorBoundary>
   )
-  const interfacePanel = (
-    <ErrorBoundary title="Interface">
-      <InterfacePanel
+  const customizationPanel = (
+    <ErrorBoundary title="Customization">
+      <CustomizationPanel
         settings={settings}
         onSettingsChange={applySettingsUpdate}
       />
@@ -520,7 +520,7 @@ function Content() {
     return (
       <Fragment key={`deckyzone-ui:${uiRevision}`}>
         {controllerPanel}
-        {interfacePanel}
+        {customizationPanel}
         {displayPanel}
         {performancePanel}
         {updatesPanel}
@@ -551,11 +551,11 @@ function Content() {
               ),
             },
             {
-              id: 'interface',
-              title: <TabIcon label="Interface"><FaSlidersH size={20} /></TabIcon>,
+              id: 'customization',
+              title: <TabIcon label="Customization"><FaSlidersH size={20} /></TabIcon>,
               content: (
                 <div style={tabContentStyle}>
-                  {interfacePanel}
+                  {customizationPanel}
                 </div>
               ),
             },

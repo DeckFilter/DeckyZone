@@ -20,6 +20,7 @@ const glyphCssFiles = [
 const unsupportedButtonsCssFiles = [
   "themes/shared/hiding.css",
   "themes/shared/hide-l5-r5.css",
+  "themes/shared/hide-trackpads.css",
 ];
 
 function getAssetMimeType(assetPath) {
