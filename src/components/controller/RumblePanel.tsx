@@ -21,7 +21,7 @@ const RUMBLE_INTENSITY_EXPLAINER = 'Adjusts vibration strength. 75% is recommend
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available'
 const RUMBLE_NOTCH_LABELS: NotchLabel[] = [
   { notchIndex: 0, label: '0', value: 0 },
-  { notchIndex: 20, label: '100', value: 100 },
+  { notchIndex: 1, label: '100', value: 100 },
 ]
 
 function getRumbleExplainer(rumbleAvailable: boolean) {
@@ -62,12 +62,11 @@ const RumblePanel = ({
               label="Intensity"
               explainerTitle="Rumble Intensity"
               explainer={RUMBLE_INTENSITY_EXPLAINER}
-              settingsDescription="Sets vibration strength"
               value={rumbleIntensityDraft}
               min={0}
               max={100}
               step={5}
-              notchCount={21}
+              notchCount={2}
               notchLabels={RUMBLE_NOTCH_LABELS}
               notchTicksVisible={false}
               showValue

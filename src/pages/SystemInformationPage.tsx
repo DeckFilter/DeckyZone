@@ -20,13 +20,21 @@ import {
   useRef,
   useState,
 } from 'react'
-import { FaCog, FaDesktop, FaGamepad, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
+import {
+  FaClipboardList,
+  FaCog,
+  FaDesktop,
+  FaGamepad,
+  FaSlidersH,
+  FaTachometerAlt,
+} from 'react-icons/fa'
 import ControllerPanel from '../components/ControllerPanel'
 import DisplayPanel from '../components/DisplayPanel'
 import ErrorBoundary from '../components/ErrorBoundary'
 import InterfacePanel from '../components/InterfacePanel'
 import LayoutPanel from '../components/LayoutPanel'
 import PerformancePanel from '../components/PerformancePanel'
+import ProductSpecificationsPage from './ProductSpecificationsPage'
 import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
 import TroubleshootingPanel, { type ResetPluginOutcome } from '../components/TroubleshootingPanel'
 import UpdatesPanel from '../components/UpdatesPanel'
@@ -36,6 +44,7 @@ import {
   DECKYZONE_GENERAL_ROUTE,
   DECKYZONE_INTERFACE_ROUTE,
   DECKYZONE_PERFORMANCE_ROUTE,
+  DECKYZONE_SPECIFICATIONS_ROUTE,
 } from '../routes'
 import { useDeckyZoneState } from '../state/DeckyZoneState'
 import type { DebugInfoSnapshot, SystemReport } from '../types/plugin'
@@ -152,23 +161,6 @@ const formatControllerMode = (value: DebugInfoSnapshot['inputPlumber']['controll
   }
 
   return value === 'gamepad' ? 'Gamepad' : 'Desktop'
-}
-
-const formatDisplayProfile = (gamescope: DebugInfoSnapshot['gamescope']) => {
-  if (gamescope.managedProfileInstalled) {
-    return 'DeckyZone'
-  }
-
-  return gamescope.builtInAvailable ? 'Built in' : 'Unavailable'
-}
-
-const displayProfileNeedsAttention = (gamescope: DebugInfoSnapshot['gamescope']) => {
-  return (
-    gamescope.verificationState === 'unexpected' ||
-    gamescope.verificationState === 'error' ||
-    !gamescope.baseAssetAvailable ||
-    !gamescope.greenTintAssetAvailable
-  )
 }
 
 const copyTextToClipboard = async (text: string): Promise<boolean> => {
@@ -450,30 +442,39 @@ const GeneralInformationSection = ({
     <>
       {isSnapshotLoading && !snapshot && (
         <DialogControlsSection>
-          <SettingsDialogSubHeader>System Information</SettingsDialogSubHeader>
+          <SettingsDialogSubHeader>Firmware</SettingsDialogSubHeader>
           <SteamSpinner />
         </DialogControlsSection>
       )}
       {snapshotError && <ErrorField message={snapshotError} />}
       {snapshot && (
-        <DialogControlsSection>
-          <SettingsDialogSubHeader>System Information</SettingsDialogSubHeader>
-          <SnapshotRow label="Product" value={formatValue(snapshot.deviceIdentity.productName)} />
-          <SnapshotRow label="Operating System" value={formatValue(snapshot.osContext.prettyName)} />
-          <SnapshotRow
-            label="EC Firmware"
-            value={formatValue(snapshot.firmware.ecVersion)}
-          />
-          <SnapshotRow
-            label="Display Firmware"
-            value={formatValue(snapshot.firmware.displayVersion)}
-          />
-          <SnapshotRow
-            label="DeckyZone Version"
-            value={formatValue(pluginVersion)}
-            bottomSeparator="none"
-          />
-        </DialogControlsSection>
+        <>
+          <DialogControlsSection>
+            <SettingsDialogSubHeader>Firmware</SettingsDialogSubHeader>
+            <SnapshotRow
+              label="EC Firmware"
+              value={formatValue(snapshot.firmware.ecVersion)}
+            />
+            <SnapshotRow
+              label="Display Firmware"
+              value={formatValue(snapshot.firmware.displayVersion)}
+              bottomSeparator="none"
+            />
+          </DialogControlsSection>
+          <DialogControlsSection>
+            <SettingsDialogSubHeader>Software</SettingsDialogSubHeader>
+            <SnapshotRow label="DeckyZone" value={formatValue(pluginVersion)} />
+            <SnapshotRow
+              label="InputPlumber"
+              value={formatValue(snapshot.inputPlumber.version)}
+            />
+            <SnapshotRow
+              label="Gamescope"
+              value={formatValue(snapshot.gamescope.version)}
+              bottomSeparator="none"
+            />
+          </DialogControlsSection>
+        </>
       )}
 
       {reportError && <ErrorField message={reportError} />}
@@ -498,7 +499,6 @@ const ControllerInformationSection = (props: Omit<SnapshotPageProps, 'children'>
     <SnapshotSection {...props} title="Information">
       {(snapshot) => (
         <>
-          <SnapshotRow label="InputPlumber" value={formatValue(snapshot.inputPlumber.version)} />
           <SnapshotRow
             label="Profile"
             value={formatValue(snapshot.inputPlumber.profileName)}
@@ -515,26 +515,6 @@ const ControllerInformationSection = (props: Omit<SnapshotPageProps, 'children'>
             value={formatValue(snapshot.inputPlumber.controllerRuntimeState)}
             bottomSeparator="none"
           />
-        </>
-      )}
-    </SnapshotSection>
-  )
-}
-
-const DisplayInformationSection = (props: Omit<SnapshotPageProps, 'children'>) => {
-  return (
-    <SnapshotSection {...props} title="Information">
-      {(snapshot) => (
-        <>
-          <SnapshotRow label="Gamescope" value={formatValue(snapshot.gamescope.version)} />
-          <SnapshotRow
-            label="OLED Profile"
-            value={formatDisplayProfile(snapshot.gamescope)}
-            bottomSeparator={displayProfileNeedsAttention(snapshot.gamescope) ? 'standard' : 'none'}
-          />
-          {displayProfileNeedsAttention(snapshot.gamescope) && (
-            <SnapshotRow label="Profile Status" value="Needs attention" bottomSeparator="none" />
-          )}
         </>
       )}
     </SnapshotSection>
@@ -695,7 +675,6 @@ const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
               <ErrorBoundary title="Display">
                 <DisplayPanel settings={settings} onSettingsChange={applySettingsUpdate} />
               </ErrorBoundary>
-              <DisplayInformationSection {...snapshotPageProps} />
             </DialogBody>
           ),
           route: DECKYZONE_DISPLAY_ROUTE,
@@ -732,6 +711,12 @@ const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
             </DialogBody>
           ),
           route: DECKYZONE_PERFORMANCE_ROUTE,
+        },
+        {
+          title: 'Specifications',
+          icon: <FaClipboardList />,
+          content: <ProductSpecificationsPage />,
+          route: DECKYZONE_SPECIFICATIONS_ROUTE,
         },
       ]}
     />

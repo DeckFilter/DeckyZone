@@ -175,6 +175,7 @@ const TroubleshootingPanel = ({
         <SettingsRow>
           <ButtonItem
             layout={itemLayout}
+            label="Reinstall Plugin"
             disabled={isReinstalling}
             onClick={() => void handleReinstall()}
           >
@@ -185,6 +186,7 @@ const TroubleshootingPanel = ({
       <SettingsRow>
         <ButtonItem
           layout={itemLayout}
+          label="Reset Plugin"
           onClick={() => {
             showModal(
               <ResetPluginConfirmModal
