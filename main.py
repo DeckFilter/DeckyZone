@@ -426,7 +426,10 @@ class DeckyZoneService:
         inputplumber_available = bool(self.probe_inputplumber_available())
         inputplumber_version = self._get_binary_version("inputplumber")
         gamescope_version = self._get_binary_version("gamescope")
-        firmware_versions = firmware_info.read_firmware_versions(self.read_text)
+        firmware_versions = firmware_info.read_firmware_versions(
+            self.read_text,
+            supported_device=self.is_supported_device(),
+        )
         system_ram_gb = None
         active_vram_gb = None
 
@@ -2532,9 +2535,14 @@ class DeckyZoneService:
                 ):
                     return False
                 self._temporary_target_mode = MISSING_GLYPH_FIX_TARGET
-                await self._sync_brightness_dial_fixer_state()
+                brightness_result = await self._sync_brightness_dial_fixer_state()
                 profile_result = await self._sync_home_button_navigation_state()
-                return trackpad_result and rumble_result and profile_result
+                return (
+                    trackpad_result
+                    and rumble_result
+                    and brightness_result
+                    and profile_result
+                )
             except subprocess.CalledProcessError as error:
                 detail = (error.stderr or error.stdout or str(error)).strip()
                 self.logger.warning(f"Failed to apply per-game controller override: {detail}")
@@ -2569,8 +2577,14 @@ class DeckyZoneService:
                 if not await self.disable_startup_target_runtime():
                     return False
 
+            brightness_result = await self._sync_brightness_dial_fixer_state()
             profile_result = await self._sync_home_button_navigation_state()
-            return trackpad_result and rumble_result and profile_result
+            return (
+                trackpad_result
+                and rumble_result
+                and brightness_result
+                and profile_result
+            )
 
         try:
             if startup_runtime_required:
@@ -2584,10 +2598,10 @@ class DeckyZoneService:
                 self._restart_inputplumber()
                 self._startup_target_active = False
                 self._temporary_target_mode = None
-                await self._sync_brightness_dial_fixer_state()
-                await self._sync_rumble_state(app_id)
-                await self._sync_home_button_navigation_state()
-                return True
+                brightness_result = await self._sync_brightness_dial_fixer_state()
+                rumble_result = await self._sync_rumble_state(app_id)
+                profile_result = await self._sync_home_button_navigation_state()
+                return brightness_result and rumble_result and profile_result
             return True
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
@@ -3222,8 +3236,8 @@ class DeckyZoneService:
             return False
 
         try:
-            await self._sync_brightness_dial_fixer_state()
-            await self._sync_home_button_navigation_state()
+            brightness_result = await self._sync_brightness_dial_fixer_state()
+            profile_result = await self._sync_home_button_navigation_state()
             if not await self._disable_directional_trackpad_source_runtime():
                 return False
             self._reset_inputplumber_profile_state()
@@ -3231,7 +3245,7 @@ class DeckyZoneService:
             if not await self.wait_for_inputplumber_dbus_silently():
                 return False
             self._set_status("disabled", DISABLED_MESSAGE)
-            return True
+            return brightness_result and profile_result
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
             self.logger.warning(f"Failed to restore inherited controller target: {detail}")
@@ -3244,9 +3258,69 @@ class DeckyZoneService:
         if enabled and not self.probe_inputplumber_available():
             return self._current_settings()
 
-        self.settings_store.set_home_button_enabled(enabled)
-        await self.sync_per_game_target(self._active_per_game_app_id)
-        return self._current_settings()
+        return await self._set_controller_runtime_feature_enabled(
+            enabled=enabled,
+            read_enabled=self.settings_store.get_home_button_enabled,
+            write_enabled=self.settings_store.set_home_button_enabled,
+            feature_name="Home Button",
+        )
+
+    async def _set_controller_runtime_feature_enabled(
+        self,
+        *,
+        enabled,
+        read_enabled,
+        write_enabled,
+        feature_name,
+    ):
+        previous_enabled = bool(read_enabled())
+        write_enabled(bool(enabled))
+
+        apply_error = None
+        try:
+            applied = await self.sync_per_game_target(self._active_per_game_app_id)
+        except Exception as error:
+            applied = False
+            apply_error = error
+
+        if applied:
+            return self._current_settings()
+
+        try:
+            write_enabled(previous_enabled)
+        except Exception as rollback_error:
+            self.logger.error(
+                f"Failed to restore {feature_name} after controller runtime failure: "
+                f"{rollback_error}"
+            )
+            raise RuntimeError(
+                f"Failed to apply {feature_name} and restore its previous setting."
+            ) from rollback_error
+
+        try:
+            restored = await self.sync_per_game_target(self._active_per_game_app_id)
+        except Exception as rollback_error:
+            restored = False
+            self.logger.warning(
+                f"Failed to reconcile controller runtime after restoring "
+                f"{feature_name}: {rollback_error}"
+            )
+
+        if not restored:
+            self.logger.warning(
+                f"Controller runtime remained out of sync after restoring {feature_name}."
+            )
+
+        message = f"Failed to apply {feature_name}. The previous setting was restored."
+        if not restored:
+            message = (
+                f"Failed to apply {feature_name}. The saved setting was restored, "
+                "but the controller runtime could not be reconciled."
+            )
+
+        if apply_error is not None:
+            raise RuntimeError(message) from apply_error
+        raise RuntimeError(message)
 
     async def _brightness_dial_loop(self):
         while self._brightness_dial_running:
@@ -3338,10 +3412,12 @@ class DeckyZoneService:
         if enabled and not self.probe_inputplumber_available():
             return self._current_settings()
 
-        self.settings_store.set_brightness_dial_fix_enabled(enabled)
-        await self.sync_per_game_target(self._active_per_game_app_id)
-
-        return self._current_settings()
+        return await self._set_controller_runtime_feature_enabled(
+            enabled=enabled,
+            read_enabled=self.settings_store.get_brightness_dial_fix_enabled,
+            write_enabled=self.settings_store.set_brightness_dial_fix_enabled,
+            feature_name="Brightness Dial",
+        )
 
     async def set_gyro_mount_matrix_fix_enabled(self, enabled):
         state = self._get_gyro_mount_matrix_fix_state()

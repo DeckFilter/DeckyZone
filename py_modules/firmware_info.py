@@ -148,7 +148,12 @@ def read_display_firmware_version(
     return _format_display_firmware_version(version_bytes)
 
 
-def read_firmware_versions(read_text, read_display_version=None):
+def read_firmware_versions(
+    read_text,
+    *,
+    supported_device,
+    read_display_version=None,
+):
     """Return firmware versions that have verified runtime read paths.
 
     The display read follows Zotac's version command: select the LT7911's
@@ -158,5 +163,5 @@ def read_firmware_versions(read_text, read_display_version=None):
     display_reader = read_display_version or read_display_firmware_version
     return {
         "ecVersion": read_ec_firmware_version(read_text),
-        "displayVersion": display_reader(read_text),
+        "displayVersion": display_reader(read_text) if supported_device else None,
     }
