@@ -461,10 +461,6 @@ const GeneralInformationSection = ({
           <SnapshotRow label="Product" value={formatValue(snapshot.deviceIdentity.productName)} />
           <SnapshotRow label="Operating System" value={formatValue(snapshot.osContext.prettyName)} />
           <SnapshotRow
-            label="Kernel"
-            value={formatValue(snapshot.osContext.kernelRelease)}
-          />
-          <SnapshotRow
             label="EC Firmware"
             value={formatValue(snapshot.firmware.ecVersion)}
           />
