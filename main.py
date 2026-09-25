@@ -12,13 +12,17 @@ from pathlib import Path
 
 import decky
 import controller_targets
+import firmware_info
 import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_device_profile
 import inputplumber_target_sync
+import os_release
 import plugin_update
 import plugin_settings
 import remaining_battery_time
 import runtime_profile_utils
+import support_report
+import system_memory
 import trackpad_modes
 import vram_control
 
@@ -31,17 +35,8 @@ DMI_SYS_VENDOR_PATH = "/sys/devices/virtual/dmi/id/sys_vendor"
 DMI_PRODUCT_NAME_PATH = "/sys/devices/virtual/dmi/id/product_name"
 DMI_BOARD_NAME_PATH = "/sys/devices/virtual/dmi/id/board_name"
 DMI_BOARD_VENDOR_PATH = "/sys/devices/virtual/dmi/id/board_vendor"
-DMI_PATHS = (
-    DMI_SYS_VENDOR_PATH,
-    DMI_PRODUCT_NAME_PATH,
-    DMI_BOARD_NAME_PATH,
-    DMI_BOARD_VENDOR_PATH,
-)
 OS_RELEASE_CANDIDATE_PATHS = ("/etc/os-release", "/usr/lib/os-release")
-ZOTAC_ZONE_PLATFORM_MODULE_PATH = "/sys/module/zotac_zone_platform"
 ZOTAC_ZONE_HID_MODULE_PATH = "/sys/module/zotac_zone_hid"
-FIRMWARE_ATTRIBUTES_CLASS_MODULE_PATH = "/sys/module/firmware_attributes_class"
-FIRMWARE_ATTRIBUTES_NODE_PATH = "/sys/class/firmware-attributes/zotac_zone_platform"
 ZOTAC_HID_CONFIG_SEARCH_ROOT = "/sys/class/hidraw/hidraw*/device"
 ZOTAC_HID_CONFIG_MATCH_MARKER = "save_config"
 ZOTAC_CONTROLLER_VENDOR_IDS = {"1ee9", "1e19"}
@@ -67,10 +62,7 @@ ZOTAC_PROFILE_TO_CONTROLLER_MODE = {
 ZOTAC_RAW_REPLY_TIMEOUT_SECONDS = 1.0
 DBUS_READY_MESSAGE = "Waiting to apply startup mode."
 UNSUPPORTED_MESSAGE = "Unsupported device: startup mode only applies on Zotac Zone."
-DISABLED_MESSAGE = "Startup mode apply is disabled."
-DISABLED_REBOOT_MESSAGE = (
-    "Startup mode apply is disabled. Reboot to restore unmodified InputPlumber startup behavior."
-)
+DISABLED_MESSAGE = "Controller runtime is inactive."
 GAMEPAD_MODE_REQUIRED_MESSAGE = "Gamepad mode is required for controller features."
 CONTROLLER_RUNTIME_RECOVERED_MESSAGE = "Controller runtime recovered."
 RECOVERABLE_CONTROLLER_STATUS_FAILURE_DETAILS = (
@@ -368,7 +360,7 @@ class DeckyZoneService:
         )
 
     def _is_current_controller_runtime_healthy(self):
-        if not self.settings_store.get_startup_apply_enabled():
+        if not self._is_controller_runtime_required():
             return False
 
         if not self.probe_inputplumber_available():
@@ -434,13 +426,29 @@ class DeckyZoneService:
         inputplumber_available = bool(self.probe_inputplumber_available())
         inputplumber_version = self._get_binary_version("inputplumber")
         gamescope_version = self._get_binary_version("gamescope")
+        firmware_versions = firmware_info.read_firmware_versions(
+            self.read_text,
+            supported_device=self.is_supported_device(),
+        )
+        system_ram_gb = None
+        active_vram_gb = None
+
+        try:
+            system_ram_gb = system_memory.read_system_ram_gb()
+        except Exception as error:
+            self.logger.warning(f"Failed to read system RAM: {error}")
+
+        try:
+            active_vram_gb = vram_control.read_active_vram_gb()
+        except Exception as error:
+            self.logger.warning(f"Failed to read active VRAM: {error}")
+
         controller_mode_snapshot = self._get_controller_mode_snapshot()
         profile_name = None
         profile_path = None
         target_gamepad_path = None
         keyboard_path = None
         display_profile_settings = self._get_display_profile_settings()
-        gamescope_paths = self._get_gamescope_support_paths()
 
         if inputplumber_available:
             try:
@@ -476,13 +484,15 @@ class DeckyZoneService:
                 "productName": self._read_optional_text(DMI_PRODUCT_NAME_PATH),
                 "boardName": self._read_optional_text(DMI_BOARD_NAME_PATH),
                 "boardVendor": self._read_optional_text(DMI_BOARD_VENDOR_PATH),
-                "supportedDevice": self.is_supported_device(),
-                "dmiPaths": list(DMI_PATHS),
             },
             "osContext": {
                 "prettyName": self._get_os_pretty_name(),
                 "kernelRelease": self._get_kernel_release(),
-                "osReleaseCandidatePaths": list(OS_RELEASE_CANDIDATE_PATHS),
+            },
+            "firmware": firmware_versions,
+            "memory": {
+                "systemRamGb": system_ram_gb,
+                "activeVramGb": active_vram_gb,
             },
             "inputPlumber": {
                 "available": inputplumber_available,
@@ -497,24 +507,9 @@ class DeckyZoneService:
                 "keyboardPath": keyboard_path,
                 "controllerRuntimeState": controller_runtime_state,
                 "gyroMountMatrixFix": self._get_gyro_mount_matrix_fix_state(),
-                "compositeDeviceObjectPath": INPUTPLUMBER_DBUS_PATH,
             },
             "zotacZoneKernelDrivers": {
-                "zotacZonePlatformLoaded": self._path_exists(ZOTAC_ZONE_PLATFORM_MODULE_PATH),
-                "zotacZonePlatformPath": ZOTAC_ZONE_PLATFORM_MODULE_PATH,
                 "zotacZoneHidLoaded": self._path_exists(ZOTAC_ZONE_HID_MODULE_PATH),
-                "zotacZoneHidPath": ZOTAC_ZONE_HID_MODULE_PATH,
-                "firmwareAttributesClassLoaded": self._path_exists(
-                    FIRMWARE_ATTRIBUTES_CLASS_MODULE_PATH
-                ),
-                "firmwareAttributesClassPath": FIRMWARE_ATTRIBUTES_CLASS_MODULE_PATH,
-                "firmwareAttributesNodePresent": self._path_exists(
-                    FIRMWARE_ATTRIBUTES_NODE_PATH
-                ),
-                "firmwareAttributesNodePath": FIRMWARE_ATTRIBUTES_NODE_PATH,
-                "hidConfigNodePath": self._resolve_zotac_hid_config_path(),
-                "hidConfigSearchRoot": ZOTAC_HID_CONFIG_SEARCH_ROOT,
-                "hidConfigMatchMarker": ZOTAC_HID_CONFIG_MATCH_MARKER,
             },
             "gamescope": {
                 "version": gamescope_version,
@@ -524,12 +519,44 @@ class DeckyZoneService:
                 "verificationState": display_profile_settings["gamescopeZotacProfileVerificationState"],
                 "baseAssetAvailable": bool(display_profile_settings["gamescopeZotacProfileBaseAssetAvailable"]),
                 "greenTintAssetAvailable": bool(display_profile_settings["gamescopeZotacProfileGreenAssetAvailable"]),
-                **gamescope_paths,
             },
             "deckyZoneStatus": {
                 "message": status["message"],
             },
         }
+
+    def get_support_report(self, debug_snapshot=None):
+        if debug_snapshot is None:
+            debug_snapshot = self.get_debug_info()
+
+        return support_report.build_support_report(
+            plugin_version=decky.DECKY_PLUGIN_VERSION,
+            decky_version=decky.DECKY_VERSION,
+            debug_snapshot=debug_snapshot,
+            supported_device=self.is_supported_device(),
+            remaining_battery_enabled=(
+                self.settings_store.get_remaining_battery_time_fix_enabled()
+            ),
+            logger=self.logger,
+            log_path=decky.DECKY_PLUGIN_LOG,
+            command_runner=self.command_runner,
+            command_env=self.get_env(),
+            read_text=self.read_text,
+            path_exists=self._path_exists,
+            pending_vram_reader=vram_control.read_pending_vram_gb,
+            active_vram_reader=vram_control.read_active_vram_gb,
+            redaction_paths=(
+                decky.DECKY_USER_HOME,
+                decky.DECKY_HOME,
+            ),
+        )
+
+    def save_support_report(self, report_text):
+        return support_report.save_report_to_desktop(
+            report_text,
+            user_home=decky.DECKY_USER_HOME,
+            user_name=decky.DECKY_USER,
+        )
 
     async def get_latest_version_num(self):
         try:
@@ -647,25 +674,17 @@ class DeckyZoneService:
             return None
 
     def _get_os_pretty_name(self):
-        for candidate_path in OS_RELEASE_CANDIDATE_PATHS:
-            content = self._read_optional_text(candidate_path)
-            if not content:
-                continue
+        return os_release.read_value(
+            self.read_text,
+            "PRETTY_NAME",
+            OS_RELEASE_CANDIDATE_PATHS,
+        )
 
-            for line in content.splitlines():
-                if not line.startswith("PRETTY_NAME="):
-                    continue
-
-                value = line.split("=", 1)[1].strip()
-                if (
-                    len(value) >= 2
-                    and value[0] == value[-1]
-                    and value[0] in {'"', "'"}
-                ):
-                    value = value[1:-1]
-                return value or None
-
-        return None
+    def _is_steamos(self):
+        return os_release.is_steamos(
+            self.read_text,
+            OS_RELEASE_CANDIDATE_PATHS,
+        )
 
     def _get_display_profile_settings(self):
         try:
@@ -763,8 +782,9 @@ class DeckyZoneService:
     def _current_settings(self):
         display_profile_settings = self._get_display_profile_settings()
         controller_mode_snapshot = self._get_controller_mode_snapshot()
+        remaining_battery_time_fix_available = self._is_steamos()
         return {
-            "startupApplyEnabled": self.settings_store.get_startup_apply_enabled(),
+            "legacyLayoutEnabled": self.settings_store.get_legacy_layout_enabled(),
             "controllerMode": controller_mode_snapshot["mode"],
             "controllerModeAvailable": controller_mode_snapshot["available"],
             "homeButtonEnabled": self.settings_store.get_home_button_enabled(),
@@ -772,8 +792,15 @@ class DeckyZoneService:
             "gyroMountMatrixFix": self._get_gyro_mount_matrix_fix_state(),
             "trackpadMode": self.settings_store.get_trackpad_mode(),
             "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
+            "hideUnsupportedButtonsEnabled": (
+                self.settings_store.get_hide_unsupported_buttons_enabled()
+            ),
             "remainingBatteryTimeFixEnabled": (
-                self.settings_store.get_remaining_battery_time_fix_enabled()
+                remaining_battery_time_fix_available
+                and self.settings_store.get_remaining_battery_time_fix_enabled()
+            ),
+            "remainingBatteryTimeFixAvailable": (
+                remaining_battery_time_fix_available
             ),
             "gamescopeZotacProfileBuiltIn": display_profile_settings["gamescopeZotacProfileBuiltIn"],
             "gamescopeZotacProfileInstalled": display_profile_settings["gamescopeZotacProfileInstalled"],
@@ -1139,15 +1166,16 @@ class DeckyZoneService:
 
     def _get_effective_trackpad_mode(self, app_id=None):
         app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
-        global_mode = self.settings_store.get_trackpad_mode()
+        return self.settings_store.get_effective_trackpad_mode(app_id)
 
-        if app_id == DEFAULT_APP_ID:
-            return global_mode
+    def _is_startup_controller_runtime_required(self, app_id=None):
+        app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
+        return self.settings_store.is_startup_controller_runtime_required(app_id)
 
-        if not self.settings_store.get_per_game_settings_enabled(app_id):
-            return global_mode
-
-        return self.settings_store.get_per_game_trackpad_mode(app_id)
+    def _is_controller_runtime_required(self):
+        return self.settings_store.is_controller_runtime_required(
+            self._active_per_game_app_id
+        )
 
     def _should_disable_trackpads(self, app_id=None):
         return trackpad_modes.is_trackpad_mode_disabled(
@@ -2492,6 +2520,7 @@ class DeckyZoneService:
             per_game_settings_enabled
             and self.settings_store.get_button_prompt_fix_enabled(app_id)
         )
+        startup_runtime_required = self._is_startup_controller_runtime_required(app_id)
         include_mouse = self._should_include_mouse_target(app_id)
         trackpad_result = self._sync_trackpad_suppression_state(app_id)
         rumble_result = await self._sync_rumble_state(app_id)
@@ -2506,9 +2535,14 @@ class DeckyZoneService:
                 ):
                     return False
                 self._temporary_target_mode = MISSING_GLYPH_FIX_TARGET
-                await self._sync_brightness_dial_fixer_state()
+                brightness_result = await self._sync_brightness_dial_fixer_state()
                 profile_result = await self._sync_home_button_navigation_state()
-                return trackpad_result and rumble_result and profile_result
+                return (
+                    trackpad_result
+                    and rumble_result
+                    and brightness_result
+                    and profile_result
+                )
             except subprocess.CalledProcessError as error:
                 detail = (error.stderr or error.stdout or str(error)).strip()
                 self.logger.warning(f"Failed to apply per-game controller override: {detail}")
@@ -2518,7 +2552,7 @@ class DeckyZoneService:
                 return False
 
         if self._temporary_target_mode != MISSING_GLYPH_FIX_TARGET:
-            if self.settings_store.get_startup_apply_enabled() and not self._startup_target_active:
+            if startup_runtime_required and not self._startup_target_active:
                 try:
                     if not await self.wait_for_inputplumber_dbus_silently():
                         return False
@@ -2539,12 +2573,21 @@ class DeckyZoneService:
                         f"Failed to restore inherited controller target: {error}"
                     )
                     return False
+            elif not startup_runtime_required and self._startup_target_active:
+                if not await self.disable_startup_target_runtime():
+                    return False
 
+            brightness_result = await self._sync_brightness_dial_fixer_state()
             profile_result = await self._sync_home_button_navigation_state()
-            return trackpad_result and rumble_result and profile_result
+            return (
+                trackpad_result
+                and rumble_result
+                and brightness_result
+                and profile_result
+            )
 
         try:
-            if self.settings_store.get_startup_apply_enabled():
+            if startup_runtime_required:
                 if not await self.wait_for_inputplumber_dbus_silently():
                     return False
                 detail = await self._apply_startup_runtime_with_retries()
@@ -2555,10 +2598,10 @@ class DeckyZoneService:
                 self._restart_inputplumber()
                 self._startup_target_active = False
                 self._temporary_target_mode = None
-                await self._sync_brightness_dial_fixer_state()
-                await self._sync_rumble_state(app_id)
-                await self._sync_home_button_navigation_state()
-                return True
+                brightness_result = await self._sync_brightness_dial_fixer_state()
+                rumble_result = await self._sync_rumble_state(app_id)
+                profile_result = await self._sync_home_button_navigation_state()
+                return brightness_result and rumble_result and profile_result
             return True
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
@@ -2978,16 +3021,16 @@ class DeckyZoneService:
         controller_mode_safe = self._is_controller_mode_snapshot_safe(
             controller_mode_snapshot
         )
-        startup_apply_enabled = self.settings_store.get_startup_apply_enabled()
+        controller_runtime_required = self._is_controller_runtime_required()
 
         if not controller_mode_safe:
             await self._disable_effective_controller_runtime()
-            if update_status and startup_apply_enabled:
+            if update_status and controller_runtime_required:
                 self._set_status("idle", GAMEPAD_MODE_REQUIRED_MESSAGE)
             return controller_mode_snapshot
 
         if (
-            not startup_apply_enabled
+            not controller_runtime_required
             or self._startup_target_active
             or self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET
         ):
@@ -3002,7 +3045,14 @@ class DeckyZoneService:
                     )
                 return controller_mode_snapshot
 
-            detail = await self._apply_startup_runtime_with_retries()
+            if self._is_active_button_prompt_fix_enabled():
+                detail = (
+                    None
+                    if await self.sync_per_game_target(self._active_per_game_app_id)
+                    else "Per-game controller override did not apply."
+                )
+            else:
+                detail = await self._apply_startup_runtime_with_retries()
             if detail is not None:
                 if update_status:
                     self._set_status(
@@ -3034,9 +3084,8 @@ class DeckyZoneService:
             return controller_mode_snapshot
 
         self._startup_applied_this_session = True
-        self._temporary_target_mode = None
         if update_status:
-            self._set_status("applied", STARTUP_MODE_APPLIED_MESSAGE)
+            self._set_status("applied", CONTROLLER_RUNTIME_RECOVERED_MESSAGE)
         return controller_mode_snapshot
 
     async def _controller_mode_monitor_loop(self):
@@ -3174,22 +3223,8 @@ class DeckyZoneService:
         self._rumble_available = True
         return self._rumble_available
 
-    def set_startup_apply_enabled(self, enabled):
-        if enabled and not self.probe_inputplumber_available():
-            return self._current_settings()
-
-        enabled = self.settings_store.set_startup_apply_enabled(enabled)
-
-        if enabled:
-            if not self.is_supported_device():
-                self._set_status("unsupported", UNSUPPORTED_MESSAGE)
-            else:
-                self._set_status("idle", DBUS_READY_MESSAGE)
-        elif self._startup_applied_this_session:
-            self._set_status("disabled", DISABLED_REBOOT_MESSAGE)
-        else:
-            self._set_status("disabled", DISABLED_MESSAGE)
-
+    def set_legacy_layout_enabled(self, enabled):
+        self.settings_store.set_legacy_layout_enabled(enabled)
         return self._current_settings()
 
     async def disable_startup_target_runtime(self):
@@ -3201,8 +3236,8 @@ class DeckyZoneService:
             return False
 
         try:
-            await self._sync_brightness_dial_fixer_state()
-            await self._sync_home_button_navigation_state()
+            brightness_result = await self._sync_brightness_dial_fixer_state()
+            profile_result = await self._sync_home_button_navigation_state()
             if not await self._disable_directional_trackpad_source_runtime():
                 return False
             self._reset_inputplumber_profile_state()
@@ -3210,7 +3245,7 @@ class DeckyZoneService:
             if not await self.wait_for_inputplumber_dbus_silently():
                 return False
             self._set_status("disabled", DISABLED_MESSAGE)
-            return True
+            return brightness_result and profile_result
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
             self.logger.warning(f"Failed to restore inherited controller target: {detail}")
@@ -3220,15 +3255,72 @@ class DeckyZoneService:
             return False
 
     async def set_home_button_enabled(self, enabled):
-        if enabled and not self.settings_store.get_startup_apply_enabled():
-            return self._current_settings()
-
         if enabled and not self.probe_inputplumber_available():
             return self._current_settings()
 
-        self.settings_store.set_home_button_enabled(enabled)
-        await self._sync_home_button_navigation_state()
-        return self._current_settings()
+        return await self._set_controller_runtime_feature_enabled(
+            enabled=enabled,
+            read_enabled=self.settings_store.get_home_button_enabled,
+            write_enabled=self.settings_store.set_home_button_enabled,
+            feature_name="Home Button",
+        )
+
+    async def _set_controller_runtime_feature_enabled(
+        self,
+        *,
+        enabled,
+        read_enabled,
+        write_enabled,
+        feature_name,
+    ):
+        previous_enabled = bool(read_enabled())
+        write_enabled(bool(enabled))
+
+        apply_error = None
+        try:
+            applied = await self.sync_per_game_target(self._active_per_game_app_id)
+        except Exception as error:
+            applied = False
+            apply_error = error
+
+        if applied:
+            return self._current_settings()
+
+        try:
+            write_enabled(previous_enabled)
+        except Exception as rollback_error:
+            self.logger.error(
+                f"Failed to restore {feature_name} after controller runtime failure: "
+                f"{rollback_error}"
+            )
+            raise RuntimeError(
+                f"Failed to apply {feature_name} and restore its previous setting."
+            ) from rollback_error
+
+        try:
+            restored = await self.sync_per_game_target(self._active_per_game_app_id)
+        except Exception as rollback_error:
+            restored = False
+            self.logger.warning(
+                f"Failed to reconcile controller runtime after restoring "
+                f"{feature_name}: {rollback_error}"
+            )
+
+        if not restored:
+            self.logger.warning(
+                f"Controller runtime remained out of sync after restoring {feature_name}."
+            )
+
+        message = f"Failed to apply {feature_name}. The previous setting was restored."
+        if not restored:
+            message = (
+                f"Failed to apply {feature_name}. The saved setting was restored, "
+                "but the controller runtime could not be reconciled."
+            )
+
+        if apply_error is not None:
+            raise RuntimeError(message) from apply_error
+        raise RuntimeError(message)
 
     async def _brightness_dial_loop(self):
         while self._brightness_dial_running:
@@ -3317,16 +3409,15 @@ class DeckyZoneService:
         )
 
     async def set_brightness_dial_fix_enabled(self, enabled):
-        if enabled and not self.settings_store.get_startup_apply_enabled():
-            return self._current_settings()
-
         if enabled and not self.probe_inputplumber_available():
             return self._current_settings()
 
-        self.settings_store.set_brightness_dial_fix_enabled(enabled)
-        await self._sync_brightness_dial_fixer_state()
-
-        return self._current_settings()
+        return await self._set_controller_runtime_feature_enabled(
+            enabled=enabled,
+            read_enabled=self.settings_store.get_brightness_dial_fix_enabled,
+            write_enabled=self.settings_store.set_brightness_dial_fix_enabled,
+            feature_name="Brightness Dial",
+        )
 
     async def set_gyro_mount_matrix_fix_enabled(self, enabled):
         state = self._get_gyro_mount_matrix_fix_state()
@@ -3375,6 +3466,10 @@ class DeckyZoneService:
         self.settings_store.set_zotac_glyphs_enabled(enabled)
         return self._current_settings()
 
+    async def set_hide_unsupported_buttons_enabled(self, enabled):
+        self.settings_store.set_hide_unsupported_buttons_enabled(enabled)
+        return self._current_settings()
+
     async def _disable_remaining_battery_time_fix_for_native_support(self):
         self.settings_store.set_remaining_battery_time_fix_enabled(False)
         self.logger.info(
@@ -3390,6 +3485,9 @@ class DeckyZoneService:
             )
 
     async def start_remaining_battery_time_bridge(self, retry_on_error=False):
+        if not self._is_steamos():
+            return False
+
         return await self.remaining_battery_time_controller.start(
             retry_on_error=retry_on_error,
         )
@@ -3406,9 +3504,17 @@ class DeckyZoneService:
                 self.settings_store.set_remaining_battery_time_fix_enabled(False)
                 return self._current_settings()
 
+            if not self._is_steamos():
+                await self.stop_remaining_battery_time_bridge()
+                return self._current_settings()
+
             try:
                 started = await self.start_remaining_battery_time_bridge()
-            except Exception:
+            except Exception as error:
+                self.logger.warning(
+                    "Failed to enable remaining battery time fix: "
+                    f"{error}"
+                )
                 self.settings_store.set_remaining_battery_time_fix_enabled(False)
                 await self.stop_remaining_battery_time_bridge()
                 raise
@@ -4239,31 +4345,29 @@ class Plugin:
     async def get_debug_info(self):
         return self.service.get_debug_info()
 
+    async def get_support_report(self):
+        debug_snapshot = self.service.get_debug_info()
+        return await asyncio.to_thread(
+            self.service.get_support_report,
+            debug_snapshot,
+        )
+
+    async def save_support_report(self, report_text):
+        return await asyncio.to_thread(
+            self.service.save_support_report,
+            report_text,
+        )
+
     async def reset_plugin(self):
         result = await self._reset_plugin_cleanup()
         self._log_cleanup_result("reset", result)
         return result
 
-    async def set_startup_apply_enabled(self, enabled):
-        if not enabled and self.startup_task and not self.startup_task.done():
-            self.startup_task.cancel()
-            try:
-                await self.startup_task
-            except asyncio.CancelledError:
-                pass
-            self.startup_task = None
-
-        settings = self.service.set_startup_apply_enabled(enabled)
-        if enabled and hasattr(self.service, "apply_startup_mode"):
-            await self.service.apply_startup_mode()
-        elif not enabled and hasattr(self.service, "disable_startup_target_runtime"):
-            await self.service.disable_startup_target_runtime()
-        if hasattr(self.service, "sync_home_button_navigation_state"):
-            await self.service.sync_home_button_navigation_state()
-        return settings
-
     async def set_home_button_enabled(self, enabled):
         return await self.service.set_home_button_enabled(enabled)
+
+    async def set_legacy_layout_enabled(self, enabled):
+        return self.service.set_legacy_layout_enabled(enabled)
 
     async def set_controller_mode(self, mode):
         return await self.service.set_controller_mode(mode)
@@ -4288,6 +4392,9 @@ class Plugin:
 
     async def set_zotac_glyphs_enabled(self, enabled):
         return await self.service.set_zotac_glyphs_enabled(enabled)
+
+    async def set_hide_unsupported_buttons_enabled(self, enabled):
+        return await self.service.set_hide_unsupported_buttons_enabled(enabled)
 
     async def set_remaining_battery_time_fix_enabled(self, enabled):
         return await self.service.set_remaining_battery_time_fix_enabled(enabled)
@@ -4379,10 +4486,8 @@ class Plugin:
                 )
         elif hasattr(self.service, "stop_remaining_battery_time_bridge"):
             await self.service.stop_remaining_battery_time_bridge()
-        if settings["startupApplyEnabled"]:
+        if self.service._is_startup_controller_runtime_required():
             self.startup_task = self.loop.create_task(self.service.apply_startup_mode())
-        else:
-            self.service.set_startup_apply_enabled(False)
 
     async def _unload(self):
         decky.logger.info("DeckyZone stopping")
@@ -4432,6 +4537,8 @@ class Plugin:
             os.path.join(decky.DECKY_HOME, "settings", "deckyzone.json"),
             os.path.join(decky.DECKY_USER_HOME, ".config", "deckyzone"),
         )
+        plugin_settings.migrate_startup_apply_setting()
+        plugin_settings.migrate_hide_unsupported_buttons_setting()
         decky.migrate_runtime(
             os.path.join(decky.DECKY_HOME, "deckyzone"),
             os.path.join(decky.DECKY_USER_HOME, ".local", "share", "deckyzone"),

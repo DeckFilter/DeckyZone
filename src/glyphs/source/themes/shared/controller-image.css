@@ -13,9 +13,11 @@
 }
 
 /* Controller Settings */
-img[src="/images/steamdeck_left.png"] {
+img[src="/images/steamdeck_left.png"],
+img[src="/images/steamcontroller_left.png"] {
     content: var(--controller-left-image);
 }
-img[src="/images/steamdeck_right.png"] {
+img[src="/images/steamdeck_right.png"],
+img[src="/images/steamcontroller_right.png"] {
     content: var(--controller-right-image);
 }

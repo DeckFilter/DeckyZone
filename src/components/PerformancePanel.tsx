@@ -1,29 +1,41 @@
 import { callable } from '@decky/api'
-import { PanelSection, PanelSectionRow, gamepadDialogClasses } from '@decky/ui'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { gamepadDialogClasses } from '@decky/ui'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
-import { SteamExplainerDropdownItem } from './SteamExplainer'
+import { SteamExplainerDropdownItem, SteamExplainerToggleField } from './SteamExplainer'
+import {
+  SettingsGroup,
+  SettingsPanel,
+  SettingsRow,
+  useSettingsSurface,
+} from './SettingsSurface'
 
 type Props = {
   settings: PluginSettings
-  onSettingsChange: (
-    update: PluginSettings | ((currentSettings: PluginSettings) => PluginSettings)
-  ) => void
+  settingsLeadingRows?: ReactNode
+  onSettingsChange: (update: PluginSettingsUpdate) => void
 }
 
 type VramOption = { data: number; label: string }
 
 const setVramSizeGb = callable<[number], PluginSettings>('set_vram_size_gb')
+const setRemainingBatteryTimeFixEnabled = callable<[boolean], PluginSettings>(
+  'set_remaining_battery_time_fix_enabled',
+)
 
 const VRAM_DEFAULT_GB = 4
 const VRAM_EXPLAINER =
-  'Reserves system memory for the integrated GPU as a UMA framebuffer. Higher values leave less memory for games and SteamOS. Restart SteamOS after changing this setting.'
+  'Reserves system memory for the integrated GPU as a UMA framebuffer. Higher values leave less memory for games and SteamOS.'
 const VRAM_UNAVAILABLE_DESCRIPTION = 'Current VRAM setting is unavailable'
 const VRAM_UNKNOWN_LABEL = 'Unknown'
 const VRAM_UPDATE_FAILED_NOTICE = "Couldn't update VRAM size."
 const VRAM_REBOOT_REQUIRED_NOTICE = 'Reboot to apply VRAM change.'
+const REMAINING_BATTERY_TIME_FIX_EXPLAINER =
+  "Passes UPower's charging and discharging estimates to Steam through /run/vpower. The fix turns itself off when Valve's vpower service starts providing valid estimates."
+const PERFORMANCE_UPDATE_FAILED_NOTICE = "Couldn't update setting."
 
 function getVramOptionLabel(vramGb: number) {
   return `${vramGb} GB${vramGb === VRAM_DEFAULT_GB ? ' (Default)' : ''}`
@@ -64,11 +76,15 @@ function getOptimisticVramSettings(settings: PluginSettings, pendingVramGb: numb
   }
 }
 
-const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
+const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: Props) => {
+  const surface = useSettingsSurface()
   const [savingVram, setSavingVram] = useState(false)
   const savingVramRef = useRef(false)
   const [vramDraftGb, setVramDraftGb] = useState(() => getVramValue(settings))
   const [vramNotice, setVramNotice] = useState<string | null>(null)
+  const [savingRemainingBatteryTimeFix, setSavingRemainingBatteryTimeFix] = useState(false)
+  const savingRemainingBatteryTimeFixRef = useRef(false)
+  const [batteryTimeNotice, setBatteryTimeNotice] = useState<string | null>(null)
   const vramOptions = useMemo<VramOption[]>(
     () =>
       Array.from({ length: settings.vram.maxVramGb - settings.vram.minVramGb + 1 }, (_, index) => {
@@ -78,6 +94,8 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
     [settings.vram.minVramGb, settings.vram.maxVramGb],
   )
   const vramRebootHint = getVramRebootHint(settings)
+  const vramDescription = getVramDescription(settings)
+    ?? (surface === 'settings' ? vramRebootHint ?? undefined : undefined)
 
   useEffect(() => {
     setVramDraftGb(getVramValue(settings))
@@ -95,6 +113,17 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
           title: 'Performance',
           body: vramNotice,
           severity: vramNotice === VRAM_UPDATE_FAILED_NOTICE ? 'error' : 'warning',
+        }
+      : null,
+  )
+
+  useDeckyToastNotice(
+    batteryTimeNotice
+      ? {
+          activeKey: `performance:${batteryTimeNotice}`,
+          title: 'Performance',
+          body: batteryTimeNotice,
+          severity: 'error',
         }
       : null,
   )
@@ -154,29 +183,78 @@ const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
     }
   }
 
+  const handleRemainingBatteryTimeFixChange = async (enabled: boolean) => {
+    if (savingRemainingBatteryTimeFixRef.current) {
+      return
+    }
+
+    const previousEnabled = settings.remainingBatteryTimeFixEnabled
+    savingRemainingBatteryTimeFixRef.current = true
+    setSavingRemainingBatteryTimeFix(true)
+    setBatteryTimeNotice(null)
+    onSettingsChange((currentSettings) => ({
+      ...currentSettings,
+      remainingBatteryTimeFixEnabled: enabled,
+    }))
+
+    try {
+      const nextSettings = await setRemainingBatteryTimeFixEnabled(enabled)
+      onSettingsChange(nextSettings)
+    } catch {
+      setBatteryTimeNotice(PERFORMANCE_UPDATE_FAILED_NOTICE)
+      onSettingsChange((currentSettings) => ({
+        ...currentSettings,
+        remainingBatteryTimeFixEnabled: previousEnabled,
+      }))
+    } finally {
+      savingRemainingBatteryTimeFixRef.current = false
+      setSavingRemainingBatteryTimeFix(false)
+    }
+  }
+
   return (
-    <PanelSection title="Performance">
-      <PanelSectionRow>
-        <SteamExplainerDropdownItem
-          controlled
-          label="VRAM Size"
-          menuLabel="VRAM Size"
-          explainerTitle="VRAM Size"
-          explainer={VRAM_EXPLAINER}
-          description={getVramDescription(settings)}
-          rgOptions={vramOptions}
-          strDefaultLabel={vramDraftGb === null ? VRAM_UNKNOWN_LABEL : getVramOptionLabel(vramDraftGb)}
-          selectedOption={vramDraftGb}
-          onChange={(option: VramOption) => void handleVramChange(option.data)}
-          disabled={savingVram || !settings.vram.available || vramDraftGb === null}
-        />
-      </PanelSectionRow>
-      {vramRebootHint && (
-        <PanelSectionRow>
-          <div className={gamepadDialogClasses.FieldDescription}>{vramRebootHint}</div>
-        </PanelSectionRow>
+    <SettingsPanel title="Performance">
+      <SettingsGroup>
+        {surface === 'settings' && settingsLeadingRows}
+        <SettingsRow>
+          <SteamExplainerDropdownItem
+            controlled
+            layout="below"
+            label="VRAM Size"
+            menuLabel="VRAM Size"
+            explainerTitle="VRAM Size"
+            explainer={VRAM_EXPLAINER}
+            settingsDescription="Reserves memory for the integrated GPU"
+            description={vramDescription}
+            rgOptions={vramOptions}
+            strDefaultLabel={vramDraftGb === null ? VRAM_UNKNOWN_LABEL : getVramOptionLabel(vramDraftGb)}
+            selectedOption={vramDraftGb}
+            onChange={(option: VramOption) => void handleVramChange(option.data)}
+            disabled={savingVram || !settings.vram.available || vramDraftGb === null}
+          />
+        </SettingsRow>
+        {surface === 'quick-access' && vramRebootHint && (
+          <SettingsRow>
+            <div className={gamepadDialogClasses.FieldDescription}>{vramRebootHint}</div>
+          </SettingsRow>
+        )}
+      </SettingsGroup>
+      {settings.remainingBatteryTimeFixAvailable && (
+        <SettingsGroup title="Battery">
+          <SettingsRow>
+            <SteamExplainerToggleField
+              label="Remaining Battery Time Fix"
+              explainerTitle="Remaining Battery Time Fix"
+              explainer={REMAINING_BATTERY_TIME_FIX_EXPLAINER}
+              settingsDescription="Shows time to full or empty"
+              checked={settings.remainingBatteryTimeFixEnabled}
+              onChange={(value: boolean) => void handleRemainingBatteryTimeFixChange(value)}
+              disabled={savingRemainingBatteryTimeFix}
+            />
+          </SettingsRow>
+        </SettingsGroup>
       )}
-    </PanelSection>
+    </SettingsPanel>
   )
 }
 

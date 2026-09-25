@@ -10,7 +10,9 @@ BRIGHTNESS_DIAL_FIX_ENABLED_KEY = "brightnessDialFixEnabled"
 TRACKPAD_MODE_KEY = "trackpadMode"
 LEGACY_TRACKPADS_DISABLED_KEY = "trackpadsDisabled"
 ZOTAC_GLYPHS_ENABLED_KEY = "zotacGlyphsEnabled"
+HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY = "hideUnsupportedButtonsEnabled"
 REMAINING_BATTERY_TIME_FIX_ENABLED_KEY = "remainingBatteryTimeFixEnabled"
+LEGACY_LAYOUT_ENABLED_KEY = "legacyLayoutEnabled"
 RUMBLE_ENABLED_KEY = "rumbleEnabled"
 RUMBLE_INTENSITY_KEY = "rumbleIntensity"
 PER_GAME_SETTINGS_KEY = "perGameSettings"
@@ -23,12 +25,13 @@ PER_GAME_RUMBLE_INTENSITY_KEY = "rumbleIntensity"
 LEGACY_DISABLE_TRACKPADS_KEY = "disableTrackpads"
 M1_REMAP_TARGET_KEY = "m1RemapTarget"
 M2_REMAP_TARGET_KEY = "m2RemapTarget"
-DEFAULT_STARTUP_APPLY_ENABLED = False
 DEFAULT_HOME_BUTTON_ENABLED = False
 DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED = False
 DEFAULT_TRACKPAD_MODE = trackpad_modes.DEFAULT_TRACKPAD_MODE
 DEFAULT_ZOTAC_GLYPHS_ENABLED = False
+DEFAULT_HIDE_UNSUPPORTED_BUTTONS_ENABLED = False
 DEFAULT_REMAINING_BATTERY_TIME_FIX_ENABLED = False
+DEFAULT_LEGACY_LAYOUT_ENABLED = False
 DEFAULT_RUMBLE_ENABLED = False
 DEFAULT_RUMBLE_INTENSITY = 75
 DEFAULT_PER_GAME_REMAP_TARGET = "none"
@@ -197,22 +200,6 @@ def _normalize_per_game_settings_entry(entry, settings):
     }
 
 
-def get_startup_apply_enabled():
-    settings = _read_settings()
-    return bool(settings.get(STARTUP_APPLY_KEY, DEFAULT_STARTUP_APPLY_ENABLED))
-
-
-def set_startup_apply_enabled(enabled):
-    enabled = bool(enabled)
-    setting_file.read()
-    setting_file.setSetting(STARTUP_APPLY_KEY, enabled)
-    if not enabled:
-        setting_file.setSetting(HOME_BUTTON_ENABLED_KEY, False)
-        setting_file.setSetting(BRIGHTNESS_DIAL_FIX_ENABLED_KEY, False)
-    setting_file.commit()
-    return get_startup_apply_enabled()
-
-
 def get_home_button_enabled():
     settings = _read_settings()
     return bool(settings.get(HOME_BUTTON_ENABLED_KEY, DEFAULT_HOME_BUTTON_ENABLED))
@@ -266,6 +253,49 @@ def set_zotac_glyphs_enabled(enabled):
     return get_zotac_glyphs_enabled()
 
 
+def get_hide_unsupported_buttons_enabled():
+    settings = _read_settings()
+    return bool(
+        settings.get(
+            HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY,
+            DEFAULT_HIDE_UNSUPPORTED_BUTTONS_ENABLED,
+        )
+    )
+
+
+def set_hide_unsupported_buttons_enabled(enabled):
+    _write_setting(HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY, bool(enabled))
+    return get_hide_unsupported_buttons_enabled()
+
+
+def migrate_startup_apply_setting():
+    settings = _read_settings()
+    if STARTUP_APPLY_KEY not in settings:
+        return False
+
+    del setting_file.settings[STARTUP_APPLY_KEY]
+    setting_file.commit()
+    return True
+
+
+def migrate_hide_unsupported_buttons_setting():
+    settings = _read_settings()
+    if HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY in settings:
+        return bool(settings[HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY])
+
+    return bool(
+        _write_setting(
+            HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY,
+            bool(
+                settings.get(
+                    ZOTAC_GLYPHS_ENABLED_KEY,
+                    DEFAULT_ZOTAC_GLYPHS_ENABLED,
+                )
+            ),
+        )
+    )
+
+
 def get_remaining_battery_time_fix_enabled():
     settings = _read_settings()
     return bool(
@@ -279,6 +309,18 @@ def get_remaining_battery_time_fix_enabled():
 def set_remaining_battery_time_fix_enabled(enabled):
     _write_setting(REMAINING_BATTERY_TIME_FIX_ENABLED_KEY, bool(enabled))
     return get_remaining_battery_time_fix_enabled()
+
+
+def get_legacy_layout_enabled():
+    settings = _read_settings()
+    return bool(
+        settings.get(LEGACY_LAYOUT_ENABLED_KEY, DEFAULT_LEGACY_LAYOUT_ENABLED)
+    )
+
+
+def set_legacy_layout_enabled(enabled):
+    _write_setting(LEGACY_LAYOUT_ENABLED_KEY, bool(enabled))
+    return get_legacy_layout_enabled()
 
 
 def get_rumble_enabled():
@@ -362,6 +404,35 @@ def get_per_game_trackpad_mode(app_id):
     return trackpad_modes.normalize_trackpad_mode(
         entry.get(PER_GAME_TRACKPAD_MODE_KEY),
         legacy_disabled=bool(entry.get(LEGACY_DISABLE_TRACKPADS_KEY, False)),
+    )
+
+
+def get_effective_trackpad_mode(app_id=None):
+    global_mode = get_trackpad_mode()
+    normalized_app_id = str(app_id or "0")
+    if normalized_app_id == "0" or not get_per_game_settings_enabled(normalized_app_id):
+        return global_mode
+
+    return get_per_game_trackpad_mode(normalized_app_id)
+
+
+def is_startup_controller_runtime_required(app_id=None):
+    return bool(
+        get_home_button_enabled()
+        or get_brightness_dial_fix_enabled()
+        or get_effective_trackpad_mode(app_id) != trackpad_modes.TRACKPAD_MODE_DEFAULT
+    )
+
+
+def is_controller_runtime_required(app_id=None):
+    normalized_app_id = str(app_id or "0")
+    return bool(
+        is_startup_controller_runtime_required(normalized_app_id)
+        or (
+            normalized_app_id != "0"
+            and get_per_game_settings_enabled(normalized_app_id)
+            and get_button_prompt_fix_enabled(normalized_app_id)
+        )
     )
 
 

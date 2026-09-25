@@ -1,4 +1,5 @@
-import { ButtonItem, PanelSectionRow } from '@decky/ui'
+import { ButtonItem, type NotchLabel } from '@decky/ui'
+import { SettingsRow, useSettingsItemLayout } from '../SettingsSurface'
 import { SteamExplainerSliderField, SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
@@ -15,9 +16,13 @@ type Props = {
 }
 
 const RUMBLE_EXPLAINER =
-  'Enables controller vibration. Use Intensity below to adjust its strength and Test Rumble to preview it.'
+  "Lets DeckyZone set and periodically reapply the controller's vibration strength. Use Intensity to adjust it and Test Rumble to preview it. Turning this off stops DeckyZone from managing rumble gain."
 const RUMBLE_INTENSITY_EXPLAINER = 'Adjusts vibration strength. 75% is recommended; 100% is very strong.'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available'
+const RUMBLE_NOTCH_LABELS: NotchLabel[] = [
+  { notchIndex: 0, label: '0', value: 0 },
+  { notchIndex: 1, label: '100', value: 100 },
+]
 
 function getRumbleExplainer(rumbleAvailable: boolean) {
   return rumbleAvailable ? RUMBLE_EXPLAINER : `${RUMBLE_EXPLAINER} ${RUMBLE_UNAVAILABLE_MESSAGE}.`
@@ -35,21 +40,24 @@ const RumblePanel = ({
   onRumbleIntensityChange,
   onTestRumble,
 }: Props) => {
+  const itemLayout = useSettingsItemLayout()
+
   return (
     <>
-      <PanelSectionRow>
+      <SettingsRow>
         <SteamExplainerToggleField
-          label="Rumble Controls"
-          explainerTitle="Rumble Controls"
+          label="Custom Rumble Strength"
+          explainerTitle="Custom Rumble Strength"
           explainer={getRumbleExplainer(rumbleAvailable)}
+          settingsDescription={rumbleAvailable ? 'Lets DeckyZone manage vibration strength' : RUMBLE_UNAVAILABLE_MESSAGE}
           checked={rumbleEnabled}
           onChange={(value: boolean) => onRumbleToggleChange(value)}
           disabled={savingRumble}
         />
-      </PanelSectionRow>
+      </SettingsRow>
       {rumbleEnabled && (
         <>
-          <PanelSectionRow>
+          <SettingsRow>
             <SteamExplainerSliderField
               label="Intensity"
               explainerTitle="Rumble Intensity"
@@ -58,16 +66,18 @@ const RumblePanel = ({
               min={0}
               max={100}
               step={5}
-              notchTicksVisible
+              notchCount={2}
+              notchLabels={RUMBLE_NOTCH_LABELS}
+              notchTicksVisible={false}
               showValue
               resetValue={75}
               onChange={onRumbleIntensityChange}
               disabled={savingRumble || savingRumbleIntensity || !rumbleEnabled || !rumbleAvailable}
             />
-          </PanelSectionRow>
-          <PanelSectionRow>
+          </SettingsRow>
+          <SettingsRow>
             <ButtonItem
-              layout="below"
+              layout={itemLayout}
               onClick={() => onTestRumble()}
               disabled={
                 savingRumble ||
@@ -80,7 +90,7 @@ const RumblePanel = ({
             >
               {testingRumble ? 'Testing Rumble...' : 'Test Rumble'}
             </ButtonItem>
-          </PanelSectionRow>
+          </SettingsRow>
         </>
       )}
     </>

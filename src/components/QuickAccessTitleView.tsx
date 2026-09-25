@@ -1,7 +1,7 @@
-import { DialogButton, Focusable, quickAccessMenuClasses, showModal } from '@decky/ui'
+import { DialogButton, Focusable, quickAccessMenuClasses } from '@decky/ui'
 import type { CSSProperties } from 'react'
-import { FaInfoCircle } from 'react-icons/fa'
-import DebugInfoDialog from './DebugInfoDialog'
+import { FaCog } from 'react-icons/fa'
+import { openDeckyZoneSettings } from '../routes'
 
 const buttonStyle: CSSProperties = {
   height: '28px',
@@ -30,13 +30,11 @@ const QuickAccessTitleView = ({ title }: Props) => {
     >
       <div style={{ marginRight: 'auto' }}>{title}</div>
       <DialogButton
-        onOKActionDescription="Debug Info"
+        onOKActionDescription="DeckyZone Settings"
         style={buttonStyle}
-        onClick={() => {
-          showModal(<DebugInfoDialog />)
-        }}
+        onClick={openDeckyZoneSettings}
       >
-        <FaInfoCircle size="0.9em" />
+        <FaCog size="0.9em" />
       </DialogButton>
     </Focusable>
   )

@@ -1,6 +1,6 @@
-import { PanelSectionRow } from '@decky/ui'
 import { useEffect, useState } from 'react'
 import type { TrackpadMode } from '../../types/plugin'
+import { SettingsRow } from '../SettingsSurface'
 import { SteamExplainerDropdownItem } from '../SteamExplainer'
 
 type Props = {
@@ -35,6 +35,18 @@ function getTrackpadExplainer(inputplumberAvailable: boolean, controllerModeBloc
   return TRACKPAD_MODE_EXPLAINER
 }
 
+function getTrackpadDescription(inputplumberAvailable: boolean, controllerModeBlocked: boolean) {
+  if (!inputplumberAvailable) {
+    return INPUTPLUMBER_UNAVAILABLE_MESSAGE
+  }
+
+  if (controllerModeBlocked) {
+    return NO_GAMEPAD_MODE_MESSAGE
+  }
+
+  return 'Configures both trackpads'
+}
+
 const TrackpadPanel = ({
   inputplumberAvailable,
   controllerModeBlocked,
@@ -42,38 +54,34 @@ const TrackpadPanel = ({
   trackpadMode,
   onTrackpadModeChange,
 }: Props) => {
-  const [trackpadOptions] = useState<TrackpadModeOption[]>(() =>
-    TRACKPAD_MODE_OPTIONS.map((option) => ({ ...option }))
-  )
   const [trackpadModeValue, setTrackpadModeValue] = useState(trackpadMode)
-  const [selectedTrackpadOption, setSelectedTrackpadOption] = useState<TrackpadModeOption | undefined>(() =>
-    trackpadOptions.find((option) => option.data === trackpadMode)
-  )
 
   useEffect(() => {
     setTrackpadModeValue(trackpadMode)
-    setSelectedTrackpadOption(trackpadOptions.find((option) => option.data === trackpadMode))
-  }, [trackpadMode, trackpadOptions])
+  }, [trackpadMode])
+
+  const selectedTrackpadOption = TRACKPAD_MODE_OPTIONS.find((option) => option.data === trackpadModeValue)
 
   return (
-    <PanelSectionRow>
+    <SettingsRow>
       <SteamExplainerDropdownItem
-        key={`trackpad-mode:${trackpadModeValue}`}
+        controlled
+        layout="below"
         label="Trackpad Mode"
         menuLabel="Trackpad Mode"
         explainerTitle="Trackpad Mode"
         explainer={getTrackpadExplainer(inputplumberAvailable, controllerModeBlocked)}
-        rgOptions={trackpadOptions}
+        settingsDescription={getTrackpadDescription(inputplumberAvailable, controllerModeBlocked)}
+        rgOptions={TRACKPAD_MODE_OPTIONS}
         strDefaultLabel={selectedTrackpadOption?.label ?? 'Default'}
         selectedOption={selectedTrackpadOption?.data ?? trackpadModeValue}
         disabled={savingTrackpads || !inputplumberAvailable || controllerModeBlocked}
         onChange={(option: { data: TrackpadMode }) => {
           setTrackpadModeValue(option.data)
-          setSelectedTrackpadOption(trackpadOptions.find((item) => item.data === option.data))
           onTrackpadModeChange(option.data)
         }}
       />
-    </PanelSectionRow>
+    </SettingsRow>
   )
 }
 

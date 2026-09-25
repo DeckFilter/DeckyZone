@@ -1,23 +1,30 @@
-import { ButtonItem, ConfirmModal, Navigation, PanelSection, PanelSectionRow, Spinner, showModal } from '@decky/ui'
-import { useState } from 'react'
+import { callable } from '@decky/api'
+import { ButtonItem, ConfirmModal, Navigation, Spinner, showModal } from '@decky/ui'
+import { useEffect, useRef, useState } from 'react'
+import { openDeckyZoneSettings } from '../routes'
 import type { PluginResetResult } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
+import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
 
 type Props = {
   onResetPlugin: () => Promise<ResetPluginOutcome>
+  showOpenSettings?: boolean
+  showReinstallPlugin?: boolean
 }
 
 type ResetPluginConfirmModalProps = Props & {
   closeModal?: () => void
 }
 
-type ResetPluginOutcome = {
+export type ResetPluginOutcome = {
   result: PluginResetResult
   glyphCleanupFailed: boolean
 }
 
 const RESET_FAILED_NOTICE = 'Reset failed.'
 const RESET_COMPLETE_NOTICE = 'Plugin reset complete.'
+const REINSTALL_FAILED_NOTICE = 'Reinstall failed.'
+const otaUpdate = callable<[], boolean>('ota_update')
 
 const titleStyle = {
   display: 'flex',
@@ -105,12 +112,81 @@ const ResetPluginConfirmModal = ({
   )
 }
 
-const TroubleshootingPanel = ({ onResetPlugin }: Props) => {
+const TroubleshootingPanel = ({
+  onResetPlugin,
+  showOpenSettings = true,
+  showReinstallPlugin = false,
+}: Props) => {
+  const itemLayout = useSettingsItemLayout()
+  const [isReinstalling, setIsReinstalling] = useState(false)
+  const reinstallingRef = useRef(false)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
+
+  const handleReinstall = async () => {
+    if (reinstallingRef.current) {
+      return
+    }
+
+    reinstallingRef.current = true
+    setIsReinstalling(true)
+    try {
+      const success = await otaUpdate()
+      if (!success) {
+        showDeckyToast({
+          title: 'Troubleshooting',
+          body: REINSTALL_FAILED_NOTICE,
+          severity: 'error',
+        })
+      }
+    } catch {
+      showDeckyToast({
+        title: 'Troubleshooting',
+        body: REINSTALL_FAILED_NOTICE,
+        severity: 'error',
+      })
+    } finally {
+      reinstallingRef.current = false
+      if (isMountedRef.current) {
+        setIsReinstalling(false)
+      }
+    }
+  }
+
   return (
-    <PanelSection title="Troubleshooting">
-      <PanelSectionRow>
+    <SettingsSection title="Troubleshooting">
+      {showOpenSettings && (
+        <SettingsRow>
+          <ButtonItem
+            layout={itemLayout}
+            onClick={openDeckyZoneSettings}
+          >
+            Open Settings
+          </ButtonItem>
+        </SettingsRow>
+      )}
+      {showReinstallPlugin && (
+        <SettingsRow>
+          <ButtonItem
+            layout={itemLayout}
+            label="Reinstall Plugin"
+            disabled={isReinstalling}
+            onClick={() => void handleReinstall()}
+          >
+            {isReinstalling ? 'Reinstalling...' : 'Reinstall Plugin'}
+          </ButtonItem>
+        </SettingsRow>
+      )}
+      <SettingsRow>
         <ButtonItem
-          layout="below"
+          layout={itemLayout}
+          label="Reset Plugin"
           onClick={() => {
             showModal(
               <ResetPluginConfirmModal
@@ -121,8 +197,8 @@ const TroubleshootingPanel = ({ onResetPlugin }: Props) => {
         >
           Reset Plugin
         </ButtonItem>
-      </PanelSectionRow>
-    </PanelSection>
+      </SettingsRow>
+    </SettingsSection>
   )
 }
 
