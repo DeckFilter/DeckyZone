@@ -24,7 +24,7 @@ All compatibility fixes are opt-in and can be disabled at any time.
 
 ### Controller
 
-| Feature                               | SteamOS `main` | Bazzite | CachyOS |
+| Feature                               | SteamOS | Bazzite | CachyOS |
 | ------------------------------------- | -------------- | ------- | ------- |
 | Controller Mode status and recovery   | ✅             | ✅      | ✅      |
 | Home Button navigation                | ✅             | ✅      | ✅      |
@@ -50,11 +50,11 @@ Trackpad modes:
 
 ### Customization
 
-| Feature                    | SteamOS `main` | Bazzite | CachyOS |
+| Feature                    | SteamOS | Bazzite | CachyOS |
 | -------------------------- | -------------- | ------- | ------- |
 | Zotac Controller Artwork   | ✅             | ✅      | ✅      |
 | Hide Unsupported Controls  | ✅             | ✅      | ✅      |
-| Remaining Battery Time Fix | ❓             | —       | —       |
+| Remaining Battery Time Fix | ✅             | —       | —       |
 
 Zotac Controller Artwork replaces supported Steam controller previews, calibration images, and button glyphs with Zotac versions.
 
@@ -64,7 +64,7 @@ Remaining Battery Time Fix is available only on SteamOS. It passes UPower's char
 
 ### Display
 
-| Feature                   | SteamOS `main` | Bazzite | CachyOS |
+| Feature                   | SteamOS | Bazzite | CachyOS |
 | ------------------------- | -------------- | ------- | ------- |
 | Enable Zotac OLED Profile | Built in       | ✅      | ✅      |
 | Green Tint Compensation   | ✅             | ✅      | ✅      |
@@ -86,9 +86,9 @@ Green Tint Compensation only changes the Gamescope profile's white point. It doe
 
 ### Performance
 
-| Feature   | SteamOS `main` | Bazzite | CachyOS |
+| Feature   | SteamOS | Bazzite | CachyOS |
 | --------- | -------------- | ------- | ------- |
-| VRAM Size | ❓             | ✅      | ✅      |
+| VRAM Size | ✅             | ✅      | ✅      |
 
 VRAM Size sets the UMA framebuffer size (4-8GB, same range as the Zotac launcher on Windows). The Zone stores this setting in a CMOS byte that the BIOS reads at boot, so changes require a reboot to apply. The panel shows both the active size and the pending size until then. Resetting the BIOS (e.g. after full battery drain) reverts it to the 4GB default.
 
