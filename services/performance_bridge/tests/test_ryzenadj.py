@@ -188,6 +188,7 @@ def test_enabling_either_power_plugin_stops_before_power_write(
     assert inspect(environment)["decky_power_plugins"][plugin] == {
         "installed": True,
         "disabled_in_decky": True,
+        "coexistence_test": False,
     }
     loader.write_text('{"disabled_plugins": []}')
     with pytest.raises(Unavailable, match=f"Disable {plugin}"):
@@ -203,6 +204,52 @@ def test_unverifiable_plugin_state_blocks_ownership(environment, contents):
     (environment / "home/deck/homebrew/settings/loader.json").write_text(contents)
     with pytest.raises(Unavailable, match="Cannot verify disabled"):
         check_ownership(environment)
+
+
+def test_coexistence_override_allows_only_powercontrol(environment, monkeypatch):
+    from services.performance_bridge import ryzenadj
+
+    plugins = environment / "home/deck/homebrew/plugins"
+    (plugins / "PowerControl").mkdir(parents=True)
+    monkeypatch.setattr(ryzenadj, "powercontrol_coexistence_test", lambda root: True)
+    check_ownership(environment)
+    (plugins / "SimpleDeckyTDP").mkdir()
+    with pytest.raises(Unavailable, match="Disable SimpleDeckyTDP"):
+        check_ownership(environment)
+
+
+def test_removing_coexistence_override_blocks_next_write(environment, backend, monkeypatch):
+    from services.performance_bridge import ryzenadj
+
+    (environment / "home/deck/homebrew/plugins/PowerControl").mkdir(parents=True)
+    monkeypatch.setattr(ryzenadj, "powercontrol_coexistence_test", lambda root: True)
+    controller = Controller(backend, lambda: check_runtime(environment))
+    monkeypatch.setattr(ryzenadj, "powercontrol_coexistence_test", lambda root: False)
+    with pytest.raises(Unavailable, match="Disable PowerControl"):
+        controller.change(watts=12)
+    assert not backend.calls
+
+
+@pytest.mark.parametrize("owner,mode,contents,allowed", [
+    (0, 0o100600, "allow-powercontrol-for-testing\n", True),
+    (1000, 0o100600, "allow-powercontrol-for-testing\n", False),
+    (0, 0o100666, "allow-powercontrol-for-testing\n", False),
+    (0, 0o120777, "allow-powercontrol-for-testing\n", False),
+    (0, 0o100600, "true\n", False),
+])
+def test_coexistence_marker_requires_explicit_root_opt_in(
+    tmp_path, monkeypatch, owner, mode, contents, allowed
+):
+    from services.performance_bridge import ryzenadj
+
+    marker = tmp_path / ryzenadj.POWERCONTROL_TEST_MARKER
+    marker.parent.mkdir()
+    marker.write_text(contents)
+    original = Path.lstat
+    monkeypatch.setattr(Path, "lstat", lambda path: (
+        SimpleNamespace(st_uid=owner, st_mode=mode) if path == marker else original(path)
+    ))
+    assert ryzenadj.powercontrol_coexistence_test(tmp_path) is allowed
 
 
 @pytest.mark.parametrize("enabled", (True, False))
