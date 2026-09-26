@@ -8,7 +8,7 @@ import { SettingsRow } from './SettingsSurface'
 const getStatus = callable<[], NativePerformanceState>('get_native_performance_status')
 const setEnabled = callable<[boolean], NativePerformanceResult>('set_native_performance_enabled')
 const EXPLAINER =
-  "Enables performance profiles and the TDP slider in Steam's Performance menu. The slider is available in Custom. PowerControl and SimpleDeckyTDP must be disabled in Decky settings. The switch also controls startup at boot; the status below shows whether the bridge is running or blocked. Turning it off keeps the last applied power limits. Fan settings and CPU boost are unchanged."
+  "Enables performance profiles and the TDP slider in Steam's Performance menu. The slider is available in Custom. Disable PowerControl and SimpleDeckyTDP in Decky settings first; their own TDP switches are not enough. Enabling either plugin later automatically turns native controls off, including startup at boot. After disabling those plugins, turn native controls back on here. Turning native controls off keeps the last applied power limits. Fan settings and CPU boost are unchanged."
 
 const NativePerformanceControl = () => {
   const [state, setState] = useState<NativePerformanceState | null>(null)
@@ -17,6 +17,7 @@ const NativePerformanceControl = () => {
   const savingRef = useRef(false)
   const revision = useRef(0)
   const mounted = useRef(false)
+  const conflicts = state?.conflictingPlugins ?? []
 
   useEffect(() => {
     mounted.current = true
@@ -50,7 +51,7 @@ const NativePerformanceControl = () => {
   } : null)
 
   const change = async (enabled: boolean) => {
-    if (!state || savingRef.current || (enabled && !state.available)) return
+    if (!state || savingRef.current || (enabled && (!state.available || conflicts.length > 0))) return
     savingRef.current = true
     revision.current++ // Invalidate a status read started before this transaction.
     setSaving(true)
@@ -82,11 +83,13 @@ const NativePerformanceControl = () => {
     ? 'Applying change…'
     : !state
       ? 'Checking availability…'
-      : state.blockedReason
-        ? `${state.enabled && !state.active ? 'Stopped: ' : ''}${state.blockedReason}`
-        : state.active
-          ? "Use Steam's Performance menu"
-          : "Adds profiles and TDP control to Steam's Performance menu"
+      : conflicts.length > 0
+        ? `Disable ${conflicts.join(' and ')} in Decky settings`
+        : state.blockedReason
+          ? `${state.enabled && !state.active ? 'Stopped: ' : ''}${state.blockedReason}`
+          : state.active
+            ? "Use Steam's Performance menu"
+            : "Adds profiles and TDP control to Steam's Performance menu"
 
   return (
     <SettingsRow>
@@ -97,7 +100,7 @@ const NativePerformanceControl = () => {
         checked={state?.enabled ?? false}
         description={description}
         onChange={(value: boolean) => void change(value)}
-        disabled={saving || !state || !state.installed || (!state.enabled && !state.available)}
+        disabled={saving || !state || !state.installed || conflicts.length > 0 || (!state.enabled && !state.available)}
       />
     </SettingsRow>
   )

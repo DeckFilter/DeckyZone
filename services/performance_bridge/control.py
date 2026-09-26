@@ -9,6 +9,7 @@ import subprocess
 
 from .install import INSTALL, SERVICE, UNIT
 from .probe import inspect
+from .ryzenadj import active_power_plugins
 from .sysfs import Unavailable
 
 
@@ -52,6 +53,8 @@ def status():
         "active": active if owned else False,
         "available": bool(owned and report["available"]),
         "blockedReason": reason,
+        "conflictingPlugins": active_power_plugins(report["decky_power_plugins"])
+        if report and report.get("decky_power_plugins") else [],
     }
 
 
