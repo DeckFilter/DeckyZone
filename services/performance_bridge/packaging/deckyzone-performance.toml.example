@@ -1,0 +1,9 @@
+# /etc/steamos-manager/remotes.d/deckyzone-performance.toml.
+# install.py pairs this with --device-config overrides for both manager services.
+[PerformanceProfile1]
+bus_name = "com.deckyzone.PerformanceProfile1"
+object_path = "/com/deckyzone/Performance"
+
+[TdpLimit1]
+bus_name = "com.deckyzone.TdpLimit1"
+object_path = "/com/deckyzone/Performance"

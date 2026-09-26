@@ -1,0 +1,22 @@
+<!-- Review template for /etc/dbus-1/system.d/com.deckyzone.Performance.conf.
+     The session manager runs as deck on the inspected SteamOS installation. -->
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <policy context="default">
+    <deny own="com.deckyzone.PerformanceProfile1"/>
+    <deny own="com.deckyzone.TdpLimit1"/>
+    <deny send_destination="com.deckyzone.PerformanceProfile1"/>
+    <deny send_destination="com.deckyzone.TdpLimit1"/>
+  </policy>
+  <policy user="root">
+    <allow own="com.deckyzone.PerformanceProfile1"/>
+    <allow own="com.deckyzone.TdpLimit1"/>
+    <allow send_destination="com.deckyzone.PerformanceProfile1"/>
+    <allow send_destination="com.deckyzone.TdpLimit1"/>
+  </policy>
+  <policy user="deck">
+    <allow send_destination="com.deckyzone.PerformanceProfile1"/>
+    <allow send_destination="com.deckyzone.TdpLimit1"/>
+  </policy>
+</busconfig>
