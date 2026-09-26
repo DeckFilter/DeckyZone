@@ -38,6 +38,7 @@ import {
 import type { ActiveGame, InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult, PluginSettings, PluginStatus, ReleaseTarget, UpdateChannel } from "./types/plugin"
 import { checkLatestVersion, compareVersions, isValidVersion, resetStartupCheck } from './utils/pluginUpdates'
 import { showDeckyToast } from './utils/toasts'
+import { startNativePerformanceRuntime } from './nativePerformanceRuntime'
 
 type BrightnessDialDirection = 'up' | 'down'
 type ActiveGameChangedHandler = (newGame: ActiveGame | null, oldGame: ActiveGame | null) => void
@@ -672,6 +673,7 @@ export default definePlugin(() => {
   notifiedUpdateVersion = null
   const currentUpdateNoticeGeneration = updateNoticeGeneration
   const bootstrap = startBootstrap()
+  const stopNativePerformanceRuntime = startNativePerformanceRuntime()
   startUpdateNoticeAfterBootstrap(bootstrap, currentUpdateNoticeGeneration)
   void refreshStateAfterBootstrap(bootstrap)
   const unregisterHomeNavigationListener = addEventListener('zotac_home_short_pressed', () => {
@@ -704,6 +706,7 @@ export default definePlugin(() => {
     ),
     icon: <ZotacIcon />,
     onDismount() {
+      stopNativePerformanceRuntime()
       routerHook.removeRoute(DECKYZONE_ROUTE)
       routerHook.removeRoute(mappingRoute)
       updateNoticeGeneration += 1
