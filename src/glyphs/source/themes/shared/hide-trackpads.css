@@ -1,8 +1,10 @@
 /* Hide Steam Input controls for trackpads that Steam cannot configure on the Zotac Zone. */
+._1KA4m3xP2X5TGmO81UKYgL._3VNmumSYGqP4vaMVWVj5lb,
 ._1KA4m3xP2X5TGmO81UKYgL._2_6CQKwvdpOgxSb5zw-ulr,
 ._1KA4m3xP2X5TGmO81UKYgL.sn6dZLiytS9JRqLcrRgdl,
 [role="tab"][id$="/controllerconfigurator/touchpads"] {
     @container style(--hiding-enabled: 1) {
+        --deckyzone-unsupported-control: 1;
         display: none;
     }
 }
