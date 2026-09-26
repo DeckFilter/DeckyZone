@@ -26,6 +26,19 @@ curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh |
 
 Check for updates in **General > Software Updates**, or read the [release notes](https://github.com/DeckFilter/DeckyZone/releases). **Update Channel**, under **Beta Participation**, defaults to **Stable**. Choose **Pre-release** to try preview builds. Switching back offers the stable version and keeps saved settings.
 
+## Native performance controls
+
+An opt-in [native performance provider](services/performance_bridge/README.md)
+has been tested on the ZONE G0A1W with BIOS 1.20 and SteamOS Manager 26.4.1-2.
+It adds four profiles and an 8–28 W Custom slider to Steam's native Performance
+QAM through Manager's remote interfaces. It uses a validated RyzenAdj fallback
+because this BIOS exposes no kernel power attributes. Installation is separate
+from the Decky plugin. Installation and runtime checks require SteamOS and that
+exact Manager package. Enabled PowerControl or SimpleDeckyTDP blocks the bridge;
+other TDP writers must remain disabled too.
+Once the bridge is installed, **Performance → Native Performance Controls**
+controls its service and startup at boot, and shows compatibility/conflict blockers.
+
 ## Compatibility and troubleshooting
 
 I test and develop DeckyZone on SteamOS. Bazzite and CachyOS compatibility is based on user reports.
