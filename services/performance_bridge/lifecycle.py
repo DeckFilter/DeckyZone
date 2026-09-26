@@ -11,6 +11,30 @@ import pwd
 import socket
 import subprocess
 
+from .ryzenadj import active_power_plugins, power_plugin_status
+from .sysfs import Unavailable
+
+
+def disable_after_conflict():
+    """ExecStopPost: keep a detected Decky conflict off across service starts.
+
+    Do not use --now here: this service is already stopping and waiting for its
+    own stop job would deadlock. Disabling is handled by the system manager,
+    outside this process's read-only filesystem sandbox.
+    """
+    try:
+        active = active_power_plugins(power_plugin_status())
+    except (OSError, ValueError, Unavailable) as error:
+        print(f"Cannot check Decky conflict after stop: {error}")
+        return
+    if not active:
+        return
+    subprocess.run(
+        ["/usr/bin/systemctl", "disable", "deckyzone-performance.service"],
+        text=True, capture_output=True, check=True, timeout=5,
+    )
+    print(f"Disabled native performance controls: {' and '.join(active)} active.")
+
 
 def manager_accepts_reconnect(user_options=None):
     """Never reconnect while either service manager is stopping or unavailable."""
@@ -88,4 +112,9 @@ def reconnect_manager():
 
 
 if __name__ == "__main__":
-    reconnect_manager()
+    # systemd sets SERVICE_RESULT for ExecStopPost, not ExecStartPost.
+    try:
+        if "SERVICE_RESULT" in os.environ:
+            disable_after_conflict()
+    finally:
+        reconnect_manager()

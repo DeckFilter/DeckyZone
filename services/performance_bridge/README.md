@@ -59,17 +59,12 @@ that plugin is disabled later. This is conflict avoidance, not fan-only coexiste
 an arbitrary external root process from writing limits between checks, and the
 blocked metrics table prevents detecting every external hardware change.
 
-For an explicitly supervised coexistence experiment only, a regular root-owned
-file `/run/deckyzone-powercontrol-coexistence-test`, not writable by group or
-others, containing exactly `allow-powercontrol-for-testing` followed by a newline
-bypasses the **PowerControl enabled-plugin check only**. The diagnostic marks
-PowerControl with `coexistence_test: true`. SimpleDeckyTDP and competing-process
-checks still apply. This does not change PowerControl, make it fan-only, or
-prevent its QAM patches and game profiles from overriding native settings.
-Remove the file to restore the normal guard, or reboot: `/run` is temporary.
-If PowerControl is still enabled when the file is removed, the running bridge
-withdraws on its next ownership check. After reboot it remains blocked until
-PowerControl is disabled or a new supervised experiment is explicitly enabled.
+Detecting PowerControl or SimpleDeckyTDP also disables bridge startup at boot.
+The Performance toggle becomes unavailable and names the active plugin. This
+works while the DeckyZone panel is closed. Installing a plugin that stays disabled
+in Decky does not block the bridge. After disabling the competing plugin, enable
+native controls again explicitly. The former temporary PowerControl coexistence
+marker is no longer accepted.
 
 A failure stops the command sequence, withdraws the provider, and requires
 manual inspection. There is no automatic service restart, write retry, or
@@ -105,8 +100,9 @@ This is separate from the Decky plugin lifecycle. It is not automatically
 installed by a normal DeckyZone update. Once installed, **DeckyZone → Performance
 → Native Performance Controls** enables or disables the service and its startup
 at boot. The status text distinguishes a running bridge from a stopped or blocked
-one; the switch represents the startup setting. A blocked bridge can still be
-turned off. Activation rechecks compatibility and ownership in the backend.
+one; the switch represents the startup setting. Active PowerControl or
+SimpleDeckyTDP disables the switch and automatically turns the bridge off.
+Activation rechecks compatibility and ownership in the backend.
 Disabling preserves the saved profiles and last applied limits, and leaves
 PowerControl's settings alone. The control refreshes its status every five
 seconds while its panel is mounted. Missing or older bridge installations show

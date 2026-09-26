@@ -15,6 +15,7 @@ def unavailable(reason):
         "active": False,
         "available": False,
         "blockedReason": reason,
+        "conflictingPlugins": [],
     }
 
 

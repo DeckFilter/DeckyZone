@@ -1,5 +1,9 @@
 # PowerControl coexistence experiment, 26 September 2026
 
+The temporary bypass described below was subsequently removed. The user chose
+automatic conflict shutdown for active PowerControl and SimpleDeckyTDP; see the
+[follow-up compatibility test](power-plugin-compatibility-2026-09-26.md).
+
 The user requested a test with their existing PowerControl running alongside the
 native performance bridge. A separate modified fan-only build was considered
 and discarded before deployment at the user's direction. PowerControl's code

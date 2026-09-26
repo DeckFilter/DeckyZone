@@ -102,6 +102,10 @@ exact Manager package. Enabled PowerControl or SimpleDeckyTDP blocks the bridge;
 other TDP writers must remain disabled too.
 Once the bridge is installed, **Performance → Native Performance Controls**
 controls its service and startup at boot, and shows compatibility/conflict blockers.
+If PowerControl or SimpleDeckyTDP is enabled later, native controls turn off
+automatically and the toggle explains the conflict. Disable the other plugin
+in Decky settings, then turn native controls back on. Installed but disabled
+plugins do not block it.
 
 ## Compatibility Notes
 
