@@ -9,6 +9,7 @@ export type NativePerformanceState = {
   active: boolean
   available: boolean
   blockedReason: string | null
+  conflictingPlugins?: string[]
 }
 
 export type NativePerformanceResult = {
