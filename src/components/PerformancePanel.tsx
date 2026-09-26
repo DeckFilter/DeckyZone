@@ -6,6 +6,7 @@ import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
 import { SteamExplainerDropdownItem, SteamExplainerToggleField } from './SteamExplainer'
+import NativePerformanceControl from './NativePerformanceControl'
 import {
   SettingsGroup,
   SettingsPanel,
@@ -216,6 +217,7 @@ const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: P
     <SettingsPanel title="Performance">
       <SettingsGroup>
         {surface === 'settings' && settingsLeadingRows}
+        <NativePerformanceControl />
         <SettingsRow>
           <SteamExplainerDropdownItem
             controlled

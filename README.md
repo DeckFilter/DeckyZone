@@ -98,6 +98,17 @@ Green Tint Compensation adjusts the OLED profile's white point. It may not corre
 
 VRAM Size reserves 4 to 8 GB of system memory for the integrated GPU, matching the range in the Zotac launcher on Windows. Higher values leave less memory for games and SteamOS. Changes take effect after a reboot; until then, the panel shows the active and pending sizes. A BIOS reset, which can happen after a full battery drain, restores the 4 GB default.
 
+An opt-in [native performance provider](services/performance_bridge/README.md)
+has been tested on the ZONE G0A1W with BIOS 1.20 and SteamOS Manager 26.4.1-2.
+It adds four profiles and an 8–28 W Custom slider to Steam's native Performance
+QAM through Manager's remote interfaces. It uses a validated RyzenAdj fallback
+because this BIOS exposes no kernel power attributes. Installation is separate
+from the Decky plugin. Installation and runtime checks require SteamOS and that
+exact Manager package. Enabled PowerControl or SimpleDeckyTDP blocks the bridge;
+other TDP writers must remain disabled too.
+Once the bridge is installed, **Performance → Native Performance Controls**
+controls its service and startup at boot, and shows compatibility/conflict blockers.
+
 ## Compatibility notes
 
 If controller settings stop responding, use **Troubleshooting > Reapply Controller Profile** to reload dials, trackpads and Home, including active game overrides. This keeps saved settings and also works with untouched defaults. Controller input may pause briefly while the profile is reapplied.
