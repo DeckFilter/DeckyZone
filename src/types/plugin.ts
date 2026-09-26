@@ -3,6 +3,20 @@ export type PluginStatus = {
   message: string
 }
 
+export type NativePerformanceState = {
+  installed: boolean
+  enabled: boolean
+  active: boolean
+  available: boolean
+  blockedReason: string | null
+}
+
+export type NativePerformanceResult = {
+  ok: boolean
+  state: NativePerformanceState | null
+  error?: string
+}
+
 export type ControllerMode = 'gamepad' | 'desktop'
 export type TrackpadMode = 'default' | 'disabled' | 'directional_buttons'
 

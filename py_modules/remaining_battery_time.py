@@ -749,7 +749,25 @@ class RemainingBatteryTimeController:
         self.task = asyncio.create_task(self._run())
         return True
 
-    async def stop(self):
+    async def stop(self, timeout=None):
+        if timeout is not None:
+            # Decky kills plugins after five seconds. Leave time for the other
+            # unload steps even if an in-flight poll does not cancel promptly.
+            self.running = False
+            stopping = asyncio.create_task(self.stop())
+            try:
+                done, _ = await asyncio.wait({stopping}, timeout=timeout)
+                if not done:
+                    raise TimeoutError(
+                        "Remaining battery monitor did not stop within "
+                        f"{timeout:.1f}s; continuing plugin unload."
+                    )
+                return stopping.result()
+            finally:
+                if not stopping.done():
+                    # Do not await it again: cancellation must not defeat the
+                    # unload deadline when a worker is slow to stop.
+                    stopping.cancel()
         async with self.lifecycle_lock:
             return await self._stop_locked()
 

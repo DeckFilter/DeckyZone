@@ -1,0 +1,32 @@
+[Unit]
+Description=DeckyZone native Steam performance provider
+After=dbus.service plugin_loader.service
+Requires=dbus.service
+ConditionPathExists=/etc/deckyzone/performance-enabled
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=root
+WorkingDirectory=/var/lib/deckyzone-performance
+Environment=PYTHONPATH=/var/lib/deckyzone-performance/vendor
+ExecStart=/usr/bin/python3 -m services.performance_bridge serve --enable
+# Only the session reconnect helpers need to drop UID outside the hardware
+# process sandbox. The main provider keeps all restrictions below.
+ExecStartPost=+/usr/bin/python3 -m services.performance_bridge.lifecycle
+ExecStopPost=-+/usr/bin/python3 -m services.performance_bridge.lifecycle
+TimeoutStartSec=40
+TimeoutStopSec=40
+# An uncertain/partial hardware update must not be retried automatically.
+Restart=no
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/lib/deckyzone-performance /sys/devices/pci0000:00/0000:00:00.0/config
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
