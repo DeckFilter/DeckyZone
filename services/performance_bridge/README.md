@@ -59,6 +59,18 @@ that plugin is disabled later. This is conflict avoidance, not fan-only coexiste
 an arbitrary external root process from writing limits between checks, and the
 blocked metrics table prevents detecting every external hardware change.
 
+For an explicitly supervised coexistence experiment only, a regular root-owned
+file `/run/deckyzone-powercontrol-coexistence-test`, not writable by group or
+others, containing exactly `allow-powercontrol-for-testing` followed by a newline
+bypasses the **PowerControl enabled-plugin check only**. The diagnostic marks
+PowerControl with `coexistence_test: true`. SimpleDeckyTDP and competing-process
+checks still apply. This does not change PowerControl, make it fan-only, or
+prevent its QAM patches and game profiles from overriding native settings.
+Remove the file to restore the normal guard, or reboot: `/run` is temporary.
+If PowerControl is still enabled when the file is removed, the running bridge
+withdraws on its next ownership check. After reboot it remains blocked until
+PowerControl is disabled or a new supervised experiment is explicitly enabled.
+
 A failure stops the command sequence, withdraws the provider, and requires
 manual inspection. There is no automatic service restart, write retry, or
 hardware rollback after partial application. The last complete selection and
@@ -73,10 +85,19 @@ reconnect when the system or user session is stopping or unavailable, including
 system shutdown. Normal running, degraded, and starting sessions remain eligible.
 
 Steam's native TDP enable switch retains its normal meaning: disabling it while
-in Custom can request the maximum, 28 W. Steam can also reapply its saved slider
-value on return to Custom. The bridge does not implement its own per-game
-profile system; per-game persistence of these native SteamOS settings has not
-been established.
+in Custom can request the maximum, 28 W. Steam applies its saved TDP before its
+saved profile during game transitions. When leaving a preset, the TDP interface
+is still absent and that first request does not reach the bridge. DeckyZone's
+frontend listens to native settings and capability changes, then replays the
+current native TDP setting once Custom is available and this bridge is active.
+It uses Steam's own setting setter, keeps the TDP-off choice intact, and cancels
+stale work when settings change or the plugin unloads. Readiness checks are
+bounded; failed writes are not retried. Ordinary slider updates and external
+hardware changes do not trigger replays.
+
+Steam still owns per-game persistence. Automatic restoration across a preset to
+Custom transition requires DeckyZone's frontend to be loaded; the standalone
+provider does not read Steam's profile files or maintain a separate game database.
 
 ## Installation and removal
 
