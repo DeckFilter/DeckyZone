@@ -18,7 +18,9 @@ import firmware_info
 import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_device_profile
 import inputplumber_target_sync
+import native_performance
 import os_release
+import plugin_lifecycle
 import plugin_update
 import plugin_settings
 import remaining_battery_time
@@ -3621,8 +3623,8 @@ class DeckyZoneService:
             retry_on_error=retry_on_error,
         )
 
-    async def stop_remaining_battery_time_bridge(self):
-        changed = await self.remaining_battery_time_controller.stop()
+    async def stop_remaining_battery_time_bridge(self, timeout=None):
+        changed = await self.remaining_battery_time_controller.stop(timeout=timeout)
         return self._cleanup_step_result(changed=changed)
 
     async def set_remaining_battery_time_fix_enabled(self, enabled):
@@ -4277,7 +4279,7 @@ class DeckyZoneService:
         await self._run_cleanup_step(
             steps,
             "stopRemainingBatteryTimeBridge",
-            self.stop_remaining_battery_time_bridge,
+            lambda: self.stop_remaining_battery_time_bridge(timeout=1.0),
         )
         await self._run_cleanup_step(
             steps,
@@ -4504,6 +4506,12 @@ class Plugin:
     async def get_settings(self):
         return self.service.get_settings()
 
+    async def get_native_performance_status(self):
+        return await asyncio.to_thread(native_performance.get_status)
+
+    async def set_native_performance_enabled(self, enabled):
+        return await asyncio.to_thread(native_performance.set_enabled, enabled)
+
     async def get_debug_info(self):
         return self.service.get_debug_info()
 
@@ -4665,6 +4673,8 @@ class Plugin:
 
     async def _unload(self):
         decky.logger.info("DeckyZone stopping")
+        stopped = plugin_lifecycle.stop_method_listeners()
+        decky.logger.info(f"Stopped {stopped} Decky method listener(s) before cleanup")
         steps = []
         startup_step = await self._run_cleanup_step(
             steps,
