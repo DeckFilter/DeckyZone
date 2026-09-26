@@ -1,5 +1,6 @@
 :root {
     --controller-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller.svg");
+    --controller-launch-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller-launch.svg");
     --controller-left-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller-left.png");
     --controller-right-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller-right.png");
 

@@ -56,7 +56,7 @@ Trackpad modes:
 | Hide Unsupported Controls  | ✅             | ✅      | ✅      |
 | Remaining Battery Time Fix | ✅             | —       | —       |
 
-Zotac Controller Artwork replaces supported Steam controller previews, calibration images, and button glyphs with Zotac versions.
+Zotac Controller Artwork replaces supported Steam controller previews, the game launch animation, calibration images, and button glyphs with Zotac versions.
 
 Hide Unsupported Controls removes the unused L5 and R5 controls and Steam Input trackpad settings that do not work with the Zotac Zone. The physical trackpads remain available through DeckyZone's Trackpad Mode setting. Existing installations inherit the previous controller-artwork behavior when this separate setting is first added.
 

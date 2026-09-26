@@ -20,7 +20,7 @@ const setHideUnsupportedButtonsEnabled = callable<[boolean], PluginSettings>(
   "set_hide_unsupported_buttons_enabled",
 )
 const ZOTAC_CONTROLLER_ARTWORK_EXPLAINER =
-  "Replaces supported Steam controller previews, calibration images, and button glyphs with Zotac versions."
+  "Replaces supported Steam controller previews, the game launch animation, calibration images, and button glyphs with Zotac versions."
 const HIDE_UNSUPPORTED_BUTTONS_EXPLAINER =
   "Hides the L5 and R5 controls and Steam Input trackpad settings that do not work on the Zotac Zone. The Zone's trackpads remain available through DeckyZone's Trackpad Mode setting."
 const CUSTOMIZATION_UPDATE_FAILED_NOTICE = "Couldn't update setting."

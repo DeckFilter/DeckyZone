@@ -13,6 +13,7 @@ const THEME_ASSET_PREFIX = "/__deckyzone_glyph_assets__/";
 const glyphCssFiles = [
   "themes/zotac/zone.css",
   "themes/shared/controller-image.css",
+  "themes/shared/controller-launch.css",
   "themes/shared/face-buttons.css",
   "themes/shared/shoulder-buttons.css",
   "themes/shared/l4-r4.css",

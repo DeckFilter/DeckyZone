@@ -1,0 +1,9 @@
+/* Steam's game-launch interstitial renders LegionGoS with this class. Keep
+   its sizing and surrounding transition while using the Zone's animated SVG. */
+svg._3BgZj3ZAXTDRBFr4x80Xfi {
+    background: var(--controller-launch-image) center / contain no-repeat;
+}
+
+svg._3BgZj3ZAXTDRBFr4x80Xfi > * {
+    visibility: hidden;
+}
