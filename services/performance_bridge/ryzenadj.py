@@ -10,7 +10,6 @@ import json
 import logging
 import os
 from pathlib import Path
-import stat
 import subprocess
 import time
 
@@ -22,22 +21,6 @@ BINARY_SHA256 = "486634df3ff94224041cd082f56f13030daecf022cda7bf5eec26e888d5e80d
 PRESETS = {"low-power": 8, "balanced": 15, "performance": 28}
 INSTALL = Path("/var/lib/deckyzone-performance")
 POWER_PLUGINS = ("PowerControl", "SimpleDeckyTDP")
-POWERCONTROL_TEST_MARKER = "run/deckyzone-powercontrol-coexistence-test"
-
-
-def powercontrol_coexistence_test(root=Path("/")):
-    """Explicit, root-owned opt-in for one boot; not a fan-only guarantee."""
-    marker = root / POWERCONTROL_TEST_MARKER
-    try:
-        info = marker.lstat()
-        return (
-            stat.S_ISREG(info.st_mode)
-            and info.st_uid == 0
-            and not info.st_mode & 0o022
-            and marker.read_text() == "allow-powercontrol-for-testing\n"
-        )
-    except (OSError, UnicodeError):
-        return False
 
 
 def check_device(root=Path("/")):
@@ -65,24 +48,22 @@ def power_plugin_status(root=Path("/")):
         name: {
             "installed": (root / "home/deck/homebrew/plugins" / name).exists(),
             "disabled_in_decky": name in disabled,
-            "coexistence_test": (
-                name == "PowerControl" and powercontrol_coexistence_test(root)
-            ),
         }
         for name in POWER_PLUGINS
     }
 
 
+def active_power_plugins(states):
+    return [
+        name for name, state in states.items()
+        if state["installed"] and not state["disabled_in_decky"]
+    ]
+
+
 def check_ownership(root=Path("/")):
-    for name, state in power_plugin_status(root).items():
-        if (
-            state["installed"]
-            and not state["disabled_in_decky"]
-            and not state["coexistence_test"]
-        ):
-            raise Unavailable(
-                f"Disable {name} before using native performance controls"
-            )
+    active = active_power_plugins(power_plugin_status(root))
+    if active:
+        raise Unavailable(f"Disable {' and '.join(active)} in Decky settings")
     for path in (root / "proc").glob("[0-9]*/comm"):
         try:
             name = path.read_text().strip()
