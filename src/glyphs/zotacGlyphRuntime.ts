@@ -3,6 +3,8 @@ import {
   ZOTAC_GLYPH_CSS,
   ZOTAC_UNSUPPORTED_BUTTONS_CSS,
 } from "./generated/zotacGlyphCss"
+import { syncUnsupportedControlsRuntime } from "./unsupportedControlsRuntime"
+import { syncLaunchAnimationRuntime } from "./launch/launchAnimationRuntime"
 
 const RECONCILE_INTERVAL_MS = 3000
 const TAB_OPERATION_TIMEOUT_MS = 1500
@@ -17,6 +19,7 @@ type CssFeatureOptions = {
   activeMarker: string
   css: string
   label: string
+  syncRuntime?: (enabled: boolean) => void
 }
 
 function withTabOperationTimeout<T>(value: PromiseLike<T> | T, tabName: string, action: string) {
@@ -67,7 +70,7 @@ async function resolveZotacUiTargetTabs() {
   }
 }
 
-function createCssFeatureRuntime({ activeMarker, css, label }: CssFeatureOptions) {
+function createCssFeatureRuntime({ activeMarker, css, label, syncRuntime }: CssFeatureOptions) {
   const activeCheckCode = `(() => window.getComputedStyle(document.documentElement).getPropertyValue('${activeMarker}').trim())()`
   const injectedCssIdsByTab = new Map<string, string>()
   let desiredEnabled = false
@@ -157,6 +160,9 @@ function createCssFeatureRuntime({ activeMarker, css, label }: CssFeatureOptions
       return
     }
 
+    // Retry if Steam's navigation trees were not ready when the setting loaded.
+    syncRuntime?.(true)
+
     const requestedGeneration = generation
     const targetTabs = await resolveZotacUiTargetTabs()
     let appliedToAtLeastOneTab = false
@@ -223,6 +229,7 @@ function createCssFeatureRuntime({ activeMarker, css, label }: CssFeatureOptions
       generation += 1
     }
     desiredEnabled = enabled
+    syncRuntime?.(enabled)
   }
 
   function syncStoredEnabled(enabled: boolean) {
@@ -264,12 +271,14 @@ const zotacGlyphsRuntime = createCssFeatureRuntime({
   activeMarker: "--deckyzone-zotac-glyphs-active",
   css: ZOTAC_GLYPH_CSS,
   label: "Zotac controller artwork",
+  syncRuntime: syncLaunchAnimationRuntime,
 })
 
 const unsupportedButtonsRuntime = createCssFeatureRuntime({
   activeMarker: "--deckyzone-hide-unsupported-buttons-active",
   css: ZOTAC_UNSUPPORTED_BUTTONS_CSS,
   label: "unsupported button hiding",
+  syncRuntime: syncUnsupportedControlsRuntime,
 })
 
 export function syncStoredZotacGlyphsRuntimeEnabled(enabled: boolean) {

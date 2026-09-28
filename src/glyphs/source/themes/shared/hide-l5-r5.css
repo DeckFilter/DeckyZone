@@ -8,6 +8,7 @@
 ._1KA4m3xP2X5TGmO81UKYgL._30sIRI3p5gOFrdUD9wUeW2:has(img[src="/steaminputglyphs/hp_m1.svg"]),
 ._1KA4m3xP2X5TGmO81UKYgL._2VVUWQlnM4AYMoylu5Ajr:has(img[src="/steaminputglyphs/hp_m2.svg"]) {
     @container style(--hiding-enabled: 1) {
+        --deckyzone-unsupported-control: 1;
         display: none;
     }
 }
@@ -27,6 +28,7 @@ div[id*="EControllerModeInput ( 55 )-binding-"]:has(img[src="/steaminputglyphs/p
 div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/ps_rb.svg"]),
 div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/ps_rb.svg"]) * {
     @container style(--hiding-enabled: 1) {
+        --deckyzone-unsupported-control: 1;
         display: none;
     }
 }
@@ -46,6 +48,7 @@ div[id*="EControllerModeInput ( 55 )-binding-"]:has(img[src="/steaminputglyphs/x
 div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/xbox_p2.svg"]),
 div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/xbox_p2.svg"]) * {
     @container style(--hiding-enabled: 1) {
+        --deckyzone-unsupported-control: 1;
         display: none;
     }
 }
@@ -65,6 +68,7 @@ div[id*="EControllerModeInput ( 57 )-binding-"]:has(img[src="/steaminputglyphs/h
 div[id*="EControllerModeInput ( 58 )-binding-"]:has(img[src="/steaminputglyphs/hp_m2.svg"]),
 div[id*="EControllerModeInput ( 58 )-binding-"]:has(img[src="/steaminputglyphs/hp_m2.svg"]) * {
     @container style(--hiding-enabled: 1) {
+        --deckyzone-unsupported-control: 1;
         display: none;
     }
 }
@@ -84,6 +88,7 @@ div[id*="EControllerModeInput ( 55 )-binding-"]:has(img[src="/steaminputglyphs/s
 div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/sd_r5.svg"]),
 div[id*="EControllerModeInput ( 56 )-binding-"]:has(img[src="/steaminputglyphs/sd_r5.svg"]) * {
     @container style(--hiding-enabled: 1) {
+        --deckyzone-unsupported-control: 1;
         display: none;
     }
 }
