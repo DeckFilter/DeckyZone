@@ -4,6 +4,7 @@ import {
   ZOTAC_UNSUPPORTED_BUTTONS_CSS,
 } from "./generated/zotacGlyphCss"
 import { syncUnsupportedControlsRuntime } from "./unsupportedControlsRuntime"
+import { syncLaunchAnimationRuntime } from "./launch/launchAnimationRuntime"
 
 const RECONCILE_INTERVAL_MS = 3000
 const TAB_OPERATION_TIMEOUT_MS = 1500
@@ -270,6 +271,7 @@ const zotacGlyphsRuntime = createCssFeatureRuntime({
   activeMarker: "--deckyzone-zotac-glyphs-active",
   css: ZOTAC_GLYPH_CSS,
   label: "Zotac controller artwork",
+  syncRuntime: syncLaunchAnimationRuntime,
 })
 
 const unsupportedButtonsRuntime = createCssFeatureRuntime({
