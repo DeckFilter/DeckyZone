@@ -1,6 +1,5 @@
 import * as React from "react";
 import { animationCss } from "./animations";
-import { trackpadContactFrames } from "./trackpad-contact";
 
 export type ZotacZoneAnimationName =
   | "None"
@@ -99,11 +98,17 @@ export const ZotacZone = React.forwardRef<SVGSVGElement, ZotacZoneProps>(
                   <g
                     id={svgId("zone-trackpad-contact")}
                     data-part="zone-trackpad-contact"
-                    transform="scale(1 1.156094)"
                   >
-                    {trackpadContactFrames.map((frame, index) => (
-                      <image key={index} {...frame} data-contact-frame={index} />
-                    ))}
+                    <circle
+                      id={svgId("zone-trackpad-contact-circle")}
+                      data-part="zone-trackpad-contact-circle"
+                      fill="#ffffff"
+                      stroke="none"
+                      cx="0.0813"
+                      cy="0.1347"
+                      r="4.8595"
+                      opacity="0"
+                    />
                   </g>
                 )}
               </g>
