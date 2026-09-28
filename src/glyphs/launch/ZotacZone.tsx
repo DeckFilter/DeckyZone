@@ -104,9 +104,9 @@ export const ZotacZone = React.forwardRef<SVGSVGElement, ZotacZoneProps>(
                       data-part="zone-trackpad-contact-circle"
                       fill="#ffffff"
                       stroke="none"
-                      cx="0.0813"
-                      cy="0.1347"
-                      r="4.8595"
+                      cx="0.08"
+                      cy="0.13"
+                      r="4.86"
                       opacity="0"
                     />
                   </g>
