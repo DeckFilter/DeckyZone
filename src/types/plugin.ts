@@ -110,7 +110,14 @@ export type SystemReport = {
   logIncluded: boolean
 }
 
+export type ControllerMappingProfile = {
+  dials: Record<'left' | 'right', 'volume' | 'brightness' | 'custom'>
+  bindings: Record<string, string | null>
+  behaviors: Record<'left' | 'right', TrackpadMode>
+}
+
 export type PerGameSettings = {
+  controllerMapping?: ControllerMappingProfile | null
   enabled: boolean
   buttonPromptFixEnabled: boolean
   trackpadMode: TrackpadMode

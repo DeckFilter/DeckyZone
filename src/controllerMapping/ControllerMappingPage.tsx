@@ -1,6 +1,16 @@
 import {
-  ButtonItem, DialogBody, DialogBodyText, DialogButton, DialogControlsSection, Field, Menu, MenuItem,
-  Navigation, NavEntryPositionPreferences as FocusPreference, showContextMenu, SteamSpinner,
+  ButtonItem,
+  DialogBody,
+  DialogBodyText,
+  DialogButton,
+  DialogControlsSection,
+  Field,
+  Menu,
+  MenuItem,
+  Navigation,
+  NavEntryPositionPreferences as FocusPreference,
+  showContextMenu,
+  SteamSpinner,
 } from '@decky/ui'
 import { callable } from '@decky/api'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
@@ -9,7 +19,7 @@ import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
 import { controllerMappingRoute, openControllerMapping } from '../routes'
 import { showDeckyToast } from '../utils/toasts'
 import { useDeckyZoneState } from '../state/DeckyZoneState'
-import type { PluginSettings, TrackpadMode } from '../types/plugin'
+import type { ControllerMappingProfile as MappingProfile, PluginSettings, TrackpadMode } from '../types/plugin'
 import CommandPicker from './CommandPicker'
 import { commandsById, mappingSources, sourceLabel, type MappingCommand, type MappingSource } from './commands'
 import { getMappingUi, MappingDropdown, MappingFocusable, MappingGamePage, MappingSidebar, SettingsIcon, sidebarFocus } from './nativeUi'
@@ -18,17 +28,17 @@ import { mappingStyles } from './styles'
 
 type TrackpadSide = 'left' | 'right'
 type DialMode = 'volume' | 'brightness' | 'custom'
-type MappingProfile = { dials: Record<TrackpadSide, DialMode>; bindings: Record<string, string | null>; behaviors: Record<TrackpadSide, TrackpadMode> }
 type MappingState = { appId: string; enabled: boolean; profile: MappingProfile; settings?: PluginSettings }
 type MappingPageProps = { appId: string; sourceId?: string }
 const getMapping = callable<[string], MappingState>('get_controller_mapping')
 const setMapping = callable<[string, MappingProfile, boolean], MappingState>('set_controller_mapping')
 
-
 export default function ControllerMappingPage(props: MappingPageProps) {
-  const appStore = (globalThis as unknown as { appStore?: { GetAppOverviewByAppID: (id: number) => { display_name?: string } | undefined } }).appStore
+  const appStore = (
+    globalThis as unknown as { appStore?: { GetAppOverviewByAppID: (id: number) => { display_name?: string } | undefined } }
+  ).appStore
   const gameName = appStore?.GetAppOverviewByAppID(Number(props.appId))?.display_name ?? `Game ${props.appId}`
-  const title = props.appId === '0' ? 'Global controller mappings' : `${gameName} — Controller mappings`
+  const title = props.appId === '0' ? 'Controller Settings (Custom)' : `${gameName} Controller Settings (Custom)`
   return (
     <MappingGamePage title={title}>
       <ControllerMappingContent {...props} />
@@ -52,8 +62,18 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
     let current = true
     setState(null)
     setError('')
-    void getMapping(appId).then(value => { if (current) setState(value) }, () => { if (current) setError('Could not load controller mappings.') })
-    return () => { current = false; mounted.current = false }
+    void getMapping(appId).then(
+      (value) => {
+        if (current) setState(value)
+      },
+      () => {
+        if (current) setError('Could not load controller mappings.')
+      },
+    )
+    return () => {
+      current = false
+      mounted.current = false
+    }
   }, [appId])
   const save = async (profile: MappingProfile) => {
     if (inFlight.current || !state) throw new Error('A mapping change is already in progress.')
@@ -88,14 +108,22 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
     const section = item.group === 'Dials' ? 'dials' : 'trackpads'
     Navigation.Navigate(`${baseRoute}/${section}/${item.id}`)
   }
-  const options = (item: MappingSource, target: EventTarget | null) => showContextMenu(
-    <Menu label={sourceLabel(item)}>
-      <MenuItem onSelected={() => openBinding(item)}>Change command</MenuItem>
-      <MenuItem disabled={disabled} onSelected={() => void setBinding(item.id).catch(() => {})}>Clear command</MenuItem>
-      <MenuItem disabled={disabled || !(item.id in bindings)} onSelected={() => void setBinding(item.id, undefined, true).catch(() => {})}>Restore default</MenuItem>
-    </Menu>,
-    target ?? undefined,
-  )
+  const options = (item: MappingSource, target: EventTarget | null) =>
+    showContextMenu(
+      <Menu label={sourceLabel(item)}>
+        <MenuItem onSelected={() => openBinding(item)}>Change command</MenuItem>
+        <MenuItem disabled={disabled} onSelected={() => void setBinding(item.id).catch(() => {})}>
+          Clear command
+        </MenuItem>
+        <MenuItem
+          disabled={disabled || !(item.id in bindings)}
+          onSelected={() => void setBinding(item.id, undefined, true).catch(() => {})}
+        >
+          Restore default
+        </MenuItem>
+      </Menu>,
+      target ?? undefined,
+    )
   const bindingRow = (item: MappingSource) => (
     <Field
       key={item.id}
@@ -104,7 +132,11 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
       inlineWrap="keep-inline"
       preferredFocus={item.id === lastSource.current}
     >
-      <MappingFocusable className={ui.bindingClasses.BindingButtons} flow-children="row" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
+      <MappingFocusable
+        className={ui.bindingClasses.BindingButtons}
+        flow-children="row"
+        navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}
+      >
         <DialogButton
           className={ui.bindingClasses.BindingButton}
           disabled={disabled}
@@ -131,7 +163,9 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
   const section = (title: string, children: ReactNode) => {
     const Section = ui.Section
     return Section ? (
-      <Section key={title} label={title}>{children}</Section>
+      <Section key={title} label={title}>
+        {children}
+      </Section>
     ) : (
       <DialogControlsSection key={title}>
         <SettingsDialogSubHeader>{title}</SettingsDialogSubHeader>
@@ -139,17 +173,31 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
       </DialogControlsSection>
     )
   }
-  const dialSection = (side: TrackpadSide) => section(side === 'left' ? 'Left Dial' : 'Right Dial', <>
-    <Field label="Behavior" childrenContainerWidth="fixed" inlineWrap="keep-inline">
-      <div data-mapping-dial-behavior={side}>
-        <MappingDropdown controlled disabled={disabled} menuLabel={`${side === 'left' ? 'Left' : 'Right'} Dial Behavior`}
-          rgOptions={[{ data: 'volume', label: 'Volume' }, { data: 'brightness', label: 'Brightness' }, { data: 'custom', label: 'Custom' }]}
-          selectedOption={dials[side]}
-          onChange={({ data }: { data: DialMode }) => { void save({ ...state.profile, dials: { ...dials, [side]: data } }).catch(() => {}) }} />
-      </div>
-    </Field>
-    {dials[side] === 'custom' && mappingSources.filter(item => item.id.startsWith(`${side}-dial-`)).map(bindingRow)}
-  </>)
+  const dialSection = (side: TrackpadSide) =>
+    section(
+      side === 'left' ? 'Left Dial' : 'Right Dial',
+      <>
+        <Field label="Behavior" childrenContainerWidth="fixed" inlineWrap="keep-inline">
+          <div data-mapping-dial-behavior={side}>
+            <MappingDropdown
+              controlled
+              disabled={disabled}
+              menuLabel={`${side === 'left' ? 'Left' : 'Right'} Dial Behavior`}
+              rgOptions={[
+                { data: 'volume', label: 'Volume' },
+                { data: 'brightness', label: 'Brightness' },
+                { data: 'custom', label: 'Custom' },
+              ]}
+              selectedOption={dials[side]}
+              onChange={({ data }: { data: DialMode }) => {
+                void save({ ...state.profile, dials: { ...dials, [side]: data } }).catch(() => {})
+              }}
+            />
+          </div>
+        </Field>
+        {dials[side] === 'custom' && mappingSources.filter((item) => item.id.startsWith(`${side}-dial-`)).map(bindingRow)}
+      </>,
+    )
   const trackpadSection = (side: TrackpadSide) => {
     const title = side === 'left' ? 'Left Trackpad' : 'Right Trackpad'
     const behaviorOptions: { data: TrackpadMode; label: string }[] = [
@@ -157,23 +205,26 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
       { data: 'default', label: side === 'left' ? 'Scroll Wheel' : 'As Mouse' },
       { data: 'directional_buttons', label: 'Button Pad' },
     ]
-    return section(title, <>
-      <Field label="Behavior" childrenContainerWidth="fixed" inlineWrap="keep-inline">
-        <div data-mapping-behavior={side}>
-          <MappingDropdown
-            controlled
-            disabled={disabled}
-            menuLabel={`${title} Behavior`}
-            rgOptions={behaviorOptions}
-            selectedOption={behaviors[side]}
-            onChange={({ data }: { data: TrackpadMode }) => {
-              void save({ ...state.profile, behaviors: { ...behaviors, [side]: data } }).catch(() => {})
-            }}
-          />
-        </div>
-      </Field>
-      {behaviors[side] === 'directional_buttons' && mappingSources.filter((item) => item.group === title).map(bindingRow)}
-    </>)
+    return section(
+      title,
+      <>
+        <Field label="Behavior" childrenContainerWidth="fixed" inlineWrap="keep-inline">
+          <div data-mapping-behavior={side}>
+            <MappingDropdown
+              controlled
+              disabled={disabled}
+              menuLabel={`${title} Behavior`}
+              rgOptions={behaviorOptions}
+              selectedOption={behaviors[side]}
+              onChange={({ data }: { data: TrackpadMode }) => {
+                void save({ ...state.profile, behaviors: { ...behaviors, [side]: data } }).catch(() => {})
+              }}
+            />
+          </div>
+        </Field>
+        {behaviors[side] === 'directional_buttons' && mappingSources.filter((item) => item.group === title).map(bindingRow)}
+      </>,
+    )
   }
   if (!source) {
     return (
@@ -250,6 +301,10 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
   )
   const Page = ui.Page
   return Page ? (
-    <Page scrollable={false} dialogContentPadding="none" contentMaxWidth="full-width" headerVisibility="default">{body}</Page>
-  ) : <div className="dz-mapping-fallback">{body}</div>
+    <Page scrollable={false} dialogContentPadding="none" contentMaxWidth="full-width" headerVisibility="default">
+      {body}
+    </Page>
+  ) : (
+    <div className="dz-mapping-fallback">{body}</div>
+  )
 }

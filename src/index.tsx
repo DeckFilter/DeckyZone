@@ -97,7 +97,7 @@ function setHomeButtonRuntimeEnabled(enabled: boolean) {
 }
 
 function applySettingsRuntime(settings: PluginSettings) {
-  syncSteamMappingEntry(settings.inputplumberAvailable)
+  syncSteamMappingEntry(settings)
   setBrightnessDialFixRuntimeEnabled(settings.brightnessDialFixEnabled)
   setHomeButtonRuntimeEnabled(settings.homeButtonEnabled)
   syncStoredZotacGlyphsRuntimeEnabled(settings.zotacGlyphsEnabled)
@@ -668,7 +668,7 @@ export default definePlugin(() => {
     ),
     icon: <ZotacIcon />,
     onDismount() {
-      syncSteamMappingEntry(false)
+      syncSteamMappingEntry(null)
       routerHook.removeRoute(DECKYZONE_ROUTE)
       routerHook.removeRoute(mappingRoute)
       updateNoticeGeneration += 1
