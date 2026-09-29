@@ -1,6 +1,6 @@
 import {
-  DialogBody, DialogBodyText, DialogButton, DialogControlsSection, Field, Menu, MenuItem,
-  Navigation, NavEntryPositionPreferences as FocusPreference, showContextMenu, SteamSpinner, ToggleField,
+  ButtonItem, DialogBody, DialogBodyText, DialogButton, DialogControlsSection, Field, Menu, MenuItem,
+  Navigation, NavEntryPositionPreferences as FocusPreference, showContextMenu, SteamSpinner,
 } from '@decky/ui'
 import { callable } from '@decky/api'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
@@ -12,7 +12,7 @@ import { useDeckyZoneState } from '../state/DeckyZoneState'
 import type { PluginSettings, TrackpadMode } from '../types/plugin'
 import CommandPicker from './CommandPicker'
 import { commandsById, mappingSources, sourceLabel, type MappingCommand, type MappingSource } from './commands'
-import { getMappingUi, MappingDropdown, MappingFocusable, MappingSidebar, SettingsIcon, sidebarFocus } from './nativeUi'
+import { getMappingUi, MappingDropdown, MappingFocusable, MappingGamePage, MappingSidebar, SettingsIcon, sidebarFocus } from './nativeUi'
 import { dialGlyph, MappingGlyph, sourceGlyph, trackpadGlyph } from './MappingGlyph'
 import { mappingStyles } from './styles'
 
@@ -20,11 +20,23 @@ type TrackpadSide = 'left' | 'right'
 type DialMode = 'volume' | 'brightness' | 'custom'
 type MappingProfile = { dials: Record<TrackpadSide, DialMode>; bindings: Record<string, string | null>; behaviors: Record<TrackpadSide, TrackpadMode> }
 type MappingState = { appId: string; enabled: boolean; profile: MappingProfile; settings?: PluginSettings }
+type MappingPageProps = { appId: string; sourceId?: string }
 const getMapping = callable<[string], MappingState>('get_controller_mapping')
 const setMapping = callable<[string, MappingProfile, boolean], MappingState>('set_controller_mapping')
 
 
-export default function ControllerMappingPage({ appId, sourceId }: { appId: string; sourceId?: string }) {
+export default function ControllerMappingPage(props: MappingPageProps) {
+  const appStore = (globalThis as unknown as { appStore?: { GetAppOverviewByAppID: (id: number) => { display_name?: string } | undefined } }).appStore
+  const gameName = appStore?.GetAppOverviewByAppID(Number(props.appId))?.display_name ?? `Game ${props.appId}`
+  const title = props.appId === '0' ? 'Global controller mappings' : `${gameName} — Controller mappings`
+  return (
+    <MappingGamePage title={title}>
+      <ControllerMappingContent {...props} />
+    </MappingGamePage>
+  )
+}
+
+function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
   const [state, setState] = useState<MappingState | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -43,14 +55,14 @@ export default function ControllerMappingPage({ appId, sourceId }: { appId: stri
     void getMapping(appId).then(value => { if (current) setState(value) }, () => { if (current) setError('Could not load controller mappings.') })
     return () => { current = false; mounted.current = false }
   }, [appId])
-  const save = async (profile: MappingProfile, enabled = state?.enabled ?? true) => {
+  const save = async (profile: MappingProfile) => {
     if (inFlight.current || !state) throw new Error('A mapping change is already in progress.')
     const previous = state
     inFlight.current = true
     setSaving(true)
-    setState({ ...state, profile, enabled })
+    setState({ ...state, profile, enabled: true })
     try {
-      const next = await setMapping(appId, profile, enabled)
+      const next = await setMapping(appId, profile, true)
       if (mounted.current) setState(next)
       if (next.settings) store.updateSettings(next.settings)
     } catch (error) {
@@ -63,17 +75,14 @@ export default function ControllerMappingPage({ appId, sourceId }: { appId: stri
     }
   }
   const setBinding = async (id: string, command?: MappingCommand, restoreDefault = false) => {
-    if (!state?.enabled) return
+    if (!state) return
     const bindings = { ...state.profile.bindings, [id]: command?.id ?? null }
     if (restoreDefault) delete bindings[id]
     await save({ ...state.profile, bindings })
   }
   if (!state) return <DialogBody>{error ? <DialogBodyText>{error}</DialogBodyText> : <SteamSpinner />}</DialogBody>
   const { bindings, behaviors, dials } = state.profile
-  const disabled = saving || !state.enabled
-  const appStore = (globalThis as unknown as { appStore?: { GetAppOverviewByAppID: (id: number) => { display_name?: string } | undefined } }).appStore
-  const title = appId === '0' ? 'Global mappings' : 'Controller mappings'
-  const gameName = appStore?.GetAppOverviewByAppID(Number(appId))?.display_name ?? `Game ${appId}`
+  const disabled = saving
   const openBinding = (item: MappingSource) => {
     lastSource.current = item.id
     const section = item.group === 'Dials' ? 'dials' : 'trackpads'
@@ -166,18 +175,11 @@ export default function ControllerMappingPage({ appId, sourceId }: { appId: stri
       {behaviors[side] === 'directional_buttons' && mappingSources.filter((item) => item.group === title).map(bindingRow)}
     </>)
   }
-  const scopeControls = appId === '0' ? <DialogBodyText>Used by games without an override.</DialogBodyText> : <>
-    <DialogBodyText>{gameName}</DialogBodyText>
-    <ToggleField label="Use per-game settings" description={state.enabled ? 'Changes apply to this game' : 'Using global mappings'} checked={state.enabled} disabled={saving} onChange={(enabled: boolean) => { void save(state.profile, enabled).catch(() => {}) }} />
-    <Field label="Global mappings"><DialogButton disabled={saving} onClick={() => openControllerMapping('0')}>Edit global mappings</DialogButton></Field>
-  </>
-
   if (!source) {
     return (
       <div data-deckyzone-mapping={appId} style={{ height: '100%', width: '100%' }}>
         <MappingSidebar
-          title={title}
-          showTitle
+          showTitle={false}
           disableRouteReporting
           eInitialFocus={lastSource.current ? sidebarFocus?.k_EPagedSettingsInitialFocus_PageContent : undefined}
           pages={[
@@ -187,7 +189,6 @@ export default function ControllerMappingPage({ appId, sourceId }: { appId: stri
               route: `${baseRoute}/dials`,
               content: (
                 <DialogBody>
-                  {scopeControls}
                   {dialSection('left')}
                   {dialSection('right')}
                 </DialogBody>
@@ -199,9 +200,29 @@ export default function ControllerMappingPage({ appId, sourceId }: { appId: stri
               route: `${baseRoute}/trackpads`,
               content: (
                 <DialogBody>
-                  {scopeControls}
                   {trackpadSection('left')}
                   {trackpadSection('right')}
+                </DialogBody>
+              ),
+            },
+            'spacer',
+            'separator',
+            {
+              title: 'Global mappings',
+              icon: SettingsIcon ? <SettingsIcon /> : <FaCog />,
+              visible: appId !== '0',
+              route: `${baseRoute}/global`,
+              content: (
+                <DialogBody>
+                  <ButtonItem
+                    bottomSeparator="none"
+                    highlightOnFocus={false}
+                    disabled={saving}
+                    data-mapping-open-global
+                    onClick={() => openControllerMapping('0')}
+                  >
+                    Open global mappings
+                  </ButtonItem>
                 </DialogBody>
               ),
             },

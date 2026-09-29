@@ -12,7 +12,8 @@ export const MappingFocusable = Focusable as ComponentType<FocusableProps & {
   navRef?: Ref<NavHandle | null>
 }>
 
-export const MappingSidebar = SidebarNavigation as ComponentType<ComponentProps<typeof SidebarNavigation> & {
+export const MappingSidebar = SidebarNavigation as ComponentType<Omit<ComponentProps<typeof SidebarNavigation>, 'pages'> & {
+  pages: Array<ComponentProps<typeof SidebarNavigation>['pages'][number] | 'spacer'>
   eInitialFocus?: number
 }>
 
@@ -26,6 +27,26 @@ export const MappingFocusGroup = findModuleExport((value) => {
   const source = value?.render?.toString()
   return source?.includes('onExplicitFocusLevelChanged') && source.includes('navRefPanel')
 }) as typeof MappingFocusable | undefined
+
+const NativePagedPage = findModuleExport((value) => (
+  typeof value === 'function' && value.toString().includes('"GamepadPagedSettingsPage"')
+)) as ComponentType<{ children: ReactNode }> | undefined
+
+const useHeaderTitle = findModuleExport((value) => {
+  const source = typeof value === 'function' ? value.toString() : ''
+  return source.includes('.m_TitleText') && source.includes('.Set(')
+}) as ((title: string, owner: string) => void) | undefined
+
+const useHeaderInteractionSuppressed = findModuleExport((value) => {
+  const source = typeof value === 'function' ? value.toString() : ''
+  return source.includes('.m_bSuppressInteraction') && source.includes('.Set(')
+}) as ((suppressed: boolean, owner: string) => void) | undefined
+
+export function MappingGamePage({ title, children }: { title: string; children: ReactNode }) {
+  useHeaderTitle?.(title, 'DeckyZoneControllerMapping')
+  useHeaderInteractionSuppressed?.(true, 'DeckyZoneControllerMapping')
+  return NativePagedPage ? <NativePagedPage>{children}</NativePagedPage> : <>{children}</>
+}
 
 export function getMappingUi() {
   const glyphClasses = findModule((m) => typeof m?.SectionGlyph === 'string' && typeof m?.ControllerIcon === 'string')
