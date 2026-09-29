@@ -28,6 +28,7 @@ import {
 } from "./glyphs/zotacGlyphRuntime"
 import { DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE } from './routes'
 import ControllerMappingPage from './controllerMapping/ControllerMappingPage'
+import { registerControllerMappingMenu } from './controllerMapping/libraryContextMenu'
 import {
   DeckyZoneState,
   DeckyZoneStateProvider,
@@ -604,6 +605,7 @@ export default definePlugin(() => {
 
   routerHook.addRoute(mappingRoute, MappingRoute, { exact: true })
   routerHook.addRoute(DECKYZONE_ROUTE, SettingsRoute, { exact: false })
+  const unregisterMappingMenu = registerControllerMappingMenu(deckyZoneState)
   registerBrightnessDialFixListeners()
   const mappingBrightnessListener = addEventListener<[BrightnessDialDirection]>('controller_mapping_brightness', direction => {
     applyBrightnessDialDelta(direction === 'up' ? BRIGHTNESS_DIAL_FIX_STEP : -BRIGHTNESS_DIAL_FIX_STEP)
@@ -646,6 +648,7 @@ export default definePlugin(() => {
     ),
     icon: <ZotacIcon />,
     onDismount() {
+      unregisterMappingMenu()
       routerHook.removeRoute(DECKYZONE_ROUTE)
       routerHook.removeRoute(mappingRoute)
       updateNoticeGeneration += 1

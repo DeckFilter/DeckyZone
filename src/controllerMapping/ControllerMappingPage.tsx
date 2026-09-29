@@ -237,6 +237,28 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
           eInitialFocus={lastSource.current ? sidebarFocus?.k_EPagedSettingsInitialFocus_PageContent : undefined}
           pages={[
             {
+              title: 'Dials',
+              icon: <MappingGlyph src={dialGlyph} label="Dials" className={ui.glyphClass} white />,
+              route: `${baseRoute}/dials`,
+              content: (
+                <DialogBody>
+                  {dialSection('left')}
+                  {dialSection('right')}
+                </DialogBody>
+              ),
+            },
+            {
+              title: 'Trackpads',
+              icon: <MappingGlyph src={trackpadGlyph} label="Trackpads" className={ui.glyphClass} />,
+              route: `${baseRoute}/trackpads`,
+              content: (
+                <DialogBody>
+                  {trackpadSection('left')}
+                  {trackpadSection('right')}
+                </DialogBody>
+              ),
+            },
+            {
               title: 'Buttons',
               icon: <MappingGlyph src={homeGlyph} label="Buttons" className={ui.glyphClass} />,
               route: `${baseRoute}/buttons`,
@@ -263,28 +285,6 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
                       />
                     </div>
                   </Field>
-                </DialogBody>
-              ),
-            },
-            {
-              title: 'Dials',
-              icon: <MappingGlyph src={dialGlyph} label="Dials" className={ui.glyphClass} white />,
-              route: `${baseRoute}/dials`,
-              content: (
-                <DialogBody>
-                  {dialSection('left')}
-                  {dialSection('right')}
-                </DialogBody>
-              ),
-            },
-            {
-              title: 'Trackpads',
-              icon: <MappingGlyph src={trackpadGlyph} label="Trackpads" className={ui.glyphClass} />,
-              route: `${baseRoute}/trackpads`,
-              content: (
-                <DialogBody>
-                  {trackpadSection('left')}
-                  {trackpadSection('right')}
                 </DialogBody>
               ),
             },
