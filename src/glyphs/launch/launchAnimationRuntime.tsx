@@ -5,9 +5,10 @@ import { ZotacZone, type ZotacZoneAnimationName, type ZotacZoneProps } from "./Z
 type LaunchProps = Omit<ZotacZoneProps, "animationName"> & { animationName?: string }
 type ElementFactory = (...args: unknown[]) => unknown
 type JsxRuntime = { jsx: ElementFactory; jsxs: ElementFactory }
+type PatchedFactory = ElementFactory & { __deckyPatch?: Patch }
 
 let enabled = false
-let patches: Patch[] = []
+let runtime: { reconcile: () => void; cleanup: () => void } | undefined
 const listeners = new Set<() => void>()
 
 function subscribe(listener: () => void) {
@@ -18,6 +19,17 @@ function subscribe(listener: () => void) {
 function isAnimationName(name: string): name is ZotacZoneAnimationName {
   return name === "None" || name === "ThumbstickMoveAnimation" ||
     name === "MouseMoveTriggerClick" || name === "TouchscreenAnimation"
+}
+
+function isPatchAttached(patch: Patch) {
+  const visited = new Set<ElementFactory>()
+  let current = patch.object[patch.property] as PatchedFactory | undefined
+  while (typeof current === "function" && !visited.has(current)) {
+    if (current === patch.patchedFunction) return true
+    visited.add(current)
+    current = current.__deckyPatch?.original as PatchedFactory | undefined
+  }
+  return false
 }
 
 function installLaunchAnimationPatch() {
@@ -52,7 +64,7 @@ function installLaunchAnimationPatch() {
   function replaceLaunchArtwork(args: unknown[]) {
     // The same native drawing is used by controller editors. Only replace the
     // element carrying Steam's launch-illustration class, before React mounts it.
-    if (args[0] !== NativeArtwork) {
+    if (!enabled || args[0] !== NativeArtwork) {
       return
     }
     const props = args[1] as LaunchProps | undefined
@@ -62,17 +74,73 @@ function installLaunchAnimationPatch() {
     }
   }
 
-  // Steam creates these elements through jsx/jsxs rather than createElement.
-  // Deck-Shelves' installCaptureHooks uses the same factory interception;
-  // Decky's patcher also preserves other plugins' patches during cleanup.
-  try {
-    patches.push(beforePatch(jsx, "jsx", replaceLaunchArtwork))
-    patches.push(beforePatch(jsx, "jsxs", replaceLaunchArtwork))
-  } catch (error) {
-    for (const patch of patches.reverse()) {
-      patch.unpatch()
+  const patches = new Map<keyof JsxRuntime, Patch>()
+  const restoreProperties: (() => void)[] = []
+  let stopped = false
+  let reconciling = false
+  let reconcileQueued = false
+
+  function reconcile() {
+    if (stopped || !enabled || reconciling) return
+    reconciling = true
+    try {
+      for (const key of ["jsx", "jsxs"] as const) {
+        const patch = patches.get(key)
+        if (patch && isPatchAttached(patch)) continue
+        patches.set(key, beforePatch(jsx, key, replaceLaunchArtwork))
+      }
+    } finally {
+      reconciling = false
     }
-    patches = []
+  }
+
+  function cleanup() {
+    stopped = true
+    for (const patch of patches.values()) {
+      // Decky's patcher cannot unpatch a function another owner has replaced.
+      if (isPatchAttached(patch)) patch.unpatch()
+    }
+    patches.clear()
+    for (const restore of restoreProperties) restore()
+  }
+
+  // Decky's React 19 toast renderer temporarily replaces these factories, then
+  // restores versions captured before plugins loaded. Wait until its synchronous
+  // render finishes before repairing our hooks; never intercept its hook stubs.
+  try {
+    for (const key of ["jsx", "jsxs"] as const) {
+      const descriptor = Object.getOwnPropertyDescriptor(jsx, key)
+      if (!descriptor?.configurable || !descriptor.writable || !("value" in descriptor)) continue
+      let current = jsx[key]
+      const get = () => current
+      Object.defineProperty(jsx, key, {
+        configurable: true,
+        enumerable: descriptor.enumerable,
+        get,
+        set(value: ElementFactory) {
+          current = value
+          if (stopped || reconciling || reconcileQueued) return
+          reconcileQueued = true
+          queueMicrotask(() => {
+            reconcileQueued = false
+            try {
+              reconcile()
+            } catch (error) {
+              console.warn("DeckyZone: couldn't restore launch artwork", error)
+            }
+          })
+        },
+      })
+      restoreProperties.push(() => {
+        if (Object.getOwnPropertyDescriptor(jsx, key)?.get === get) {
+          Object.defineProperty(jsx, key, { ...descriptor, value: current })
+        }
+      })
+    }
+    reconcile()
+    runtime = { reconcile, cleanup }
+  } catch (error) {
+    cleanup()
     console.warn("DeckyZone: couldn't attach launch artwork", error)
   }
 }
@@ -80,13 +148,12 @@ function installLaunchAnimationPatch() {
 export function syncLaunchAnimationRuntime(nextEnabled: boolean) {
   const changed = enabled !== nextEnabled
   enabled = nextEnabled
-  if (enabled && patches.length === 0) {
-    installLaunchAnimationPatch()
-  } else if (!enabled) {
-    for (const patch of patches.reverse()) {
-      patch.unpatch()
-    }
-    patches = []
+  if (enabled) {
+    if (runtime) runtime.reconcile()
+    else installLaunchAnimationPatch()
+  } else {
+    runtime?.cleanup()
+    runtime = undefined
   }
   if (changed) {
     for (const listener of listeners) {
