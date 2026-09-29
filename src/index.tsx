@@ -28,7 +28,6 @@ import {
 } from "./glyphs/zotacGlyphRuntime"
 import { DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE } from './routes'
 import ControllerMappingPage from './controllerMapping/ControllerMappingPage'
-import { syncSteamMappingEntry } from './controllerMapping/steamEditor'
 import {
   DeckyZoneState,
   DeckyZoneStateProvider,
@@ -87,7 +86,6 @@ function clampBrightnessPercent(value: number) {
 }
 
 function applySettingsRuntime(settings: PluginSettings) {
-  syncSteamMappingEntry(settings)
   syncStoredZotacGlyphsRuntimeEnabled(settings.zotacGlyphsEnabled)
   syncStoredHideUnsupportedButtonsRuntimeEnabled(settings.hideUnsupportedButtonsEnabled)
 }
@@ -648,7 +646,6 @@ export default definePlugin(() => {
     ),
     icon: <ZotacIcon />,
     onDismount() {
-      syncSteamMappingEntry(null)
       routerHook.removeRoute(DECKYZONE_ROUTE)
       routerHook.removeRoute(mappingRoute)
       updateNoticeGeneration += 1
