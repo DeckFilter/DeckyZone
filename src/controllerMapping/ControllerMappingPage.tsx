@@ -10,18 +10,20 @@ import {
   Navigation,
   NavEntryPositionPreferences as FocusPreference,
   showContextMenu,
+  showModal,
   SteamSpinner,
   useParams,
 } from '@decky/ui'
 import { callable } from '@decky/api'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { FaCog, FaGamepad } from 'react-icons/fa'
+import { FaCog, FaGamepad, FaTrash } from 'react-icons/fa'
 import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
 import { controllerMappingRoute, openControllerMapping } from '../routes'
 import { showDeckyToast } from '../utils/toasts'
 import { useDeckyZoneState } from '../state/DeckyZoneState'
 import type { ControllerMappingProfile as MappingProfile, PluginSettings, TrackpadMode } from '../types/plugin'
 import CommandPicker from './CommandPicker'
+import RemoveGameSettingsModal from './RemoveGameSettingsModal'
 import { commandsById, mappingSources, sourceLabel, type MappingCommand, type MappingSource } from './commands'
 import { getMappingUi, MappingDropdown, MappingFocusable, MappingGamePage, MappingSidebar, SettingsIcon, sidebarFocus } from './nativeUi'
 import { dialGlyph, MappingGlyph, sourceGlyph, trackpadGlyph } from './MappingGlyph'
@@ -34,7 +36,7 @@ type HomeAction = MappingProfile['buttons']['home']
 type MappingState = { appId: string; enabled: boolean; profile: MappingProfile; settings?: PluginSettings }
 type MappingPageProps = { appId: string; sourceId?: string }
 const getMapping = callable<[string], MappingState>('get_controller_mapping')
-const setMapping = callable<[string, MappingProfile, boolean], MappingState>('set_controller_mapping')
+const setMapping = callable<[string, MappingProfile | null, boolean], MappingState>('set_controller_mapping')
 let lastEditedGameId: string | undefined
 
 function getGameName(appId: string) {
@@ -118,6 +120,24 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))
     : []
   const disabled = saving
+  const removeGameMapping = async (gameId: string) => {
+    if (inFlight.current) throw new Error('A mapping change is already in progress.')
+    const current = store.getSnapshot().bootstrap
+    if (current.state !== 'ready') throw new Error('Controller settings are not ready. Try again.')
+    const game = current.snapshot.settings.perGameSettings[gameId]
+    if (game?.controllerMapping == null) return
+    inFlight.current = true
+    setSaving(true)
+    try {
+      const next = await setMapping(gameId, null, game.enabled)
+      const index = savedGames.findIndex((item) => item.appId === gameId)
+      lastEditedGameId = savedGames[index + 1]?.appId ?? savedGames[index - 1]?.appId
+      if (next.settings) store.updateSettings(next.settings)
+    } finally {
+      inFlight.current = false
+      if (mounted.current) setSaving(false)
+    }
+  }
   const openBinding = (item: MappingSource) => {
     lastSource.current = item.id
     const section = item.group === 'Dials' ? 'dials' : 'trackpads'
@@ -323,17 +343,40 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
                       inlineWrap="keep-inline"
                       preferredFocus={game.appId === lastEditedGameId}
                     >
-                      <DialogButton
-                        disabled={saving}
-                        data-mapping-edit-game={game.appId}
-                        preferredFocus={game.appId === lastEditedGameId}
-                        onClick={() => {
-                          lastEditedGameId = game.appId
-                          openControllerMapping(game.appId)
-                        }}
+                      <MappingFocusable
+                        className={ui.bindingClasses.BindingButtons}
+                        flow-children="row"
+                        navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}
                       >
-                        Edit
-                      </DialogButton>
+                        <DialogButton
+                          className={ui.bindingClasses.BindingButton}
+                          disabled={saving}
+                          data-mapping-edit-game={game.appId}
+                          preferredFocus={game.appId === lastEditedGameId}
+                          onClick={() => {
+                            lastEditedGameId = game.appId
+                            openControllerMapping(game.appId)
+                          }}
+                        >
+                          Edit
+                        </DialogButton>
+                        <DialogButton
+                          className={ui.bindingClasses.BindingOptionsButton}
+                          disabled={saving}
+                          data-mapping-remove-game={game.appId}
+                          aria-label={`Remove mappings for ${game.name}`}
+                          onOKActionDescription="Remove"
+                          onClick={() => showModal(
+                            <RemoveGameSettingsModal
+                              title="Remove game mappings?"
+                              description={`Remove the custom ZONE mappings for ${game.name}? The game will use global mappings. Rumble and other game settings will be kept.`}
+                              onRemove={() => removeGameMapping(game.appId)}
+                            />,
+                          )}
+                        >
+                          <FaTrash aria-hidden="true" />
+                        </DialogButton>
+                      </MappingFocusable>
                     </Field>
                   ))}
                 </DialogBody>
