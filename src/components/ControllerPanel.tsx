@@ -1,9 +1,10 @@
 import { callable } from '@decky/api'
+import { DialogButton, Field } from '@decky/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import { SteamExplainerButtonItem, SteamExplainerToggleField } from './SteamExplainer'
 import { openControllerMapping } from '../routes'
-import { SettingsGroup, SettingsPanel, SettingsRow } from './SettingsSurface'
+import { SettingsGroup, SettingsPanel, SettingsRow, useSettingsSurface } from './SettingsSurface'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
@@ -36,7 +37,7 @@ const DEFAULT_APP_ID = '0'
 const CONTROLLER_STATUS_FAILED_NOTICE = 'Controller failed to initialize. Restart device.'
 const CONTROLLER_MODE_ACTION_FAILED_NOTICE = "Couldn't update mode."
 const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = "Couldn't update per-game setting."
-const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = "Couldn't update prompt fix."
+const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = "Couldn't update Xbox controller simulation."
 const GYRO_MOUNT_MATRIX_FIX_ACTION_FAILED_NOTICE = "Couldn't update gyro orientation fix."
 const RUMBLE_ACTION_FAILED_NOTICE = "Couldn't update vibration."
 const RUMBLE_TEST_FAILED_NOTICE = "Couldn't send vibration test."
@@ -104,6 +105,7 @@ function areRumbleSaveTargetsEqual(left: RumbleSaveTarget, right: RumbleSaveTarg
 }
 
 const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onStatusChange }: Props) => {
+  const isQuickAccess = useSettingsSurface() === 'quick-access'
   const [rumbleIntensityDraft, setRumbleIntensityDraft] = useState(settings.rumbleIntensity)
   const [controllerNotice, setControllerNotice] = useState<string | null>(null)
   const [perGameNotice, setPerGameNotice] = useState<string | null>(null)
@@ -140,7 +142,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
 
   const activeGamePerGameSettings = activeGame ? settings.perGameSettings[activeGame.appid] : undefined
   const isPerGameSettingsEnabled = activeGamePerGameSettings?.enabled ?? false
-  const isEditingPerGameOverride = Boolean(activeGame && isPerGameSettingsEnabled)
+  const isEditingPerGameOverride = Boolean(isQuickAccess && activeGame && isPerGameSettingsEnabled)
   const isButtonPromptFixEnabled = activeGamePerGameSettings?.buttonPromptFixEnabled ?? false
   const activeRumbleEnabled = isEditingPerGameOverride
     ? activeGamePerGameSettings?.rumbleEnabled ?? settings.rumbleEnabled
@@ -439,6 +441,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   }
 
   const controllerSpinner = savingControllerMode || savingGyroMountMatrixFix || savingRumbleIntensity
+  const mappingDisabled = !settings.inputplumberAvailable || !isControllerModeConfirmed(settings)
   const gyroMountMatrixFixDisabled =
     savingGyroMountMatrixFix
     || !settings.inputplumberAvailable
@@ -455,32 +458,42 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
           />
         </SettingsGroup>
       )}
-      <SettingsGroup title="Game Overrides">
-        <PerGameSettingsPanel
-          activeGame={activeGame}
-          inputplumberAvailable={settings.inputplumberAvailable}
-          isPerGameSettingsEnabled={isPerGameSettingsEnabled}
-          isButtonPromptFixEnabled={isButtonPromptFixEnabled}
-          savingPerGameSettings={savingPerGameSettings}
-          savingButtonPromptFix={savingButtonPromptFix}
-          onPerGameSettingsToggleChange={(value: boolean) => void handlePerGameSettingsToggleChange(value)}
-          onButtonPromptFixToggleChange={(value: boolean) => void handleButtonPromptFixToggleChange(value)}
-        />
-      </SettingsGroup>
+      {isQuickAccess && (
+        <SettingsGroup title="Game Overrides">
+          <PerGameSettingsPanel
+            activeGame={activeGame}
+            inputplumberAvailable={settings.inputplumberAvailable}
+            isPerGameSettingsEnabled={isPerGameSettingsEnabled}
+            isButtonPromptFixEnabled={isButtonPromptFixEnabled}
+            savingPerGameSettings={savingPerGameSettings}
+            savingButtonPromptFix={savingButtonPromptFix}
+            onPerGameSettingsToggleChange={(value: boolean) => void handlePerGameSettingsToggleChange(value)}
+            onButtonPromptFixToggleChange={(value: boolean) => void handleButtonPromptFixToggleChange(value)}
+          />
+        </SettingsGroup>
+      )}
       <SettingsGroup title="Input">
         <SettingsRow>
-          <SteamExplainerButtonItem
-            layout="below"
-            label="Custom Controller Mapping"
-            disabled={!settings.inputplumberAvailable || !isControllerModeConfirmed(settings)}
-            explainerTitle="Custom Controller Mapping"
-            explainer={activeGame
-              ? `Configure buttons, dials and trackpads for ${activeGame.display_name}.`
-              : 'Configure global button, dial and trackpad mappings.'}
-            onClick={() => openControllerMapping(activeGame?.appid ?? '0')}
-          >
-            Edit mappings
-          </SteamExplainerButtonItem>
+          {isQuickAccess ? (
+            <SteamExplainerButtonItem
+              layout="below"
+              label="Custom Controller Mapping"
+              disabled={mappingDisabled}
+              explainerTitle="Custom Controller Mapping"
+              explainer={activeGame
+                ? `Configure buttons, dials and trackpads for ${activeGame.display_name}.`
+                : 'Configure global button, dial and trackpad mappings.'}
+              onClick={() => openControllerMapping(activeGame?.appid ?? '0')}
+            >
+              Edit mappings
+            </SteamExplainerButtonItem>
+          ) : (
+            <Field label="Custom Controller Mapping" childrenContainerWidth="fixed">
+              <DialogButton disabled={mappingDisabled} onClick={() => openControllerMapping()}>
+                Edit mappings
+              </DialogButton>
+            </Field>
+          )}
         </SettingsRow>
 
         {settings.gyroMountMatrixFix.visible && (
