@@ -2,6 +2,7 @@ import os
 
 from settings import SettingsManager
 import trackpad_modes
+import controller_mappings
 
 
 STARTUP_APPLY_KEY = "startupApplyEnabled"
@@ -171,6 +172,7 @@ def _normalize_per_game_settings_entry(entry, settings):
         return _normalize_legacy_missing_glyph_fix_entry(entry, settings)
 
     return {
+        "controllerMapping": controller_mappings.normalize(entry.get("controllerMapping")),
         ENABLED_KEY: bool(entry.get(ENABLED_KEY, False)),
         BUTTON_PROMPT_FIX_ENABLED_KEY: bool(
             entry.get(BUTTON_PROMPT_FIX_ENABLED_KEY, False)
@@ -418,7 +420,8 @@ def get_effective_trackpad_mode(app_id=None):
 
 def is_startup_controller_runtime_required(app_id=None):
     return bool(
-        get_home_button_enabled()
+        get_effective_controller_mapping(app_id) is not None
+        or get_home_button_enabled()
         or get_brightness_dial_fix_enabled()
         or get_effective_trackpad_mode(app_id) != trackpad_modes.TRACKPAD_MODE_DEFAULT
     )
@@ -656,3 +659,49 @@ def set_missing_glyph_fix_enabled(app_id, enabled):
 
 def set_missing_glyph_fix_trackpads_disabled(app_id, disabled):
     return set_per_game_trackpads_disabled(app_id, disabled)
+
+
+def has_custom_controller_mappings():
+    return get_effective_controller_mapping("0") is not None or any(
+        entry.get(ENABLED_KEY) and entry.get("controllerMapping") is not None
+        for entry in get_per_game_settings().values()
+    )
+
+
+def get_effective_controller_mapping(app_id=None):
+    settings = _read_settings()
+    global_profile = controller_mappings.normalize(settings.get("controllerMapping"))
+    entry = get_per_game_settings().get(str(app_id or "0"), {})
+    if entry.get(ENABLED_KEY) and entry.get("controllerMapping") is not None:
+        return entry["controllerMapping"]
+    return global_profile
+
+
+def get_controller_mapping(app_id):
+    app_id = controller_mappings.app_id(app_id)
+    settings = _read_settings()
+    global_profile = controller_mappings.normalize(settings.get("controllerMapping"))
+    has_global_mapping = global_profile is not None
+    global_profile = global_profile or controller_mappings.defaults(_normalize_global_trackpad_mode(settings))
+    entry = get_per_game_settings().get(app_id, {})
+    enabled = app_id == "0" or bool(entry.get(ENABLED_KEY))
+    profile = entry.get("controllerMapping") if app_id != "0" else None
+    if profile is None and not has_global_mapping and enabled and app_id != "0" and entry.get(PER_GAME_TRACKPAD_MODE_KEY) != settings.get(TRACKPAD_MODE_KEY, DEFAULT_TRACKPAD_MODE):
+        profile = controller_mappings.defaults(entry[PER_GAME_TRACKPAD_MODE_KEY])
+    return {"appId": app_id, "enabled": enabled, "profile": profile or global_profile}
+
+
+def set_controller_mapping(app_id, profile, enabled=True):
+    app_id = controller_mappings.app_id(app_id)
+    if profile is not None:
+        profile = controller_mappings.validate(profile)
+    if app_id == "0":
+        _write_setting("controllerMapping", profile)
+    else:
+        games = get_per_game_settings()
+        entry = dict(games.get(app_id) or _default_per_game_settings_entry())
+        entry["controllerMapping"] = profile
+        entry[ENABLED_KEY] = bool(enabled)
+        games[app_id] = entry
+        _write_setting(PER_GAME_SETTINGS_KEY, games)
+    return get_controller_mapping(app_id)

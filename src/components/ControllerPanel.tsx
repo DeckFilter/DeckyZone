@@ -1,13 +1,13 @@
 import { callable } from '@decky/api'
 import { useEffect, useRef, useState } from 'react'
 import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
-import { SteamExplainerToggleField } from './SteamExplainer'
+import { SteamExplainerButtonItem, SteamExplainerToggleField } from './SteamExplainer'
+import { openControllerMapping } from '../routes'
 import { SettingsGroup, SettingsPanel, SettingsRow } from './SettingsSurface'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
 import PerGameSettingsPanel from './controller/PerGameSettingsPanel'
 import RumblePanel from './controller/RumblePanel'
-import TrackpadPanel from './controller/TrackpadPanel'
-import type { ActiveGame, ControllerMode, PluginSettings, PluginStatus, TrackpadMode } from '../types/plugin'
+import type { ActiveGame, ControllerMode, PluginSettings, PluginStatus } from '../types/plugin'
 import { useDeckyToastNotice } from '../utils/toasts'
 
 type Props = {
@@ -23,10 +23,8 @@ const setControllerMode = callable<[ControllerMode], PluginSettings>('set_contro
 const setHomeButtonEnabled = callable<[boolean], PluginSettings>('set_home_button_enabled')
 const setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>('set_brightness_dial_fix_enabled')
 const setGyroMountMatrixFixEnabled = callable<[boolean], PluginSettings>('set_gyro_mount_matrix_fix_enabled')
-const setTrackpadMode = callable<[TrackpadMode], PluginSettings>('set_trackpad_mode')
 const setPerGameSettingsEnabled = callable<[string, boolean], PluginSettings>('set_per_game_settings_enabled')
 const setButtonPromptFixEnabled = callable<[string, boolean], PluginSettings>('set_button_prompt_fix_enabled')
-const setPerGameTrackpadMode = callable<[string, TrackpadMode], PluginSettings>('set_per_game_trackpad_mode')
 const setPerGameRumbleEnabled = callable<[string, boolean], PluginSettings>('set_per_game_rumble_enabled')
 const setPerGameRumbleIntensity = callable<[string, number], PluginSettings>('set_per_game_rumble_intensity')
 const syncPerGameTarget = callable<[string], boolean>('sync_per_game_target')
@@ -42,7 +40,6 @@ const CONTROLLER_ACTION_FAILED_NOTICE = "Couldn't update setting."
 const CONTROLLER_MODE_ACTION_FAILED_NOTICE = "Couldn't update mode."
 const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = "Couldn't update per-game setting."
 const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = "Couldn't update prompt fix."
-const TRACKPADS_ACTION_FAILED_NOTICE = "Couldn't update trackpad setting."
 const GYRO_MOUNT_MATRIX_FIX_ACTION_FAILED_NOTICE = "Couldn't update gyro orientation fix."
 const RUMBLE_ACTION_FAILED_NOTICE = "Couldn't update vibration."
 const RUMBLE_TEST_FAILED_NOTICE = "Couldn't send vibration test."
@@ -117,7 +114,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [savingHomeButton, setSavingHomeButton] = useState(false)
   const [savingBrightnessDialFix, setSavingBrightnessDialFix] = useState(false)
   const [savingGyroMountMatrixFix, setSavingGyroMountMatrixFix] = useState(false)
-  const [savingTrackpads, setSavingTrackpads] = useState(false)
   const [savingPerGameSettings, setSavingPerGameSettings] = useState(false)
   const [savingButtonPromptFix, setSavingButtonPromptFix] = useState(false)
   const [savingRumble, setSavingRumble] = useState(false)
@@ -151,9 +147,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const isPerGameSettingsEnabled = activeGamePerGameSettings?.enabled ?? false
   const isEditingPerGameOverride = Boolean(activeGame && isPerGameSettingsEnabled)
   const isButtonPromptFixEnabled = activeGamePerGameSettings?.buttonPromptFixEnabled ?? false
-  const activeTrackpadMode = isEditingPerGameOverride
-    ? activeGamePerGameSettings?.trackpadMode ?? settings.trackpadMode
-    : settings.trackpadMode
   const activeRumbleEnabled = isEditingPerGameOverride
     ? activeGamePerGameSettings?.rumbleEnabled ?? settings.rumbleEnabled
     : settings.rumbleEnabled
@@ -293,62 +286,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       setControllerNotice(GYRO_MOUNT_MATRIX_FIX_ACTION_FAILED_NOTICE)
     } finally {
       setSavingGyroMountMatrixFix(false)
-    }
-  }
-
-  const handleTrackpadModeChange = async (mode: TrackpadMode) => {
-    const appId = activeGame?.appid ?? DEFAULT_APP_ID
-    const previousSettings = settings
-    let optimisticSettings: PluginSettings | null = null
-
-    if (isEditingPerGameOverride && activeGame) {
-      const existingEntry = settings.perGameSettings[activeGame.appid] ?? {
-        enabled: true,
-        buttonPromptFixEnabled: false,
-        trackpadMode: settings.trackpadMode,
-        rumbleEnabled: settings.rumbleEnabled,
-        rumbleIntensity: settings.rumbleIntensity,
-        m1RemapTarget: 'none',
-        m2RemapTarget: 'none',
-      }
-      optimisticSettings = {
-        ...settings,
-        perGameSettings: {
-          ...settings.perGameSettings,
-          [activeGame.appid]: {
-            ...existingEntry,
-            trackpadMode: mode,
-          },
-        },
-      }
-    } else {
-      optimisticSettings = {
-        ...settings,
-        trackpadMode: mode,
-      }
-    }
-
-    setControllerNotice(null)
-    setPerGameNotice(null)
-    setSavingTrackpads(true)
-    onSettingsChange(optimisticSettings)
-    try {
-      const nextSettings = isEditingPerGameOverride && activeGame
-        ? await setPerGameTrackpadMode(activeGame.appid, mode)
-        : await setTrackpadMode(mode)
-      onSettingsChange(nextSettings)
-      setControllerNotice(null)
-      setPerGameNotice(null)
-      await syncActiveGameTarget(appId)
-    } catch {
-      onSettingsChange(previousSettings)
-      if (isEditingPerGameOverride && activeGame) {
-        setPerGameNotice(TRACKPADS_ACTION_FAILED_NOTICE)
-      } else {
-        setControllerNotice(TRACKPADS_ACTION_FAILED_NOTICE)
-      }
-    } finally {
-      setSavingTrackpads(false)
     }
   }
 
@@ -534,8 +471,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }
 
-  const controllerModeBlocked = !isControllerModeConfirmed(settings)
-
   const controllerSpinner = savingControllerMode || savingGyroMountMatrixFix || savingRumbleIntensity
   const gyroMountMatrixFixDisabled =
     savingGyroMountMatrixFix
@@ -568,13 +503,18 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
         />
       </SettingsGroup>
       <SettingsGroup title="Input">
-        <TrackpadPanel
-          inputplumberAvailable={settings.inputplumberAvailable}
-          controllerModeBlocked={controllerModeBlocked}
-          savingTrackpads={savingTrackpads}
-          trackpadMode={activeTrackpadMode}
-          onTrackpadModeChange={(value: TrackpadMode) => void handleTrackpadModeChange(value)}
-        />
+        <SettingsRow>
+          <SteamExplainerButtonItem
+            layout="below"
+            label="Custom Controller Mapping"
+            disabled={!settings.inputplumberAvailable || !isControllerModeConfirmed(settings)}
+            description={activeGame ? `Dial and trackpad mappings for ${activeGame.display_name}` : "Global dial and trackpad mappings"}
+            onClick={() => openControllerMapping(activeGame?.appid ?? '0')}
+          >
+            Edit mappings
+          </SteamExplainerButtonItem>
+        </SettingsRow>
+
         {settings.gyroMountMatrixFix.visible && (
           <SettingsRow>
             <SteamExplainerToggleField

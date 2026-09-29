@@ -12,6 +12,11 @@ def _split_mapping_blocks(profile_yaml):
     if mapping_header_index is None:
         return profile_yaml, None, None, []
 
+    entry_indent = mapping_indent
+    for line in lines[mapping_header_index + 1:]:
+        if line.lstrip().startswith('- name:'):
+            entry_indent = line[:len(line) - len(line.lstrip())]
+            break
     prefix_lines = lines[: mapping_header_index + 1]
     suffix_lines = []
     blocks = []
@@ -31,7 +36,7 @@ def _split_mapping_blocks(profile_yaml):
             suffix_lines = lines[index:]
             break
 
-        if stripped.startswith("- name:") and indent == mapping_indent:
+        if stripped.startswith("- name:") and indent == entry_indent:
             block_start = index
             block_indent = indent
             index += 1
@@ -120,3 +125,23 @@ def remove_gamepad_button_source_mappings(profile_yaml, button_names):
         suffix_lines,
         kept_blocks,
     )
+
+
+def remove_mapping_sources(profile_yaml, source_patterns):
+    original, prefix, suffix, blocks = _split_mapping_blocks(profile_yaml)
+    if prefix is None:
+        return profile_yaml
+    kept = []
+    for block in blocks:
+        source = "\n".join(block).split("target_events:", 1)[0].split("source_event:", 1)[-1]
+        if not any(pattern.search(source) for pattern in source_patterns):
+            kept.append(block)
+    return _join_mapping_blocks(original, prefix, suffix, kept)
+
+
+def mapping_entry_indent(profile_yaml):
+    _, _, _, blocks = _split_mapping_blocks(profile_yaml)
+    if blocks:
+        line = blocks[0][0]
+        return line[:len(line) - len(line.lstrip())]
+    return ''

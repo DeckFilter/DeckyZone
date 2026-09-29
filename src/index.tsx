@@ -4,6 +4,7 @@ import {
   Router,
   SteamSpinner,
   Tabs,
+  useParams,
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener, routerHook } from '@decky/api'
 import { Fragment, type ReactNode, useState } from 'react'
@@ -25,7 +26,9 @@ import {
   syncStoredHideUnsupportedButtonsRuntimeEnabled,
   syncStoredZotacGlyphsRuntimeEnabled,
 } from "./glyphs/zotacGlyphRuntime"
-import { DECKYZONE_ROUTE } from './routes'
+import { DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE } from './routes'
+import ControllerMappingPage from './controllerMapping/ControllerMappingPage'
+import { syncSteamMappingEntry } from './controllerMapping/steamEditor'
 import {
   DeckyZoneState,
   DeckyZoneStateProvider,
@@ -94,6 +97,7 @@ function setHomeButtonRuntimeEnabled(enabled: boolean) {
 }
 
 function applySettingsRuntime(settings: PluginSettings) {
+  syncSteamMappingEntry(settings.inputplumberAvailable)
   setBrightnessDialFixRuntimeEnabled(settings.brightnessDialFixEnabled)
   setHomeButtonRuntimeEnabled(settings.homeButtonEnabled)
   syncStoredZotacGlyphsRuntimeEnabled(settings.zotacGlyphsEnabled)
@@ -596,6 +600,15 @@ function Content() {
 }
 
 export default definePlugin(() => {
+  const mappingRoute = `${DECKYZONE_MAPPING_ROUTE}/:appId/:section?/:sourceId?`
+  const MappingRoute = () => {
+    const { appId, sourceId } = useParams<{ appId: string; sourceId?: string }>()
+    return (
+      <ErrorBoundary title="Controller Mapping">
+        <DeckyZoneStateProvider store={deckyZoneState}><ControllerMappingPage key={appId} appId={appId} sourceId={sourceId} /></DeckyZoneStateProvider>
+      </ErrorBoundary>
+    )
+  }
   const SettingsRoute = () => (
     <DeckyZoneStateProvider store={deckyZoneState}>
       <SettingsSurfaceProvider surface="settings">
@@ -607,8 +620,12 @@ export default definePlugin(() => {
     </DeckyZoneStateProvider>
   )
 
+  routerHook.addRoute(mappingRoute, MappingRoute, { exact: true })
   routerHook.addRoute(DECKYZONE_ROUTE, SettingsRoute, { exact: false })
   registerBrightnessDialFixListeners()
+  const mappingBrightnessListener = addEventListener<[BrightnessDialDirection]>('controller_mapping_brightness', direction => {
+    applyBrightnessDialDelta(direction === 'up' ? BRIGHTNESS_DIAL_FIX_STEP : -BRIGHTNESS_DIAL_FIX_STEP)
+  })
   RunningApps.register()
   deckyZoneState.setActiveGame(RunningApps.activeAppInfo())
   updateNoticeGeneration += 1
@@ -651,11 +668,14 @@ export default definePlugin(() => {
     ),
     icon: <ZotacIcon />,
     onDismount() {
+      syncSteamMappingEntry(false)
       routerHook.removeRoute(DECKYZONE_ROUTE)
+      routerHook.removeRoute(mappingRoute)
       updateNoticeGeneration += 1
       resetBootstrap()
       resetStartupCheck()
       removeEventListener('zotac_home_short_pressed', unregisterHomeNavigationListener)
+      removeEventListener('controller_mapping_brightness', mappingBrightnessListener)
       removeEventListener(
         REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
         remainingBatteryTimeAutoDisabledListener,

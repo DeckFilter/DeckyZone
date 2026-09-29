@@ -1,0 +1,234 @@
+import {
+  DialogBody, DialogBodyText, DialogButton, DialogControlsSection, Field, Menu, MenuItem,
+  Navigation, NavEntryPositionPreferences as FocusPreference, showContextMenu, SteamSpinner, ToggleField,
+} from '@decky/ui'
+import { callable } from '@decky/api'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { FaCog } from 'react-icons/fa'
+import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
+import { controllerMappingRoute, openControllerMapping } from '../routes'
+import { showDeckyToast } from '../utils/toasts'
+import { useDeckyZoneState } from '../state/DeckyZoneState'
+import type { PluginSettings, TrackpadMode } from '../types/plugin'
+import CommandPicker from './CommandPicker'
+import { commandsById, mappingSources, sourceLabel, type MappingCommand, type MappingSource } from './commands'
+import { getMappingUi, MappingDropdown, MappingFocusable, MappingSidebar, SettingsIcon, sidebarFocus } from './nativeUi'
+import { dialGlyph, MappingGlyph, sourceGlyph, trackpadGlyph } from './MappingGlyph'
+import { mappingStyles } from './styles'
+
+type TrackpadSide = 'left' | 'right'
+type DialMode = 'volume' | 'brightness' | 'custom'
+type MappingProfile = { dials: Record<TrackpadSide, DialMode>; bindings: Record<string, string | null>; behaviors: Record<TrackpadSide, TrackpadMode> }
+type MappingState = { appId: string; enabled: boolean; profile: MappingProfile; settings?: PluginSettings }
+const getMapping = callable<[string], MappingState>('get_controller_mapping')
+const setMapping = callable<[string, MappingProfile, boolean], MappingState>('set_controller_mapping')
+
+
+export default function ControllerMappingPage({ appId, sourceId }: { appId: string; sourceId?: string }) {
+  const [state, setState] = useState<MappingState | null>(null)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const inFlight = useRef(false)
+  const mounted = useRef(true)
+  const { store } = useDeckyZoneState()
+  const [ui] = useState(getMappingUi)
+  const lastSource = useRef<string | undefined>(undefined)
+  const source = mappingSources.find((item) => item.id === sourceId)
+  const baseRoute = controllerMappingRoute(appId)
+  useEffect(() => {
+    mounted.current = true
+    let current = true
+    setState(null)
+    setError('')
+    void getMapping(appId).then(value => { if (current) setState(value) }, () => { if (current) setError('Could not load controller mappings.') })
+    return () => { current = false; mounted.current = false }
+  }, [appId])
+  const save = async (profile: MappingProfile, enabled = state?.enabled ?? true) => {
+    if (inFlight.current || !state) throw new Error('A mapping change is already in progress.')
+    const previous = state
+    inFlight.current = true
+    setSaving(true)
+    setState({ ...state, profile, enabled })
+    try {
+      const next = await setMapping(appId, profile, enabled)
+      if (mounted.current) setState(next)
+      if (next.settings) store.updateSettings(next.settings)
+    } catch (error) {
+      if (mounted.current) setState(previous)
+      showDeckyToast({ title: 'Controller mappings', body: String(error), severity: 'error' })
+      throw error
+    } finally {
+      inFlight.current = false
+      if (mounted.current) setSaving(false)
+    }
+  }
+  const setBinding = async (id: string, command?: MappingCommand, restoreDefault = false) => {
+    if (!state?.enabled) return
+    const bindings = { ...state.profile.bindings, [id]: command?.id ?? null }
+    if (restoreDefault) delete bindings[id]
+    await save({ ...state.profile, bindings })
+  }
+  if (!state) return <DialogBody>{error ? <DialogBodyText>{error}</DialogBodyText> : <SteamSpinner />}</DialogBody>
+  const { bindings, behaviors, dials } = state.profile
+  const disabled = saving || !state.enabled
+  const appStore = (globalThis as unknown as { appStore?: { GetAppOverviewByAppID: (id: number) => { display_name?: string } | undefined } }).appStore
+  const title = appId === '0' ? 'Global mappings' : 'Controller mappings'
+  const gameName = appStore?.GetAppOverviewByAppID(Number(appId))?.display_name ?? `Game ${appId}`
+  const openBinding = (item: MappingSource) => {
+    lastSource.current = item.id
+    const section = item.group === 'Dials' ? 'dials' : 'trackpads'
+    Navigation.Navigate(`${baseRoute}/${section}/${item.id}`)
+  }
+  const options = (item: MappingSource, target: EventTarget | null) => showContextMenu(
+    <Menu label={sourceLabel(item)}>
+      <MenuItem onSelected={() => openBinding(item)}>Change command</MenuItem>
+      <MenuItem disabled={disabled} onSelected={() => void setBinding(item.id).catch(() => {})}>Clear command</MenuItem>
+      <MenuItem disabled={disabled || !(item.id in bindings)} onSelected={() => void setBinding(item.id, undefined, true).catch(() => {})}>Restore default</MenuItem>
+    </Menu>,
+    target ?? undefined,
+  )
+  const bindingRow = (item: MappingSource) => (
+    <Field
+      key={item.id}
+      label={<MappingGlyph src={sourceGlyph(item)} label={sourceLabel(item)} className={ui.glyphClass} white={item.group === 'Dials'} />}
+      childrenContainerWidth="fixed"
+      inlineWrap="keep-inline"
+      preferredFocus={item.id === lastSource.current}
+    >
+      <MappingFocusable className={ui.bindingClasses.BindingButtons} flow-children="row" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
+        <DialogButton
+          className={ui.bindingClasses.BindingButton}
+          disabled={disabled}
+          data-mapping-row={item.id}
+          preferredFocus={item.id === lastSource.current}
+          onOKActionDescription="Select"
+          onClick={() => openBinding(item)}
+        >
+          {commandsById.get(bindings[item.id] ?? '')?.label ?? (bindings[item.id] === null ? 'None' : 'Add command')}
+        </DialogButton>
+        <DialogButton
+          className={ui.bindingClasses.BindingOptionsButton}
+          disabled={disabled}
+          data-mapping-options={item.id}
+          aria-label={`${sourceLabel(item)} settings`}
+          onOKActionDescription="Settings"
+          onClick={(event) => options(item, event.currentTarget)}
+        >
+          {SettingsIcon ? <SettingsIcon /> : <FaCog />}
+        </DialogButton>
+      </MappingFocusable>
+    </Field>
+  )
+  const section = (title: string, children: ReactNode) => {
+    const Section = ui.Section
+    return Section ? (
+      <Section key={title} label={title}>{children}</Section>
+    ) : (
+      <DialogControlsSection key={title}>
+        <SettingsDialogSubHeader>{title}</SettingsDialogSubHeader>
+        {children}
+      </DialogControlsSection>
+    )
+  }
+  const dialSection = (side: TrackpadSide) => section(side === 'left' ? 'Left Dial' : 'Right Dial', <>
+    <Field label="Behavior" childrenContainerWidth="fixed" inlineWrap="keep-inline">
+      <div data-mapping-dial-behavior={side}>
+        <MappingDropdown controlled disabled={disabled} menuLabel={`${side === 'left' ? 'Left' : 'Right'} Dial Behavior`}
+          rgOptions={[{ data: 'volume', label: 'Volume' }, { data: 'brightness', label: 'Brightness' }, { data: 'custom', label: 'Custom' }]}
+          selectedOption={dials[side]}
+          onChange={({ data }: { data: DialMode }) => { void save({ ...state.profile, dials: { ...dials, [side]: data } }).catch(() => {}) }} />
+      </div>
+    </Field>
+    {dials[side] === 'custom' && mappingSources.filter(item => item.id.startsWith(`${side}-dial-`)).map(bindingRow)}
+  </>)
+  const trackpadSection = (side: TrackpadSide) => {
+    const title = side === 'left' ? 'Left Trackpad' : 'Right Trackpad'
+    const behaviorOptions: { data: TrackpadMode; label: string }[] = [
+      { data: 'disabled', label: 'None' },
+      { data: 'default', label: side === 'left' ? 'Scroll Wheel' : 'As Mouse' },
+      { data: 'directional_buttons', label: 'Button Pad' },
+    ]
+    return section(title, <>
+      <Field label="Behavior" childrenContainerWidth="fixed" inlineWrap="keep-inline">
+        <div data-mapping-behavior={side}>
+          <MappingDropdown
+            controlled
+            disabled={disabled}
+            menuLabel={`${title} Behavior`}
+            rgOptions={behaviorOptions}
+            selectedOption={behaviors[side]}
+            onChange={({ data }: { data: TrackpadMode }) => {
+              void save({ ...state.profile, behaviors: { ...behaviors, [side]: data } }).catch(() => {})
+            }}
+          />
+        </div>
+      </Field>
+      {behaviors[side] === 'directional_buttons' && mappingSources.filter((item) => item.group === title).map(bindingRow)}
+    </>)
+  }
+  const scopeControls = appId === '0' ? <DialogBodyText>Used by games without an override.</DialogBodyText> : <>
+    <DialogBodyText>{gameName}</DialogBodyText>
+    <ToggleField label="Use per-game settings" description={state.enabled ? 'Changes apply to this game' : 'Using global mappings'} checked={state.enabled} disabled={saving} onChange={(enabled: boolean) => { void save(state.profile, enabled).catch(() => {}) }} />
+    <Field label="Global mappings"><DialogButton disabled={saving} onClick={() => openControllerMapping('0')}>Edit global mappings</DialogButton></Field>
+  </>
+
+  if (!source) {
+    return (
+      <div data-deckyzone-mapping={appId} style={{ height: '100%', width: '100%' }}>
+        <MappingSidebar
+          title={title}
+          showTitle
+          disableRouteReporting
+          eInitialFocus={lastSource.current ? sidebarFocus?.k_EPagedSettingsInitialFocus_PageContent : undefined}
+          pages={[
+            {
+              title: 'Dials',
+              icon: <MappingGlyph src={dialGlyph} label="Dials" className={ui.glyphClass} white />,
+              route: `${baseRoute}/dials`,
+              content: (
+                <DialogBody>
+                  {scopeControls}
+                  {dialSection('left')}
+                  {dialSection('right')}
+                </DialogBody>
+              ),
+            },
+            {
+              title: 'Trackpads',
+              icon: <MappingGlyph src={trackpadGlyph} label="Trackpads" className={ui.glyphClass} />,
+              route: `${baseRoute}/trackpads`,
+              content: (
+                <DialogBody>
+                  {scopeControls}
+                  {trackpadSection('left')}
+                  {trackpadSection('right')}
+                </DialogBody>
+              ),
+            },
+          ]}
+        />
+      </div>
+    )
+  }
+  const body = (
+    <div className="dz-mapping" data-deckyzone-mapping={appId}>
+      <style>{mappingStyles}</style>
+      <CommandPicker
+        key={source.id}
+        source={source}
+        selected={commandsById.get(bindings[source.id] ?? '')}
+        busy={saving}
+        classes={ui.classes}
+        onSelect={async (command) => {
+          await setBinding(source.id, command)
+          Navigation.NavigateBack()
+        }}
+        onCancel={() => Navigation.NavigateBack()}
+      />
+    </div>
+  )
+  const Page = ui.Page
+  return Page ? (
+    <Page scrollable={false} dialogContentPadding="none" contentMaxWidth="full-width" headerVisibility="default">{body}</Page>
+  ) : <div className="dz-mapping-fallback">{body}</div>
+}
