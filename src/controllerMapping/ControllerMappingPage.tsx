@@ -11,10 +11,11 @@ import {
   NavEntryPositionPreferences as FocusPreference,
   showContextMenu,
   SteamSpinner,
+  useParams,
 } from '@decky/ui'
 import { callable } from '@decky/api'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { FaCog } from 'react-icons/fa'
+import { FaCog, FaGamepad } from 'react-icons/fa'
 import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
 import { controllerMappingRoute, openControllerMapping } from '../routes'
 import { showDeckyToast } from '../utils/toasts'
@@ -34,12 +35,17 @@ type MappingState = { appId: string; enabled: boolean; profile: MappingProfile; 
 type MappingPageProps = { appId: string; sourceId?: string }
 const getMapping = callable<[string], MappingState>('get_controller_mapping')
 const setMapping = callable<[string, MappingProfile, boolean], MappingState>('set_controller_mapping')
+let lastEditedGameId: string | undefined
 
-export default function ControllerMappingPage(props: MappingPageProps) {
+function getGameName(appId: string) {
   const appStore = (
     globalThis as unknown as { appStore?: { GetAppOverviewByAppID: (id: number) => { display_name?: string } | undefined } }
   ).appStore
-  const gameName = appStore?.GetAppOverviewByAppID(Number(props.appId))?.display_name ?? `Game ${props.appId}`
+  return appStore?.GetAppOverviewByAppID(Number(appId))?.display_name ?? `Game ${appId}`
+}
+
+export default function ControllerMappingPage(props: MappingPageProps) {
+  const gameName = getGameName(props.appId)
   const title = props.appId === '0' ? 'Controller Settings (Custom)' : `${gameName} Controller Settings (Custom)`
   return (
     <MappingGamePage title={title}>
@@ -54,7 +60,8 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
   const [saving, setSaving] = useState(false)
   const inFlight = useRef(false)
   const mounted = useRef(true)
-  const { store } = useDeckyZoneState()
+  const { store, bootstrap } = useDeckyZoneState()
+  const { section: activeSection } = useParams<{ section?: string }>()
   const [ui] = useState(getMappingUi)
   const lastSource = useRef<string | undefined>(undefined)
   const source = mappingSources.find((item) => item.id === sourceId)
@@ -104,6 +111,12 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
   }
   if (!state) return <DialogBody>{error ? <DialogBodyText>{error}</DialogBodyText> : <SteamSpinner />}</DialogBody>
   const { bindings, behaviors, dials, buttons } = state.profile
+  const savedGames = bootstrap.state === 'ready'
+    ? Object.entries(bootstrap.snapshot.settings.perGameSettings)
+      .filter(([id, settings]) => Number.isSafeInteger(Number(id)) && Number(id) > 0 && settings.controllerMapping != null)
+      .map(([id]) => ({ appId: id, name: getGameName(id) }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))
+    : []
   const disabled = saving
   const openBinding = (item: MappingSource) => {
     lastSource.current = item.id
@@ -234,7 +247,8 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
         <MappingSidebar
           showTitle={false}
           disableRouteReporting
-          eInitialFocus={lastSource.current ? sidebarFocus?.k_EPagedSettingsInitialFocus_PageContent : undefined}
+          eInitialFocus={lastSource.current || (appId === '0' && activeSection === 'games' && lastEditedGameId)
+            ? sidebarFocus?.k_EPagedSettingsInitialFocus_PageContent : undefined}
           pages={[
             {
               title: 'Dials',
@@ -290,6 +304,41 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
             },
             'spacer',
             'separator',
+            {
+              title: 'Game mappings',
+              icon: <FaGamepad />,
+              visible: appId === '0',
+              route: `${baseRoute}/games`,
+              content: (
+                <DialogBody>
+                  {bootstrap.state === 'loading' ? <SteamSpinner /> : bootstrap.state === 'error' ? (
+                    <DialogBodyText>{bootstrap.message}</DialogBodyText>
+                  ) : savedGames.length === 0 ? (
+                    <DialogBodyText>No game mappings yet.</DialogBodyText>
+                  ) : savedGames.map((game) => (
+                    <Field
+                      key={game.appId}
+                      label={game.name}
+                      childrenContainerWidth="fixed"
+                      inlineWrap="keep-inline"
+                      preferredFocus={game.appId === lastEditedGameId}
+                    >
+                      <DialogButton
+                        disabled={saving}
+                        data-mapping-edit-game={game.appId}
+                        preferredFocus={game.appId === lastEditedGameId}
+                        onClick={() => {
+                          lastEditedGameId = game.appId
+                          openControllerMapping(game.appId)
+                        }}
+                      >
+                        Edit
+                      </DialogButton>
+                    </Field>
+                  ))}
+                </DialogBody>
+              ),
+            },
             {
               title: 'Global mappings',
               icon: SettingsIcon ? <SettingsIcon /> : <FaCog />,
