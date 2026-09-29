@@ -157,6 +157,7 @@ def defaults(mode="default"):
         ]
         bindings.update(zip(SOURCES[4:], targets))
     return {
+        "buttons": {"home": "screenshot"},
         "behaviors": behaviors,
         "dials": {"left": "volume", "right": "brightness"},
         "bindings": bindings,
@@ -164,12 +165,20 @@ def defaults(mode="default"):
 
 
 def validate(profile):
-    if not isinstance(profile, dict) or set(profile) != {
-        "behaviors",
-        "dials",
-        "bindings",
-    }:
+    required = {"behaviors", "dials", "bindings"}
+    if (
+        not isinstance(profile, dict)
+        or not required <= set(profile) <= required | {"buttons"}
+    ):
         raise ValueError("Invalid controller mapping profile.")
+    if "buttons" in profile:
+        buttons = profile["buttons"]
+        if (
+            not isinstance(buttons, dict)
+            or set(buttons) != {"home"}
+            or buttons["home"] not in ("screenshot", "steam_home")
+        ):
+            raise ValueError("Invalid Home button action.")
     dials = profile["dials"]
     if (
         not isinstance(dials, dict)

@@ -20,8 +20,6 @@ type Props = {
 
 const getStatus = callable<[], PluginStatus>('get_status')
 const setControllerMode = callable<[ControllerMode], PluginSettings>('set_controller_mode')
-const setHomeButtonEnabled = callable<[boolean], PluginSettings>('set_home_button_enabled')
-const setBrightnessDialFixEnabled = callable<[boolean], PluginSettings>('set_brightness_dial_fix_enabled')
 const setGyroMountMatrixFixEnabled = callable<[boolean], PluginSettings>('set_gyro_mount_matrix_fix_enabled')
 const setPerGameSettingsEnabled = callable<[string, boolean], PluginSettings>('set_per_game_settings_enabled')
 const setButtonPromptFixEnabled = callable<[string, boolean], PluginSettings>('set_button_prompt_fix_enabled')
@@ -36,7 +34,6 @@ type RumbleSaveTarget = { scope: 'global' } | { scope: 'per_game'; appId: string
 
 const DEFAULT_APP_ID = '0'
 const CONTROLLER_STATUS_FAILED_NOTICE = 'Controller failed to initialize. Restart device.'
-const CONTROLLER_ACTION_FAILED_NOTICE = "Couldn't update setting."
 const CONTROLLER_MODE_ACTION_FAILED_NOTICE = "Couldn't update mode."
 const PER_GAME_SETTINGS_ACTION_FAILED_NOTICE = "Couldn't update per-game setting."
 const BUTTON_PROMPT_FIX_ACTION_FAILED_NOTICE = "Couldn't update prompt fix."
@@ -111,8 +108,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
   const [controllerNotice, setControllerNotice] = useState<string | null>(null)
   const [perGameNotice, setPerGameNotice] = useState<string | null>(null)
   const [savingControllerMode, setSavingControllerMode] = useState(false)
-  const [savingHomeButton, setSavingHomeButton] = useState(false)
-  const [savingBrightnessDialFix, setSavingBrightnessDialFix] = useState(false)
   const [savingGyroMountMatrixFix, setSavingGyroMountMatrixFix] = useState(false)
   const [savingPerGameSettings, setSavingPerGameSettings] = useState(false)
   const [savingButtonPromptFix, setSavingButtonPromptFix] = useState(false)
@@ -229,20 +224,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
     }
   }, [])
 
-  const handleHomeButtonToggleChange = async (enabled: boolean) => {
-    setControllerNotice(null)
-    setSavingHomeButton(true)
-    try {
-      const nextSettings = await setHomeButtonEnabled(enabled)
-      onSettingsChange(nextSettings)
-      setControllerNotice(null)
-    } catch {
-      setControllerNotice(CONTROLLER_ACTION_FAILED_NOTICE)
-    } finally {
-      setSavingHomeButton(false)
-    }
-  }
-
   const handleControllerModeChange = async (mode: ControllerMode) => {
     setControllerNotice(null)
     setSavingControllerMode(true)
@@ -256,20 +237,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       setControllerNotice(CONTROLLER_MODE_ACTION_FAILED_NOTICE)
     } finally {
       setSavingControllerMode(false)
-    }
-  }
-
-  const handleBrightnessDialFixToggleChange = async (enabled: boolean) => {
-    setControllerNotice(null)
-    setSavingBrightnessDialFix(true)
-    try {
-      const nextSettings = await setBrightnessDialFixEnabled(enabled)
-      onSettingsChange(nextSettings)
-      setControllerNotice(null)
-    } catch {
-      setControllerNotice(CONTROLLER_ACTION_FAILED_NOTICE)
-    } finally {
-      setSavingBrightnessDialFix(false)
     }
   }
 
@@ -479,17 +446,15 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
 
   return (
     <SettingsPanel title="Controller" spinner={controllerSpinner}>
-      <SettingsGroup>
-        <ControllerTogglesPanel
-          settings={settings}
-          savingControllerMode={savingControllerMode}
-          savingHomeButton={savingHomeButton}
-          savingBrightnessDialFix={savingBrightnessDialFix}
-          onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
-          onHomeButtonToggleChange={(value: boolean) => void handleHomeButtonToggleChange(value)}
-          onBrightnessDialFixToggleChange={(value: boolean) => void handleBrightnessDialFixToggleChange(value)}
-        />
-      </SettingsGroup>
+      {!isControllerModeConfirmed(settings) && (
+        <SettingsGroup>
+          <ControllerTogglesPanel
+            settings={settings}
+            savingControllerMode={savingControllerMode}
+            onControllerModeChange={(value: ControllerMode) => void handleControllerModeChange(value)}
+          />
+        </SettingsGroup>
+      )}
       <SettingsGroup title="Game Overrides">
         <PerGameSettingsPanel
           activeGame={activeGame}
@@ -508,7 +473,10 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
             layout="below"
             label="Custom Controller Mapping"
             disabled={!settings.inputplumberAvailable || !isControllerModeConfirmed(settings)}
-            description={activeGame ? `Dial and trackpad mappings for ${activeGame.display_name}` : "Global dial and trackpad mappings"}
+            explainerTitle="Custom Controller Mapping"
+            explainer={activeGame
+              ? `Configure buttons, dials and trackpads for ${activeGame.display_name}.`
+              : 'Configure global button, dial and trackpad mappings.'}
             onClick={() => openControllerMapping(activeGame?.appid ?? '0')}
           >
             Edit mappings

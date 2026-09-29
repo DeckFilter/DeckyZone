@@ -111,13 +111,14 @@ export type SystemReport = {
 }
 
 export type ControllerMappingProfile = {
+  buttons: { home: 'screenshot' | 'steam_home' }
   dials: Record<'left' | 'right', 'volume' | 'brightness' | 'custom'>
   bindings: Record<string, string | null>
   behaviors: Record<'left' | 'right', TrackpadMode>
 }
 
 export type PerGameSettings = {
-  controllerMapping?: ControllerMappingProfile | null
+  controllerMapping?: Omit<ControllerMappingProfile, 'buttons'> & { buttons?: ControllerMappingProfile['buttons'] } | null
   enabled: boolean
   buttonPromptFixEnabled: boolean
   trackpadMode: TrackpadMode

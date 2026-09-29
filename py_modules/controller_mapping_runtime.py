@@ -33,13 +33,17 @@ class MappingRuntime:
             self.logger.info("System resumed; restoring controller mappings.")
         self.suspend_offset = suspend_offset
         return (
-            profile is not None
-            and time.monotonic() >= self.retry_after
+            time.monotonic() >= self.retry_after
             and (
                 self.resume_pending
-                or profile != self.profile
-                or self.process is None
-                or self.process.returncode is not None
+                or (
+                    profile is not None
+                    and (
+                        profile != self.profile
+                        or self.process is None
+                        or self.process.returncode is not None
+                    )
+                )
             )
         )
 
@@ -104,6 +108,8 @@ class MappingRuntime:
             profile is None
             and not (self.directory / "controller-mapping-backup.json").exists()
         ):
+            self.resume_pending = False
+            self.retry_after = 0
             return True
         process = await asyncio.create_subprocess_exec(
             "/usr/bin/python3",

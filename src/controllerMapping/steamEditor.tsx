@@ -18,7 +18,7 @@ function SteamMappingEntry() {
   const hasMapping = settings.perGameSettings[String(appId)]?.controllerMapping != null
 
   return (
-    <Field label="Dials and trackpads" childrenContainerWidth="fixed" inlineWrap="keep-inline">
+    <Field label="Buttons, dials and trackpads" childrenContainerWidth="fixed" inlineWrap="keep-inline">
       <DialogButton data-deckyzone-steam-mappings={appId} onClick={() => openControllerMapping(String(appId))}>
         {hasMapping ? 'Edit custom mappings' : 'Add custom mappings'}
       </DialogButton>

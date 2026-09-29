@@ -38,7 +38,7 @@ All compatibility fixes are opt-in and can be disabled at any time.
 | Per-game Trackpad and Rumble settings | ✅             | ✅      | ✅      |
 | Per-game Button Prompt Fix            | ✅             | ✅      | ✅      |
 
-DeckyZone activates its InputPlumber controller runtime while Home Button, Brightness Dial, a non-default trackpad mode, or an active per-game controller override needs it. Returning the last dependent feature to its default restores the inherited controller target.
+DeckyZone activates its InputPlumber controller runtime in Gamepad mode so the default right dial controls brightness automatically; the left dial controls volume. Custom Controller Mapping provides global and per-game choices for buttons, dials, and trackpads. Home defaults to Screenshot and can be set to Steam Home. Saved game mappings keep their own choices. Removing custom mappings restores the default dial handling; unloading DeckyZone restores the inherited controller target.
 
 Gyro Orientation Fix installs a temporary DeckyZone-owned InputPlumber Zotac IMU mount-matrix override until the upstream device profile includes the same matrix.
 

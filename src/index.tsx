@@ -53,8 +53,6 @@ const BOOTSTRAP_TIMEOUT_MS = 10_000
 const BRIGHTNESS_DIAL_FIX_STEP = 5
 const REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT = 'remaining_battery_time_fix_disabled'
 
-let brightnessDialFixEnabled = false
-let homeButtonEnabled = false
 let currentBrightnessPercent = 50
 let brightnessChangeRegistration: { unregister?: () => void } | null = null
 let brightnessDialFixEventListener: ((direction: BrightnessDialDirection) => void) | null = null
@@ -88,18 +86,8 @@ function clampBrightnessPercent(value: number) {
   return Math.min(100, Math.max(0, value))
 }
 
-function setBrightnessDialFixRuntimeEnabled(enabled: boolean) {
-  brightnessDialFixEnabled = enabled
-}
-
-function setHomeButtonRuntimeEnabled(enabled: boolean) {
-  homeButtonEnabled = enabled
-}
-
 function applySettingsRuntime(settings: PluginSettings) {
   syncSteamMappingEntry(settings)
-  setBrightnessDialFixRuntimeEnabled(settings.brightnessDialFixEnabled)
-  setHomeButtonRuntimeEnabled(settings.homeButtonEnabled)
   syncStoredZotacGlyphsRuntimeEnabled(settings.zotacGlyphsEnabled)
   syncStoredHideUnsupportedButtonsRuntimeEnabled(settings.hideUnsupportedButtonsEnabled)
 }
@@ -135,10 +123,6 @@ function registerBrightnessDialFixListeners() {
 
   if (!brightnessDialFixEventListener) {
     brightnessDialFixEventListener = (direction: BrightnessDialDirection) => {
-      if (!brightnessDialFixEnabled) {
-        return
-      }
-
       applyBrightnessDialDelta(direction === 'up' ? BRIGHTNESS_DIAL_FIX_STEP : -BRIGHTNESS_DIAL_FIX_STEP)
     }
 
@@ -635,10 +619,6 @@ export default definePlugin(() => {
   startUpdateNoticeAfterBootstrap(bootstrap, currentUpdateNoticeGeneration)
   void refreshStateAfterBootstrap(bootstrap)
   const unregisterHomeNavigationListener = addEventListener('zotac_home_short_pressed', () => {
-    if (!homeButtonEnabled) {
-      return
-    }
-
     Navigation.Navigate('/library/home')
     Navigation.CloseSideMenus()
   })

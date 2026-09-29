@@ -392,7 +392,7 @@ class DeckyZoneService:
         if not self._resolve_inputplumber_keyboard_device_path():
             return False
 
-        if self.settings_store.get_home_button_enabled():
+        if self._should_enable_home_button_navigation():
             return self._get_inputplumber_profile_path() == str(
                 self._get_home_button_override_profile_path()
             )
@@ -1453,12 +1453,14 @@ class DeckyZoneService:
         if self._home_button_original_profile_yaml is not None:
             return True
 
-        self._home_button_original_profile_path = (
-            self._get_inputplumber_profile_path() or None
-        )
-        self._home_button_original_profile_yaml = (
-            self._get_inputplumber_profile_yaml()
-        )
+        profile_path = self._get_inputplumber_profile_path() or None
+        if profile_path == str(self._get_home_button_override_profile_path()):
+            profile_path = DEFAULT_INPUTPLUMBER_PROFILE_PATH
+            profile_yaml = self.read_text(profile_path)
+        else:
+            profile_yaml = self._get_inputplumber_profile_yaml()
+        self._home_button_original_profile_path = profile_path
+        self._home_button_original_profile_yaml = profile_yaml
         return True
 
     def _load_home_button_override_profile(self):
@@ -1733,12 +1735,17 @@ class DeckyZoneService:
         if self._runtime_input_profile_original_profile_yaml is not None:
             return True
 
-        self._runtime_input_profile_original_profile_path = (
-            self._get_inputplumber_profile_path() or None
-        )
-        self._runtime_input_profile_original_profile_yaml = (
-            self._get_inputplumber_profile_yaml()
-        )
+        profile_path = self._get_inputplumber_profile_path() or None
+        if profile_path in {
+            str(self._get_runtime_inputplumber_profile_path()),
+            str(self._get_home_button_override_profile_path()),
+        }:
+            profile_path = DEFAULT_INPUTPLUMBER_PROFILE_PATH
+            profile_yaml = self.read_text(profile_path)
+        else:
+            profile_yaml = self._get_inputplumber_profile_yaml()
+        self._runtime_input_profile_original_profile_path = profile_path
+        self._runtime_input_profile_original_profile_yaml = profile_yaml
         return True
 
     def _load_runtime_input_profile(self, app_id=None):
@@ -2317,12 +2324,18 @@ class DeckyZoneService:
             return False
 
     def _should_enable_home_button_navigation(self):
-        return self.settings_store.get_home_button_enabled() and (
+        action = self.settings_store.get_home_button_action(self._active_per_game_app_id)
+        return action == "steam_home" and (
             self._startup_target_active
             or self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET
         )
 
     async def _sync_home_button_navigation_state(self):
+        try:
+            self._restore_home_button_profile()
+        except Exception as error:
+            self.logger.warning(f"Failed to restore Home button profile: {error}")
+            return False
         base_profile_result = self._sync_runtime_input_profile_state(
             self._active_per_game_app_id
         )
@@ -2369,7 +2382,8 @@ class DeckyZoneService:
         return await self._sync_home_button_navigation_state()
 
     def _should_enable_brightness_dial_fixer(self):
-        return self.settings_store.get_brightness_dial_fix_enabled() and (
+        profile = self.settings_store.get_effective_controller_mapping(self._active_per_game_app_id)
+        return profile is None and (
             self._startup_target_active
             or self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET
         )
@@ -2481,6 +2495,8 @@ class DeckyZoneService:
         app_id = controller_mappings.app_id(app_id)
         profile = controller_mappings.validate(profile) if profile is not None else None
         async with self._mapping_save_lock:
+            if profile is not None and "buttons" not in profile:
+                profile["buttons"] = self.get_controller_mapping(app_id)["profile"]["buttons"]
             if not self.is_supported_device() or not self.probe_inputplumber_available():
                 raise RuntimeError("Controller mappings require a ZONE with InputPlumber.")
             if not self._is_controller_mode_snapshot_safe(self._get_controller_mode_snapshot()):
@@ -3346,72 +3362,10 @@ class DeckyZoneService:
             return False
 
     async def set_home_button_enabled(self, enabled):
-        if enabled and not self.probe_inputplumber_available():
-            return self._current_settings()
-
-        return await self._set_controller_runtime_feature_enabled(
-            enabled=enabled,
-            read_enabled=self.settings_store.get_home_button_enabled,
-            write_enabled=self.settings_store.set_home_button_enabled,
-            feature_name="Home Button",
-        )
-
-    async def _set_controller_runtime_feature_enabled(
-        self,
-        *,
-        enabled,
-        read_enabled,
-        write_enabled,
-        feature_name,
-    ):
-        previous_enabled = bool(read_enabled())
-        write_enabled(bool(enabled))
-
-        apply_error = None
-        try:
-            applied = await self.sync_per_game_target(self._active_per_game_app_id)
-        except Exception as error:
-            applied = False
-            apply_error = error
-
-        if applied:
-            return self._current_settings()
-
-        try:
-            write_enabled(previous_enabled)
-        except Exception as rollback_error:
-            self.logger.error(
-                f"Failed to restore {feature_name} after controller runtime failure: "
-                f"{rollback_error}"
-            )
-            raise RuntimeError(
-                f"Failed to apply {feature_name} and restore its previous setting."
-            ) from rollback_error
-
-        try:
-            restored = await self.sync_per_game_target(self._active_per_game_app_id)
-        except Exception as rollback_error:
-            restored = False
-            self.logger.warning(
-                f"Failed to reconcile controller runtime after restoring "
-                f"{feature_name}: {rollback_error}"
-            )
-
-        if not restored:
-            self.logger.warning(
-                f"Controller runtime remained out of sync after restoring {feature_name}."
-            )
-
-        message = f"Failed to apply {feature_name}. The previous setting was restored."
-        if not restored:
-            message = (
-                f"Failed to apply {feature_name}. The saved setting was restored, "
-                "but the controller runtime could not be reconciled."
-            )
-
-        if apply_error is not None:
-            raise RuntimeError(message) from apply_error
-        raise RuntimeError(message)
+        profile = self.get_controller_mapping(DEFAULT_APP_ID)["profile"]
+        profile["buttons"]["home"] = "steam_home" if enabled else "screenshot"
+        result = await self.set_controller_mapping(DEFAULT_APP_ID, profile)
+        return result["settings"]
 
     async def _brightness_dial_loop(self):
         while self._brightness_dial_running:
@@ -3500,15 +3454,7 @@ class DeckyZoneService:
         )
 
     async def set_brightness_dial_fix_enabled(self, enabled):
-        if enabled and not self.probe_inputplumber_available():
-            return self._current_settings()
-
-        return await self._set_controller_runtime_feature_enabled(
-            enabled=enabled,
-            read_enabled=self.settings_store.get_brightness_dial_fix_enabled,
-            write_enabled=self.settings_store.set_brightness_dial_fix_enabled,
-            feature_name="Brightness Dial",
-        )
+        return self._current_settings()
 
     async def set_gyro_mount_matrix_fix_enabled(self, enabled):
         state = self._get_gyro_mount_matrix_fix_state()

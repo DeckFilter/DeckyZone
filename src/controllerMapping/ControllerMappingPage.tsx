@@ -25,9 +25,11 @@ import { commandsById, mappingSources, sourceLabel, type MappingCommand, type Ma
 import { getMappingUi, MappingDropdown, MappingFocusable, MappingGamePage, MappingSidebar, SettingsIcon, sidebarFocus } from './nativeUi'
 import { dialGlyph, MappingGlyph, sourceGlyph, trackpadGlyph } from './MappingGlyph'
 import { mappingStyles } from './styles'
+import homeGlyph from '../glyphs/source/assets/zotac/zone/home.svg'
 
 type TrackpadSide = 'left' | 'right'
 type DialMode = 'volume' | 'brightness' | 'custom'
+type HomeAction = MappingProfile['buttons']['home']
 type MappingState = { appId: string; enabled: boolean; profile: MappingProfile; settings?: PluginSettings }
 type MappingPageProps = { appId: string; sourceId?: string }
 const getMapping = callable<[string], MappingState>('get_controller_mapping')
@@ -101,7 +103,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
     await save({ ...state.profile, bindings })
   }
   if (!state) return <DialogBody>{error ? <DialogBodyText>{error}</DialogBodyText> : <SteamSpinner />}</DialogBody>
-  const { bindings, behaviors, dials } = state.profile
+  const { bindings, behaviors, dials, buttons } = state.profile
   const disabled = saving
   const openBinding = (item: MappingSource) => {
     lastSource.current = item.id
@@ -184,8 +186,8 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
               disabled={disabled}
               menuLabel={`${side === 'left' ? 'Left' : 'Right'} Dial Behavior`}
               rgOptions={[
-                { data: 'volume', label: 'Volume' },
-                { data: 'brightness', label: 'Brightness' },
+                { data: 'volume', label: side === 'left' ? 'Volume (Default)' : 'Volume' },
+                { data: 'brightness', label: side === 'right' ? 'Brightness (Default)' : 'Brightness' },
                 { data: 'custom', label: 'Custom' },
               ]}
               selectedOption={dials[side]}
@@ -202,7 +204,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
     const title = side === 'left' ? 'Left Trackpad' : 'Right Trackpad'
     const behaviorOptions: { data: TrackpadMode; label: string }[] = [
       { data: 'disabled', label: 'None' },
-      { data: 'default', label: side === 'left' ? 'Scroll Wheel' : 'As Mouse' },
+      { data: 'default', label: side === 'left' ? 'Scroll Wheel (Default)' : 'As Mouse (Default)' },
       { data: 'directional_buttons', label: 'Button Pad' },
     ]
     return section(
@@ -234,6 +236,36 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
           disableRouteReporting
           eInitialFocus={lastSource.current ? sidebarFocus?.k_EPagedSettingsInitialFocus_PageContent : undefined}
           pages={[
+            {
+              title: 'Buttons',
+              icon: <MappingGlyph src={homeGlyph} label="Buttons" className={ui.glyphClass} />,
+              route: `${baseRoute}/buttons`,
+              content: (
+                <DialogBody>
+                  <Field
+                    label={<MappingGlyph src={homeGlyph} label="Home Button" className={ui.glyphClass} />}
+                    childrenContainerWidth="fixed"
+                    inlineWrap="keep-inline"
+                  >
+                    <div data-mapping-home-behavior>
+                      <MappingDropdown
+                        controlled
+                        disabled={disabled}
+                        menuLabel="Home Button"
+                        rgOptions={[
+                          { data: 'screenshot', label: 'Screenshot (Default)' },
+                          { data: 'steam_home', label: 'Steam Home' },
+                        ]}
+                        selectedOption={buttons.home}
+                        onChange={({ data }: { data: HomeAction }) => {
+                          void save({ ...state.profile, buttons: { ...buttons, home: data } }).catch(() => {})
+                        }}
+                      />
+                    </div>
+                  </Field>
+                </DialogBody>
+              ),
+            },
             {
               title: 'Dials',
               icon: <MappingGlyph src={dialGlyph} label="Dials" className={ui.glyphClass} white />,
