@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from pathlib import Path
 
 
@@ -12,8 +13,38 @@ class MappingRuntime:
         self.on_brightness = on_brightness
         self.reader = None
         self.error = ""
-        self.start_failed = False
+        self.retry_after = 0
+        self.resume_pending = False
+        self.suspend_offset = self._suspend_offset()
         self.lock = asyncio.Lock()
+
+    @staticmethod
+    def _suspend_offset():
+        # BOOTTIME includes sleep; MONOTONIC only advances while awake.
+        return time.clock_gettime(
+            getattr(time, "CLOCK_BOOTTIME", time.CLOCK_MONOTONIC)
+        ) - time.monotonic()
+
+    def needs_recovery(self, profile):
+        suspend_offset = self._suspend_offset()
+        if suspend_offset - self.suspend_offset > 0.5:
+            self.resume_pending = True
+            self.retry_after = 0
+            self.logger.info("System resumed; restoring controller mappings.")
+        self.suspend_offset = suspend_offset
+        return (
+            profile is not None
+            and time.monotonic() >= self.retry_after
+            and (
+                self.resume_pending
+                or profile != self.profile
+                or self.process is None
+                or self.process.returncode is not None
+            )
+        )
+
+    def defer_recovery(self):
+        self.retry_after = time.monotonic() + 5
 
     async def stop(self):
         async with self.lock:
@@ -63,12 +94,12 @@ class MappingRuntime:
     async def _sync(self, profile):
         if (
             profile == self.profile
+            and not self.resume_pending
             and self.process is not None
             and self.process.returncode is None
         ):
             return True
         await self._stop()
-        self.start_failed = False
         if (
             profile is None
             and not (self.directory / "controller-mapping-backup.json").exists()
@@ -100,12 +131,14 @@ class MappingRuntime:
                     response.get("error", "Mapping worker could not start.")
                 )
             self.profile = profile
+            self.resume_pending = False
+            self.retry_after = 0
             self.reader = asyncio.create_task(self.read_events(process))
             if profile is None:
                 await self._stop()
             return True
         except Exception:
-            self.start_failed = True
+            self.defer_recovery()
             try:
                 await self._stop()
             except Exception as error:

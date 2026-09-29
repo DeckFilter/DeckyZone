@@ -338,9 +338,6 @@ class Runtime:
             if self.error:
                 raise self.error
         finally:
-            if self.output is not None:
-                await asyncio.sleep(0.03)
-                self.output.close()
             if self.mouse is not None:
                 loop.remove_reader(self.mouse.fd)
 
@@ -353,10 +350,15 @@ class Runtime:
                 finally:
                     await self.restore()
         finally:
-            if self.mouse is not None:
-                self.mouse.close()
-            if self.bus:
-                self.bus.disconnect()
+            try:
+                if self.output is not None:
+                    await asyncio.sleep(0.03)
+                    self.output.close()
+            finally:
+                if self.mouse is not None:
+                    self.mouse.close()
+                if self.bus:
+                    self.bus.disconnect()
 
 
 async def main():

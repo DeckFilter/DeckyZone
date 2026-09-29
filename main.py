@@ -3188,9 +3188,13 @@ class DeckyZoneService:
                     )
                 if self._is_controller_mode_snapshot_safe(controller_mode_snapshot) and not self._mapping_sync_lock.locked():
                     profile = self.settings_store.get_effective_controller_mapping(self._active_per_game_app_id)
-                    worker = self._mapping_runtime.process
-                    if profile is not None and not self._mapping_runtime.start_failed and (worker is None or worker.returncode is not None):
-                        await self.sync_per_game_target(self._active_per_game_app_id)
+                    if self._mapping_runtime.needs_recovery(profile):
+                        try:
+                            if not await self.sync_per_game_target(self._active_per_game_app_id):
+                                self._mapping_runtime.defer_recovery()
+                        except Exception:
+                            self._mapping_runtime.defer_recovery()
+                            raise
                 last_controller_mode_signature = controller_mode_signature
             except asyncio.CancelledError:
                 raise
