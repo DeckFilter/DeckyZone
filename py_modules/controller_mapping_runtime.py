@@ -14,7 +14,7 @@ class MappingRuntime:
         self.reader = None
         self.error = ""
         self.retry_after = 0
-        self.resume_pending = False
+        self.recovery_pending = False
         self.suspend_offset = self._suspend_offset()
         self.lock = asyncio.Lock()
 
@@ -28,14 +28,14 @@ class MappingRuntime:
     def needs_recovery(self, profile):
         suspend_offset = self._suspend_offset()
         if suspend_offset - self.suspend_offset > 0.5:
-            self.resume_pending = True
+            self.recovery_pending = True
             self.retry_after = 0
             self.logger.info("System resumed; restoring controller mappings.")
         self.suspend_offset = suspend_offset
         return (
             time.monotonic() >= self.retry_after
             and (
-                self.resume_pending
+                self.recovery_pending
                 or (
                     profile is not None
                     and (
@@ -48,6 +48,7 @@ class MappingRuntime:
         )
 
     def defer_recovery(self):
+        self.recovery_pending = True
         self.retry_after = time.monotonic() + 5
 
     async def stop(self):
@@ -98,7 +99,7 @@ class MappingRuntime:
     async def _sync(self, profile):
         if (
             profile == self.profile
-            and not self.resume_pending
+            and not self.recovery_pending
             and self.process is not None
             and self.process.returncode is None
         ):
@@ -108,7 +109,7 @@ class MappingRuntime:
             profile is None
             and not (self.directory / "controller-mapping-backup.json").exists()
         ):
-            self.resume_pending = False
+            self.recovery_pending = False
             self.retry_after = 0
             return True
         process = await asyncio.create_subprocess_exec(
@@ -137,7 +138,7 @@ class MappingRuntime:
                     response.get("error", "Mapping worker could not start.")
                 )
             self.profile = profile
-            self.resume_pending = False
+            self.recovery_pending = False
             self.retry_after = 0
             self.reader = asyncio.create_task(self.read_events(process))
             if profile is None:

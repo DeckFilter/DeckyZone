@@ -2588,19 +2588,25 @@ class DeckyZoneService:
 
     async def sync_per_game_target(self, app_id):
         async with self._mapping_sync_lock:
-            profile = self.settings_store.get_effective_controller_mapping(app_id)
-            await self._mapping_runtime.stop()
-            if profile is not None and self._has_directional_trackpad_backup():
-                if not self._restore_directional_trackpad_button_mappings():
-                    raise RuntimeError("Could not restore the previous trackpad mode.")
-            result = await self._sync_per_game_target(app_id)
-            if result:
-                await self._sync_controller_mapping_runtime(profile)
+            app_id = str(app_id or DEFAULT_APP_ID)
+            self._active_per_game_app_id = app_id
+            try:
+                profile = self.settings_store.get_effective_controller_mapping(app_id)
+                await self._mapping_runtime.stop()
+                if profile is not None and self._has_directional_trackpad_backup():
+                    if not self._restore_directional_trackpad_button_mappings():
+                        raise RuntimeError("Could not restore the previous trackpad mode.")
+                result = await self._sync_per_game_target(app_id)
+                if result:
+                    await self._sync_controller_mapping_runtime(profile)
+            except Exception:
+                self._mapping_runtime.defer_recovery()
+                raise
+            if not result:
+                self._mapping_runtime.defer_recovery()
             return result
 
     async def _sync_per_game_target(self, app_id):
-        app_id = str(app_id or DEFAULT_APP_ID)
-        self._active_per_game_app_id = app_id
         per_game_settings_enabled = (
             app_id != DEFAULT_APP_ID
             and self.settings_store.get_per_game_settings_enabled(app_id)
