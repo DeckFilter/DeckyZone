@@ -359,12 +359,35 @@ class DeckyZoneService:
         return STARTUP_MODE
 
     def _resolve_controller_target_gamepad_device_path(self, target_mode):
-        return self._resolve_input_device_path_by_match(
-            lambda device_name: controller_targets.is_target_gamepad_device_name(
-                target_mode,
-                device_name,
-            )
-        )
+        try:
+            target_paths = self._get_inputplumber_target_device_paths()
+        except Exception:
+            self._inputplumber_available = False
+            return None
+        attached = False
+        for target_path in target_paths:
+            try:
+                if self._get_inputplumber_target_device_type(target_path) == target_mode:
+                    attached = True
+                    break
+            except Exception:
+                continue
+        if not attached:
+            return None
+
+        for device_path in self._get_zotac_mouse_candidate_paths():
+            if not controller_targets.is_virtual_gamepad_event_device(device_path):
+                continue
+            try:
+                name = self._read_input_device_name(device_path)
+            except Exception:
+                continue
+            if controller_targets.is_target_gamepad_device_name(target_mode, name):
+                return device_path
+
+        if target_mode == controller_targets.STEAM_UHID_TARGET_MODE:
+            return controller_targets.resolve_steam_uhid_device_path()
+        return None
 
     def _is_current_controller_runtime_healthy(self):
         if not self._is_controller_runtime_required():
@@ -469,7 +492,9 @@ class DeckyZoneService:
                 profile_path = None
 
             try:
-                target_gamepad_path = self._resolve_startup_gamepad_device_path() or None
+                target_gamepad_path = self._resolve_controller_target_gamepad_device_path(
+                    self._get_current_controller_target_mode()
+                ) or None
             except Exception:
                 target_gamepad_path = None
 
@@ -972,6 +997,23 @@ class DeckyZoneService:
         )
         self._inputplumber_available = True
         return inputplumber_target_sync.parse_busctl_array_output(result.stdout)
+
+    def _get_inputplumber_target_device_type(self, target_path):
+        result = self.command_runner(
+            self._busctl_args(
+                "get-property",
+                "org.shadowblip.InputPlumber",
+                target_path,
+                "org.shadowblip.Input.Target",
+                "DeviceType",
+            ),
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.get_env(),
+        )
+        return inputplumber_target_sync.parse_busctl_string_output(result.stdout)
 
     def _get_inputplumber_profile_yaml(self):
         result = self.command_runner(
@@ -1928,9 +1970,7 @@ class DeckyZoneService:
         return self._resolve_input_device_path_by_name(INPUTPLUMBER_KEYBOARD_DEVICE_NAME)
 
     def _resolve_startup_gamepad_device_path(self):
-        return self._resolve_input_device_path_by_match(
-            controller_targets.is_startup_target_gamepad_device_name
-        )
+        return self._resolve_controller_target_gamepad_device_path(STARTUP_MODE)
 
     async def _wait_for_resolved_input_device_path(
         self,
@@ -1994,8 +2034,8 @@ class DeckyZoneService:
             self._startup_target_active = False
             return "InputPlumber target devices did not settle after retries."
 
-        # The DBus target object can appear before the actual target gamepad
-        # input device is created, so verify the real device before succeeding.
+        # The D-Bus object may precede the kernel device, including UHID targets
+        # that Steam reads through hidraw without creating an evdev gamepad.
         if not await self._wait_for_resolved_input_device_path(
             self._resolve_startup_gamepad_device_path
         ):
