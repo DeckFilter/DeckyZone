@@ -86,11 +86,6 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
     return () => { mounted.current = false }
   }, [])
   useEffect(() => {
-    if (appId !== '0' && activeSection === 'buttons') {
-      Navigation.Navigate(`${baseRoute}/general`)
-    }
-  }, [appId, activeSection, baseRoute])
-  useEffect(() => {
     if (inFlight.current) return
     let current = true
     setError('')

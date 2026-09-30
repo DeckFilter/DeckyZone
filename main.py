@@ -2497,7 +2497,7 @@ class DeckyZoneService:
         app_id = controller_mappings.app_id(app_id)
         profile = controller_mappings.validate(profile) if profile is not None else None
         async with self._mapping_save_lock:
-            if profile is not None and "buttons" not in profile:
+            if app_id == DEFAULT_APP_ID and profile is not None and "buttons" not in profile:
                 profile["buttons"] = self.get_controller_mapping(app_id)["profile"]["buttons"]
             if not self.is_supported_device() or not self.probe_inputplumber_available():
                 raise RuntimeError("Controller mappings require a ZONE with InputPlumber.")

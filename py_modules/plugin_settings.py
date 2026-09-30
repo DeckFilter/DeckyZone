@@ -163,6 +163,12 @@ def _normalize_legacy_missing_glyph_fix_entry(entry, settings):
     return None
 
 
+def _without_game_home_button(profile):
+    if not isinstance(profile, dict):
+        return profile
+    return {key: value for key, value in profile.items() if key != "buttons"}
+
+
 def _normalize_per_game_settings_entry(entry, settings):
     if not isinstance(entry, dict):
         return _normalize_legacy_missing_glyph_fix_entry(entry, settings)
@@ -171,7 +177,9 @@ def _normalize_per_game_settings_entry(entry, settings):
         return _normalize_legacy_missing_glyph_fix_entry(entry, settings)
 
     return {
-        "controllerMapping": controller_mappings.normalize(entry.get("controllerMapping")),
+        "controllerMapping": controller_mappings.normalize(
+            _without_game_home_button(entry.get("controllerMapping"))
+        ),
         ENABLED_KEY: bool(entry.get(ENABLED_KEY, False)),
         BUTTON_PROMPT_FIX_ENABLED_KEY: bool(
             entry.get(BUTTON_PROMPT_FIX_ENABLED_KEY, False)
@@ -536,6 +544,10 @@ def update_game_controller_settings(app_id, patch):
     current_entry = dict(entry or _default_per_game_settings_entry(settings))
     if isinstance(raw_entry, dict):
         current_entry.update(raw_entry)
+    if "controllerMapping" in current_entry:
+        current_entry["controllerMapping"] = _without_game_home_button(
+            current_entry["controllerMapping"]
+        )
     current_entry.update(patch)
     if ENABLED_KEY not in patch:
         current_entry[ENABLED_KEY] = True
@@ -753,14 +765,13 @@ def _global_home_action(settings, global_profile):
 def _resolve_mapping_buttons(profile, home):
     if profile is None:
         return None
-    return {**profile, "buttons": profile.get("buttons", {"home": home})}
+    return {**profile, "buttons": {"home": home}}
 
 
 def get_home_button_action(app_id=None):
-    profile = get_effective_controller_mapping(app_id)
-    if profile is not None:
-        return profile["buttons"]["home"]
-    return _global_home_action(_read_settings(), None)
+    settings = _read_settings()
+    profile = controller_mappings.normalize(settings.get("controllerMapping"))
+    return _global_home_action(settings, profile)
 
 
 def get_controller_mapping(app_id):
@@ -790,6 +801,8 @@ def get_controller_mapping(app_id):
 def set_controller_mapping(app_id, profile, enabled=True):
     app_id = controller_mappings.app_id(app_id)
     if profile is not None:
+        if app_id != "0":
+            profile = _without_game_home_button(profile)
         profile = controller_mappings.validate(profile)
     if app_id == "0":
         _write_setting("controllerMapping", profile)
