@@ -586,7 +586,7 @@ export default definePlugin(() => {
   const MappingRoute = () => {
     const { appId, sourceId } = useParams<{ appId: string; sourceId?: string }>()
     return (
-      <ErrorBoundary title="Controller Mapping">
+      <ErrorBoundary title="Controller Settings">
         <DeckyZoneStateProvider store={deckyZoneState}><ControllerMappingPage key={appId} appId={appId} sourceId={sourceId} /></DeckyZoneStateProvider>
       </ErrorBoundary>
     )

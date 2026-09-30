@@ -311,6 +311,8 @@ class DeckyZoneService:
         self._rumble_device_path = None
         self._rumble_task = None
         self._rumble_running = False
+        self._rumble_gain_lock = asyncio.Lock()
+        self._rumble_gain_by_path = {}
         self._controller_mode_monitor_task = None
         self._controller_mode_monitor_running = False
         self._directional_trackpad_backup = None
@@ -2501,20 +2503,59 @@ class DeckyZoneService:
                 raise RuntimeError("Controller mappings require a ZONE with InputPlumber.")
             if not self._is_controller_mode_snapshot_safe(self._get_controller_mode_snapshot()):
                 raise RuntimeError("Switch the controller to Gamepad mode first.")
-            previous = self.settings_store._read_settings().get("controllerMapping") if app_id == "0" else self.settings_store.get_per_game_settings().get(app_id, {}).get("controllerMapping")
-            previous_enabled = self.settings_store.get_per_game_settings_enabled(app_id)
+            previous = (
+                self.settings_store._read_settings().get("controllerMapping")
+                if app_id == DEFAULT_APP_ID
+                else self.settings_store.snapshot_game_settings(app_id)
+            )
             try:
                 self.settings_store.set_controller_mapping(app_id, profile, enabled)
-                if not await self.sync_per_game_target(self._active_per_game_app_id):
+                if not await self.sync_per_game_target(None, settings_app_id=app_id):
                     raise RuntimeError("Controller mappings did not apply.")
-            except Exception:
-                self.settings_store.set_controller_mapping(app_id, previous, previous_enabled)
+            except (Exception, asyncio.CancelledError):
+                if app_id == DEFAULT_APP_ID:
+                    self.settings_store.set_controller_mapping(app_id, previous)
+                else:
+                    self.settings_store.restore_game_settings(app_id, previous)
                 try:
-                    await self.sync_per_game_target(self._active_per_game_app_id)
+                    await self.sync_per_game_target(None, settings_app_id=app_id)
                 except Exception as error:
                     self.logger.error(f"Mapping rollback failed: {error}")
                 raise
             return {**self.get_controller_mapping(app_id), "settings": self._current_settings()}
+
+    async def _save_game_controller_settings(self, app_id, save):
+        async with self._mapping_save_lock:
+            previous = self.settings_store.snapshot_game_settings(app_id)
+            try:
+                save()
+                if self.settings_store.snapshot_game_settings(app_id) == previous:
+                    return self._current_settings()
+                if not await self.sync_per_game_target(None, settings_app_id=app_id):
+                    raise RuntimeError("Game controller settings did not apply.")
+            except (Exception, asyncio.CancelledError):
+                self.settings_store.restore_game_settings(app_id, previous)
+                try:
+                    if not await self.sync_per_game_target(None, settings_app_id=app_id):
+                        self.logger.error("Game settings rollback did not apply.")
+                except Exception as error:
+                    self.logger.error(f"Game settings rollback failed: {error}")
+                raise
+            return self._current_settings()
+
+    async def update_game_controller_settings(self, app_id, patch):
+        app_id = self.settings_store.validate_game_settings_app_id(app_id)
+        patch = self.settings_store.validate_game_controller_settings_patch(patch)
+        return await self._save_game_controller_settings(
+            app_id,
+            lambda: self.settings_store.update_game_controller_settings(app_id, patch),
+        )
+
+    async def remove_game_settings(self, app_id):
+        app_id = self.settings_store.validate_game_settings_app_id(app_id)
+        return await self._save_game_controller_settings(
+            app_id, lambda: self.settings_store.remove_game_settings(app_id)
+        )
 
     def set_per_game_settings_enabled(self, app_id, enabled):
         if app_id in (None, "", DEFAULT_APP_ID):
@@ -2586,10 +2627,15 @@ class DeckyZoneService:
             self._restore_runtime_input_profile()
             raise
 
-    async def sync_per_game_target(self, app_id):
+    async def sync_per_game_target(self, app_id, *, settings_app_id=None):
         async with self._mapping_sync_lock:
-            app_id = str(app_id or DEFAULT_APP_ID)
-            self._active_per_game_app_id = app_id
+            if settings_app_id is not None:
+                app_id = str(self._active_per_game_app_id or DEFAULT_APP_ID)
+                if settings_app_id not in (DEFAULT_APP_ID, app_id):
+                    return True
+            else:
+                app_id = str(app_id or DEFAULT_APP_ID)
+                self._active_per_game_app_id = app_id
             try:
                 profile = self.settings_store.get_effective_controller_mapping(app_id)
                 await self._mapping_runtime.stop()
@@ -3636,27 +3682,37 @@ class DeckyZoneService:
     # a native HID/sysfs method via save_config, vibration_intensity, and
     # motor_test; a future change could evaluate that path or add a
     # compatibility/testing switch between methods if needed.
+    def _rumble_device_identity(self, device_path):
+        if not device_path:
+            return None
+        try:
+            state = os.stat(device_path)
+            return (state.st_dev, state.st_ino, state.st_rdev)
+        except OSError:
+            return None
+
     async def _apply_rumble_gain_once(self, device_path=None, app_id=None):
         device_path = device_path or self._rumble_device_path
         if not device_path:
             return False
 
-        try:
-            self._write_event_to_device(
-                device_path,
-                self._build_gain_event(self._get_effective_rumble_intensity(app_id)),
-            )
-            return True
-        except OSError as error:
-            self.logger.warning(f"Failed to apply rumble intensity: {error}")
-            return False
+        async with self._rumble_gain_lock:
+            try:
+                intensity = self._get_effective_rumble_intensity(app_id)
+                self._write_event_to_device(device_path, self._build_gain_event(intensity))
+                identity = self._rumble_device_identity(device_path)
+                if identity is not None:
+                    self._rumble_gain_by_path[device_path] = (identity, intensity)
+                else:
+                    self._rumble_gain_by_path.pop(device_path, None)
+                return True
+            except OSError as error:
+                self.logger.warning(f"Failed to apply rumble intensity: {error}")
+                return False
 
     async def _rumble_loop(self):
         while self._rumble_running:
-            await self._apply_rumble_gain_once(
-                self._rumble_device_path,
-                app_id=self._active_per_game_app_id,
-            )
+            await self._apply_rumble_gain_once(self._rumble_device_path)
             await self.sleep(DEFAULT_RUMBLE_REAPPLY_INTERVAL_SECONDS)
 
     async def start_rumble_fixer(self, app_id=None):
@@ -3710,8 +3766,7 @@ class DeckyZoneService:
         await self._sync_rumble_state()
         return self._current_settings()
 
-    async def test_rumble(self):
-        intensity = max(0.0, min(1.0, self._get_effective_rumble_intensity() / 100.0))
+    def _send_rumble_preview_command(self, *args):
         try:
             self.command_runner(
                 self._busctl_args(
@@ -3719,34 +3774,7 @@ class DeckyZoneService:
                     "org.shadowblip.InputPlumber",
                     INPUTPLUMBER_DBUS_PATH,
                     "org.shadowblip.Output.ForceFeedback",
-                    "Rumble",
-                    "d",
-                    str(intensity),
-                ),
-                check=True,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=self.get_env(),
-            )
-        except subprocess.CalledProcessError as error:
-            detail = (error.stderr or error.stdout or str(error)).strip()
-            self.logger.warning(f"Failed to send test rumble via InputPlumber: {detail}")
-            return False
-        except Exception as error:
-            self.logger.warning(f"Failed to send test rumble via InputPlumber: {error}")
-            return False
-
-        await self.sleep(RUMBLE_PREVIEW_DURATION_MS / 1000.0)
-
-        try:
-            self.command_runner(
-                self._busctl_args(
-                    "call",
-                    "org.shadowblip.InputPlumber",
-                    INPUTPLUMBER_DBUS_PATH,
-                    "org.shadowblip.Output.ForceFeedback",
-                    "Stop",
+                    *args,
                 ),
                 check=True,
                 text=True,
@@ -3757,11 +3785,56 @@ class DeckyZoneService:
             return True
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
-            self.logger.warning(f"Failed to stop test rumble via InputPlumber: {detail}")
-            return False
+            self.logger.warning(f"Failed to {args[0]} test rumble via InputPlumber: {detail}")
         except Exception as error:
-            self.logger.warning(f"Failed to stop test rumble via InputPlumber: {error}")
-            return False
+            self.logger.warning(f"Failed to {args[0]} test rumble via InputPlumber: {error}")
+        return False
+
+    async def test_rumble(self, app_id=None):
+        if app_id is not None:
+            app_id = controller_mappings.app_id(app_id)
+        async with self._mapping_save_lock, self._mapping_sync_lock, self._rumble_gain_lock:
+            if app_id is None:
+                intensity = self._get_effective_rumble_intensity()
+            elif app_id == DEFAULT_APP_ID:
+                intensity = self.settings_store.get_rumble_intensity()
+            else:
+                entry = self.settings_store.get_per_game_settings().get(app_id, {})
+                intensity = entry.get("rumbleIntensity", self.settings_store.get_rumble_intensity())
+            intensity = max(0.0, min(1.0, intensity / 100.0))
+            device_path = self._rumble_device_path
+            known_gain = self._rumble_gain_by_path.get(device_path) if app_id is not None else None
+            previous_gain = None
+            if known_gain is not None:
+                if known_gain[0] == self._rumble_device_identity(device_path):
+                    previous_gain = known_gain[1]
+                else:
+                    self._rumble_gain_by_path.pop(device_path, None)
+            result = False
+            gain_changed = False
+            try:
+                if previous_gain is not None:
+                    self._write_event_to_device(device_path, self._build_gain_event(100))
+                    gain_changed = True
+                result = self._send_rumble_preview_command("Rumble", "d", str(intensity))
+                if result:
+                    await self.sleep(RUMBLE_PREVIEW_DURATION_MS / 1000.0)
+            except OSError as error:
+                self.logger.warning(f"Failed to set preview rumble gain: {error}")
+            finally:
+                stopped = self._send_rumble_preview_command("Stop")
+                result = result and stopped
+                if gain_changed:
+                    if self._rumble_device_identity(device_path) != known_gain[0]:
+                        self._rumble_gain_by_path.pop(device_path, None)
+                        result = False
+                    else:
+                        try:
+                            self._write_event_to_device(device_path, self._build_gain_event(previous_gain))
+                        except OSError as error:
+                            self.logger.warning(f"Failed to restore rumble gain after preview: {error}")
+                            result = False
+            return result
 
     async def wait_for_inputplumber_dbus(
         self,
@@ -4463,6 +4536,12 @@ class Plugin:
     async def set_controller_mapping(self, app_id, profile, enabled=True):
         return await self.service.set_controller_mapping(app_id, profile, enabled)
 
+    async def update_game_controller_settings(self, app_id, patch):
+        return await self.service.update_game_controller_settings(app_id, patch)
+
+    async def remove_game_settings(self, app_id):
+        return await self.service.remove_game_settings(app_id)
+
     async def set_per_game_settings_enabled(self, app_id, enabled):
         return self.service.set_per_game_settings_enabled(app_id, enabled)
 
@@ -4509,8 +4588,8 @@ class Plugin:
     async def sync_missing_glyph_fix_target(self, app_id):
         return await self.sync_per_game_target(app_id)
 
-    async def test_rumble(self):
-        return await self.service.test_rumble()
+    async def test_rumble(self, app_id=None):
+        return await self.service.test_rumble(app_id)
 
     async def get_latest_version_num(self):
         return await self.service.get_latest_version_num()

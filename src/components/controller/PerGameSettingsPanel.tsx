@@ -69,7 +69,7 @@ function getPerGameSettingsDescription(activeGame: ActiveGame | null, inputplumb
     return NO_ACTIVE_GAME_PER_GAME_SETTINGS_MESSAGE
   }
 
-  return `Overrides settings for ${activeGame.display_name}`
+  return activeGame.display_name
 }
 
 const PerGameSettingsPanel = ({
@@ -113,26 +113,45 @@ const PerGameSettingsPanel = ({
           label="Enable Per-Game Settings"
           explainerTitle="Per-Game Settings"
           explainer={getPerGameSettingsExplainer(activeGame, inputplumberAvailable)}
-          settingsDescription={getPerGameSettingsDescription(activeGame, inputplumberAvailable)}
+          description={getPerGameSettingsDescription(activeGame, inputplumberAvailable)}
           checked={isPerGameSettingsEnabled}
           onChange={(value: boolean) => onPerGameSettingsToggleChange(value)}
           disabled={!activeGame || savingPerGameSettings || !inputplumberAvailable}
         />
       </SettingsRow>
       {activeGame && isPerGameSettingsEnabled && (
-        <SettingsRow>
-          <SteamExplainerToggleField
-            label="Simulate Xbox Controller"
-            explainerTitle="Simulate Xbox Controller"
-            explainer={getButtonPromptFixExplainer(inputplumberAvailable)}
-            checked={isButtonPromptFixEnabled}
-            onChange={(value: boolean) => onButtonPromptFixToggleChange(value)}
-            disabled={savingPerGameSettings || savingButtonPromptFix || !inputplumberAvailable}
-          />
-        </SettingsRow>
+        <XboxControllerSetting
+          inputplumberAvailable={inputplumberAvailable}
+          checked={isButtonPromptFixEnabled}
+          onChange={onButtonPromptFixToggleChange}
+          disabled={savingPerGameSettings || savingButtonPromptFix}
+        />
       )}
     </>
   )
 }
+
+export const XboxControllerSetting = ({
+  inputplumberAvailable,
+  checked,
+  disabled,
+  onChange,
+}: {
+  inputplumberAvailable: boolean
+  checked: boolean
+  disabled: boolean
+  onChange: (enabled: boolean) => void
+}) => (
+  <SettingsRow>
+    <SteamExplainerToggleField
+      label="Simulate Xbox Controller"
+      explainerTitle="Simulate Xbox Controller"
+      explainer={getButtonPromptFixExplainer(inputplumberAvailable)}
+      checked={checked}
+      onChange={onChange}
+      disabled={disabled || !inputplumberAvailable}
+    />
+  </SettingsRow>
+)
 
 export default PerGameSettingsPanel

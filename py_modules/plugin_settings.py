@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 
 from settings import SettingsManager
@@ -470,6 +471,86 @@ def get_per_game_m2_remap_target(app_id):
     return _normalize_per_game_remap_target(
         entry.get(M2_REMAP_TARGET_KEY, DEFAULT_PER_GAME_REMAP_TARGET)
     )
+
+
+def validate_game_settings_app_id(app_id):
+    app_id = controller_mappings.app_id(app_id)
+    if app_id == "0":
+        raise ValueError("A game ID is required.")
+    return app_id
+
+
+def validate_game_controller_settings_patch(patch):
+    if not isinstance(patch, dict) or not patch:
+        raise ValueError("Controller settings must contain at least one change.")
+    boolean_keys = {ENABLED_KEY, BUTTON_PROMPT_FIX_ENABLED_KEY, PER_GAME_RUMBLE_ENABLED_KEY}
+    for key, value in patch.items():
+        if key in boolean_keys:
+            if type(value) is not bool:
+                raise ValueError(f"{key} must be a boolean.")
+        elif key == PER_GAME_RUMBLE_INTENSITY_KEY:
+            if type(value) is not int or not 0 <= value <= 100:
+                raise ValueError("Rumble intensity must be an integer from 0 to 100.")
+        else:
+            raise ValueError(f"Unknown controller setting: {key}.")
+    return dict(patch)
+
+
+def snapshot_game_settings(app_id):
+    settings = _read_settings()
+    snapshot = {}
+    for key in (PER_GAME_SETTINGS_KEY, LEGACY_MISSING_GLYPH_FIX_GAMES_KEY):
+        games = settings.get(key, {})
+        snapshot[key] = {
+            "groupPresent": key in settings,
+            "present": isinstance(games, dict) and app_id in games,
+            "entry": deepcopy(games.get(app_id)) if isinstance(games, dict) else None,
+        }
+    return snapshot
+
+
+def restore_game_settings(app_id, snapshot):
+    settings = _read_settings()
+    for key, previous in snapshot.items():
+        games = dict(settings.get(key) or {})
+        if previous["present"]:
+            games[app_id] = deepcopy(previous["entry"])
+        else:
+            games.pop(app_id, None)
+        if games or previous["groupPresent"]:
+            settings[key] = games
+        else:
+            settings.pop(key, None)
+    setting_file.commit()
+
+
+def update_game_controller_settings(app_id, patch):
+    app_id = validate_game_settings_app_id(app_id)
+    patch = validate_game_controller_settings_patch(patch)
+    entry = get_per_game_settings().get(app_id)
+    if entry is None and patch == {ENABLED_KEY: False}:
+        return
+    settings = _read_settings()
+    games = dict(settings.get(PER_GAME_SETTINGS_KEY) or {})
+    raw_entry = games.get(app_id)
+    current_entry = dict(entry or _default_per_game_settings_entry(settings))
+    if isinstance(raw_entry, dict):
+        current_entry.update(raw_entry)
+    current_entry.update(patch)
+    if ENABLED_KEY not in patch:
+        current_entry[ENABLED_KEY] = True
+    games[app_id] = current_entry
+    _write_setting(PER_GAME_SETTINGS_KEY, games)
+
+
+def remove_game_settings(app_id):
+    app_id = validate_game_settings_app_id(app_id)
+    settings = _read_settings()
+    for key in (PER_GAME_SETTINGS_KEY, LEGACY_MISSING_GLYPH_FIX_GAMES_KEY):
+        games = settings.get(key)
+        if isinstance(games, dict):
+            games.pop(app_id, None)
+    setting_file.commit()
 
 
 def set_per_game_settings_enabled(app_id, enabled):

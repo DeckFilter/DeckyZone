@@ -18,6 +18,8 @@ import { callable } from '@decky/api'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { FaCog, FaGamepad, FaTrash } from 'react-icons/fa'
 import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
+import GameControllerGeneral from '../components/controller/GameControllerGeneral'
+import { awaitGameControllerSaves } from '../components/controller/useGameControllerSettings'
 import { controllerMappingRoute, openControllerMapping } from '../routes'
 import { showDeckyToast } from '../utils/toasts'
 import { useDeckyZoneState } from '../state/DeckyZoneState'
@@ -37,6 +39,7 @@ type MappingState = { appId: string; enabled: boolean; profile: MappingProfile; 
 type MappingPageProps = { appId: string; sourceId?: string }
 const getMapping = callable<[string], MappingState>('get_controller_mapping')
 const setMapping = callable<[string, MappingProfile | null, boolean], MappingState>('set_controller_mapping')
+const removeGameSettings = callable<[string], PluginSettings>('remove_game_settings')
 let lastEditedGameId: string | undefined
 
 function getGameName(appId: string) {
@@ -60,6 +63,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
   const [state, setState] = useState<MappingState | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [generalBusy, setGeneralBusy] = useState(false)
   const inFlight = useRef(false)
   const mounted = useRef(true)
   const { store, bootstrap } = useDeckyZoneState()
@@ -68,26 +72,42 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
   const lastSource = useRef<string | undefined>(undefined)
   const source = mappingSources.find((item) => item.id === sourceId)
   const baseRoute = controllerMappingRoute(appId)
+  const settings = bootstrap.state === 'ready' ? bootstrap.snapshot.settings : undefined
+  const gameSettings = settings?.perGameSettings[appId]
+  const mappingRevision = JSON.stringify([
+    gameSettings?.controllerMapping,
+    gameSettings?.enabled,
+    gameSettings?.trackpadMode,
+    settings?.homeButtonEnabled,
+    settings?.trackpadMode,
+  ])
   useEffect(() => {
     mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
+  useEffect(() => {
+    if (appId !== '0' && activeSection === 'buttons') {
+      Navigation.Navigate(`${baseRoute}/general`)
+    }
+  }, [appId, activeSection, baseRoute])
+  useEffect(() => {
+    if (inFlight.current) return
     let current = true
-    setState(null)
     setError('')
     void getMapping(appId).then(
       (value) => {
-        if (current) setState(value)
+        if (current && !inFlight.current) setState(value)
       },
       () => {
-        if (current) setError('Could not load controller mappings.')
+        if (current) setError('Could not load controller settings.')
       },
     )
     return () => {
       current = false
-      mounted.current = false
     }
-  }, [appId])
+  }, [appId, mappingRevision])
   const save = async (profile: MappingProfile) => {
-    if (inFlight.current || !state) throw new Error('A mapping change is already in progress.')
+    if (inFlight.current || generalBusy || !state) throw new Error('A controller setting is still saving.')
     const previous = state
     inFlight.current = true
     setSaving(true)
@@ -115,24 +135,25 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
   const { bindings, behaviors, dials, buttons } = state.profile
   const savedGames = bootstrap.state === 'ready'
     ? Object.entries(bootstrap.snapshot.settings.perGameSettings)
-      .filter(([id, settings]) => Number.isSafeInteger(Number(id)) && Number(id) > 0 && settings.controllerMapping != null)
+      .filter(([id]) => Number.isSafeInteger(Number(id)) && Number(id) > 0)
       .map(([id]) => ({ appId: id, name: getGameName(id) }))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))
     : []
-  const disabled = saving
-  const removeGameMapping = async (gameId: string) => {
-    if (inFlight.current) throw new Error('A mapping change is already in progress.')
+  const disabled = saving || generalBusy
+  const removeGameProfile = async (gameId: string) => {
+    if (inFlight.current || generalBusy) throw new Error('A controller setting is still saving.')
     const current = store.getSnapshot().bootstrap
     if (current.state !== 'ready') throw new Error('Controller settings are not ready. Try again.')
     const game = current.snapshot.settings.perGameSettings[gameId]
-    if (game?.controllerMapping == null) return
+    if (!game) return
     inFlight.current = true
     setSaving(true)
     try {
-      const next = await setMapping(gameId, null, game.enabled)
+      await awaitGameControllerSaves(gameId)
+      const next = await removeGameSettings(gameId)
       const index = savedGames.findIndex((item) => item.appId === gameId)
       lastEditedGameId = savedGames[index + 1]?.appId ?? savedGames[index - 1]?.appId
-      if (next.settings) store.updateSettings(next.settings)
+      store.updateSettings(next)
     } finally {
       inFlight.current = false
       if (mounted.current) setSaving(false)
@@ -271,6 +292,27 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
             ? sidebarFocus?.k_EPagedSettingsInitialFocus_PageContent : undefined}
           pages={[
             {
+              title: 'General',
+              icon: SettingsIcon ? <SettingsIcon /> : <FaCog />,
+              route: `${baseRoute}/general`,
+              content: (
+                <DialogBody>
+                  {settings ? (
+                    <GameControllerGeneral
+                      appId={appId}
+                      gameName={appId === '0' ? undefined : getGameName(appId)}
+                      settings={settings}
+                      onSettingsChange={(update) => store.updateSettings(update)}
+                      disabled={saving}
+                      onBusyChange={setGeneralBusy}
+                    />
+                  ) : bootstrap.state === 'error' ? (
+                    <DialogBodyText>{bootstrap.message}</DialogBodyText>
+                  ) : <SteamSpinner />}
+                </DialogBody>
+              ),
+            },
+            {
               title: 'Dials',
               icon: <MappingGlyph src={dialGlyph} label="Dials" className={ui.glyphClass} white />,
               route: `${baseRoute}/dials`,
@@ -292,7 +334,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
                 </DialogBody>
               ),
             },
-            {
+            ...(appId === '0' ? [{
               title: 'Buttons',
               icon: <MappingGlyph src={homeGlyph} label="Buttons" className={ui.glyphClass} />,
               route: `${baseRoute}/buttons`,
@@ -321,11 +363,11 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
                   </Field>
                 </DialogBody>
               ),
-            },
+            }] : []),
             'spacer',
             'separator',
             {
-              title: 'Game mappings',
+              title: 'Game settings',
               icon: <FaGamepad />,
               visible: appId === '0',
               route: `${baseRoute}/games`,
@@ -334,7 +376,9 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
                   {bootstrap.state === 'loading' ? <SteamSpinner /> : bootstrap.state === 'error' ? (
                     <DialogBodyText>{bootstrap.message}</DialogBodyText>
                   ) : savedGames.length === 0 ? (
-                    <DialogBodyText>No game mappings yet.</DialogBodyText>
+                    <MappingFocusable focusable preferredFocus data-game-settings-empty>
+                      <DialogBodyText>No game settings yet.</DialogBodyText>
+                    </MappingFocusable>
                   ) : savedGames.map((game) => (
                     <Field
                       key={game.appId}
@@ -350,7 +394,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
                       >
                         <DialogButton
                           className={ui.bindingClasses.BindingButton}
-                          disabled={saving}
+                          disabled={disabled}
                           data-mapping-edit-game={game.appId}
                           preferredFocus={game.appId === lastEditedGameId}
                           onClick={() => {
@@ -362,15 +406,15 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
                         </DialogButton>
                         <DialogButton
                           className={ui.bindingClasses.BindingOptionsButton}
-                          disabled={saving}
+                          disabled={disabled}
                           data-mapping-remove-game={game.appId}
-                          aria-label={`Remove mappings for ${game.name}`}
+                          aria-label={`Remove settings for ${game.name}`}
                           onOKActionDescription="Remove"
                           onClick={() => showModal(
                             <RemoveGameSettingsModal
-                              title="Remove game mappings?"
-                              description={`Remove the custom ZONE mappings for ${game.name}? The game will use global mappings. Rumble and other game settings will be kept.`}
-                              onRemove={() => removeGameMapping(game.appId)}
+                              title="Remove game settings?"
+                              description={`Remove all controller settings for ${game.name}? Custom mappings, rumble overrides and Xbox controller simulation will be removed. The game will use global mappings and rumble settings.`}
+                              onRemove={() => removeGameProfile(game.appId)}
                             />,
                           )}
                         >
@@ -383,7 +427,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
               ),
             },
             {
-              title: 'Global mappings',
+              title: 'Global settings',
               icon: SettingsIcon ? <SettingsIcon /> : <FaCog />,
               visible: appId !== '0',
               route: `${baseRoute}/global`,
@@ -392,11 +436,11 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
                   <ButtonItem
                     bottomSeparator="none"
                     highlightOnFocus={false}
-                    disabled={saving}
+                    disabled={disabled}
                     data-mapping-open-global
                     onClick={() => openControllerMapping('0')}
                   >
-                    Open global mappings
+                    Open global settings
                   </ButtonItem>
                 </DialogBody>
               ),

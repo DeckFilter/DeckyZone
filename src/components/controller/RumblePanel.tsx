@@ -3,6 +3,7 @@ import { SettingsRow, useSettingsItemLayout } from '../SettingsSurface'
 import { SteamExplainerSliderField, SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
+  scopeDescription?: string
   inputplumberAvailable: boolean
   rumbleEnabled: boolean
   rumbleAvailable: boolean
@@ -29,6 +30,7 @@ function getRumbleExplainer(rumbleAvailable: boolean) {
 }
 
 const RumblePanel = ({
+  scopeDescription,
   inputplumberAvailable,
   rumbleEnabled,
   rumbleAvailable,
@@ -49,7 +51,7 @@ const RumblePanel = ({
           label="Custom Rumble Strength"
           explainerTitle="Custom Rumble Strength"
           explainer={getRumbleExplainer(rumbleAvailable)}
-          settingsDescription={rumbleAvailable ? undefined : RUMBLE_UNAVAILABLE_MESSAGE}
+          description={rumbleAvailable ? scopeDescription : RUMBLE_UNAVAILABLE_MESSAGE}
           checked={rumbleEnabled}
           onChange={(value: boolean) => onRumbleToggleChange(value)}
           disabled={savingRumble}
