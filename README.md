@@ -40,7 +40,7 @@ All compatibility fixes are opt-in and can be disabled at any time.
 
 DeckyZone activates its InputPlumber controller runtime in Gamepad mode so the default right dial controls brightness automatically; the left dial controls volume. Custom Controller Mapping provides global and per-game choices for buttons, dials, and trackpads. Home defaults to Screenshot and can be set to Steam Home. Saved game mappings keep their own choices. Removing custom mappings restores the default dial handling; unloading DeckyZone restores the inherited controller target.
 
-In Game Mode, a game's library context menu includes **Add ZONE mappings** or **Edit ZONE mappings**. This shortcut is disabled in Desktop Mode. Mappings are also available through DeckyZone's Controller panel.
+Open mappings from DeckyZone's Controller panel. Use **Game mappings** in the global mapping screen to edit saved game profiles.
 
 Gyro Orientation Fix installs a temporary DeckyZone-owned InputPlumber Zotac IMU mount-matrix override until the upstream device profile includes the same matrix.
 
