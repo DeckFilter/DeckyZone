@@ -28,13 +28,13 @@ const setRemainingBatteryTimeFixEnabled = callable<[boolean], PluginSettings>(
 
 const VRAM_DEFAULT_GB = 4
 const VRAM_EXPLAINER =
-  'Reserves system memory for the integrated GPU as a UMA framebuffer. Higher values leave less memory for games and SteamOS.'
+  'Reserves system memory for the integrated GPU. Higher values leave less memory for games and SteamOS.'
 const VRAM_UNAVAILABLE_DESCRIPTION = 'Current VRAM setting is unavailable'
 const VRAM_UNKNOWN_LABEL = 'Unknown'
 const VRAM_UPDATE_FAILED_NOTICE = "Couldn't update VRAM size."
 const VRAM_REBOOT_REQUIRED_NOTICE = 'Reboot to apply VRAM change.'
 const REMAINING_BATTERY_TIME_FIX_EXPLAINER =
-  "Passes UPower's charging and discharging estimates to Steam through /run/vpower. The fix turns itself off when Valve's vpower service starts providing valid estimates."
+  'Shows estimated time to full or empty in Steam. Turns itself off when SteamOS provides valid estimates.'
 const PERFORMANCE_UPDATE_FAILED_NOTICE = "Couldn't update setting."
 
 function getVramOptionLabel(vramGb: number) {
@@ -224,7 +224,6 @@ const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: P
             menuLabel="VRAM Size"
             explainerTitle="VRAM Size"
             explainer={VRAM_EXPLAINER}
-            settingsDescription="Reserves memory for the integrated GPU"
             description={vramDescription}
             rgOptions={vramOptions}
             strDefaultLabel={vramDraftGb === null ? VRAM_UNKNOWN_LABEL : getVramOptionLabel(vramDraftGb)}
@@ -246,7 +245,6 @@ const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: P
               label="Remaining Battery Time Fix"
               explainerTitle="Remaining Battery Time Fix"
               explainer={REMAINING_BATTERY_TIME_FIX_EXPLAINER}
-              settingsDescription="Shows time to full or empty"
               checked={settings.remainingBatteryTimeFixEnabled}
               onChange={(value: boolean) => void handleRemainingBatteryTimeFixChange(value)}
               disabled={savingRemainingBatteryTimeFix}

@@ -343,7 +343,7 @@ const SystemReportModal = ({ closeModal, reportText }: SystemReportModalProps) =
       onOK={() => void handleCopyReport()}
       onMiddleButton={() => void handleSaveReport()}
       strTitle="System Report"
-      strDescription="DeckyZone has gathered recent logs and the following data for your system:"
+      strDescription="System information and recent logs for troubleshooting."
       strOKButtonText={copyButtonText}
       strMiddleButtonText={saveButtonText}
       strCancelButtonText="Close"

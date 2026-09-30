@@ -16,7 +16,7 @@ type Props = {
 const INPUTPLUMBER_UNAVAILABLE_MESSAGE = 'InputPlumber is not available'
 const NO_ACTIVE_GAME_PER_GAME_SETTINGS_MESSAGE = 'Launch a game to enable per-game settings'
 const PER_GAME_SETTINGS_EXPLAINER =
-  'Stores separate controller simulation, trackpad, and rumble settings for the running game. Other games keep using the global settings.'
+  "Uses this game's controller mappings, Xbox controller simulation and rumble settings. Games without their own settings use the global settings."
 const BUTTON_PROMPT_FIX_EXPLAINER =
   'Simulates an Xbox Elite controller for this game. Fixes missing button glyphs in Mafia 1 and Mafia 3 and may help in other games. Please report any other games where this helps.'
 // TODO: Re-enable these remap options after M1/M2 remap behavior is fully confirmed on-device.
@@ -125,7 +125,6 @@ const PerGameSettingsPanel = ({
             label="Simulate Xbox Controller"
             explainerTitle="Simulate Xbox Controller"
             explainer={getButtonPromptFixExplainer(inputplumberAvailable)}
-            settingsDescription="Presents the controller as Xbox Elite"
             checked={isButtonPromptFixEnabled}
             onChange={(value: boolean) => onButtonPromptFixToggleChange(value)}
             disabled={savingPerGameSettings || savingButtonPromptFix || !inputplumberAvailable}

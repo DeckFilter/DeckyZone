@@ -43,9 +43,8 @@ const RUMBLE_ACTION_FAILED_NOTICE = "Couldn't update vibration."
 const RUMBLE_TEST_FAILED_NOTICE = "Couldn't send vibration test."
 const INPUTPLUMBER_UNAVAILABLE_DESCRIPTION = 'InputPlumber is not available'
 const GYRO_MOUNT_MATRIX_FIX_EXPLAINER =
-  'Corrects the Zotac gyro axes with a temporary InputPlumber mount-matrix override. Changing this setting restarts InputPlumber.'
-const GYRO_MOUNT_MATRIX_FIX_ENABLED_DESCRIPTION = 'Temporary override is active'
-const GYRO_MOUNT_MATRIX_FIX_BUILT_IN_DESCRIPTION = 'Built in now; turn off to remove override'
+  "Corrects the ZONE's gyro orientation. Changing this setting restarts InputPlumber."
+const GYRO_MOUNT_MATRIX_FIX_BUILT_IN_DESCRIPTION = 'InputPlumber includes this fix; you can turn this off'
 
 function getControllerStatusNotice(status: PluginStatus) {
   if (status.state === 'unsupported') {
@@ -75,10 +74,6 @@ function getGyroMountMatrixFixDescription(settings: PluginSettings) {
 
   if (state.enabled && state.builtIn) {
     return GYRO_MOUNT_MATRIX_FIX_BUILT_IN_DESCRIPTION
-  }
-
-  if (state.enabled) {
-    return GYRO_MOUNT_MATRIX_FIX_ENABLED_DESCRIPTION
   }
 
   return undefined
@@ -502,7 +497,6 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
               label="Gyro Orientation Fix"
               explainerTitle="Gyro Orientation Fix"
               explainer={GYRO_MOUNT_MATRIX_FIX_EXPLAINER}
-              settingsDescription="Corrects Zotac gyro orientation"
               checked={settings.gyroMountMatrixFix.enabled}
               onChange={(value: boolean) => void handleGyroMountMatrixFixToggleChange(value)}
               disabled={gyroMountMatrixFixDisabled}
