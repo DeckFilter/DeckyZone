@@ -43,24 +43,67 @@ export const mouseCommands = [
   ['move-up', 'Move Up'], ['move-down', 'Move Down'], ['move-left', 'Move Left'], ['move-right', 'Move Right'],
 ].map(([id, label]) => command('mouse', id, label))
 
-export type KeyboardKey = MappingCommand & { text: string; width?: number }
-const key = (id: string, text = id, width = 1, category: CommandCategory = 'keyboard'): KeyboardKey => ({
-  ...command(category, id, text), text, width,
+export type KeyboardKey = MappingCommand & {
+  text: string
+  width: number
+  secondaryText?: string
+  alignment?: 'left' | 'right'
+  localized?: boolean
+  grow?: boolean
+  fontSize?: number
+}
+type KeyAppearance = Partial<Pick<KeyboardKey, 'text' | 'width' | 'secondaryText' | 'alignment' | 'localized' | 'grow' | 'fontSize'>>
+const key = (id: string, label = id, appearance: KeyAppearance = {}, category: CommandCategory = 'keyboard'): KeyboardKey => ({
+  ...command(category, id, label), text: label, width: 53, ...appearance,
 })
 
 export const keyboardRows: KeyboardKey[][] = [
-  [key('Escape', 'Esc', 1.3), ...Array.from({ length: 12 }, (_, i) => key(`F${i + 1}`))],
-  [key('Backquote', '`'), ...'1234567890'.split('').map((n) => key(`Digit${n}`, n)), key('Minus', '-'), key('Equal', '='), key('Backspace', 'Backspace', 2)],
-  [key('Tab', 'Tab', 1.5), ...'QWERTYUIOP'.split('').map((k) => key(`Key${k}`, k)), key('BracketLeft', '['), key('BracketRight', ']'), key('Backslash', '\\', 1.5)],
-  [key('CapsLock', 'Caps Lock', 1.8), ...'ASDFGHJKL'.split('').map((k) => key(`Key${k}`, k)), key('Semicolon', ';'), key('Quote', "'"), key('Enter', 'Enter', 2.2)],
-  [key('ShiftLeft', 'Left Shift', 2.3), ...'ZXCVBNM'.split('').map((k) => key(`Key${k}`, k)), key('Comma', ','), key('Period', '.'), key('Slash', '/'), key('ShiftRight', 'Right Shift', 2.7)],
-  [key('ControlLeft', 'Left Ctrl', 1.5), key('MetaLeft', 'Super', 1.5), key('AltLeft', 'Left Alt', 1.5), key('Space', 'Space', 6), key('AltRight', 'Right Alt', 1.5), key('ControlRight', 'Right Ctrl', 1.5)],
+  [
+    key('Escape', 'Esc', { alignment: 'left', localized: true, grow: true }),
+    ...Array.from({ length: 12 }, (_, i) => key(`F${i + 1}`, undefined, { width: 54, alignment: 'left' })),
+  ],
+  [
+    key('Backquote', '`', { width: 28, secondaryText: '~' }),
+    ...'1234567890'.split('').map((n, index) => key(`Digit${n}`, n, { secondaryText: '!@#$%^&*()'[index] })),
+    key('Minus', '-', { secondaryText: '_' }), key('Equal', '=', { secondaryText: '+' }),
+    key('Backspace', 'Backspace', { width: 100, alignment: 'right', localized: true }),
+  ],
+  [
+    key('Tab', 'Tab', { width: 60, alignment: 'left', localized: true }),
+    ...'QWERTYUIOP'.split('').map((k) => key(`Key${k}`, k)),
+    key('BracketLeft', '[', { secondaryText: '{' }), key('BracketRight', ']', { secondaryText: '}' }),
+    key('Backslash', '\\', { secondaryText: '|' }),
+  ],
+  [
+    key('CapsLock', 'Caps Lock', { text: 'CapsLock', width: 80, alignment: 'left', localized: true }),
+    ...'ASDFGHJKL'.split('').map((k) => key(`Key${k}`, k)),
+    key('Semicolon', ';', { secondaryText: ':' }), key('Quote', "'", { secondaryText: '"' }),
+    key('Enter', 'Enter', { width: 100, alignment: 'right', localized: true }),
+  ],
+  [
+    key('ShiftLeft', 'Left Shift', { text: 'Shift', width: 120, alignment: 'left', localized: true }),
+    ...'ZXCVBNM'.split('').map((k) => key(`Key${k}`, k)),
+    key('Comma', ',', { secondaryText: '<' }), key('Period', '.', { secondaryText: '>' }), key('Slash', '/', { secondaryText: '?' }),
+    key('ShiftRight', 'Right Shift', { text: 'Shift', width: 120, alignment: 'right', localized: true }),
+  ],
+  [
+    key('ControlLeft', 'Left Ctrl', { text: 'Ctrl', width: 70, alignment: 'left', localized: true }),
+    key('MetaLeft', 'Super', { text: 'Win', width: 70, alignment: 'left', localized: true }),
+    key('AltLeft', 'Left Alt', { text: 'Alt', width: 70, alignment: 'left', localized: true }),
+    key('Space', 'Space', { width: 417, localized: true }),
+    key('AltRight', 'Right Alt', { text: 'Alt', width: 70, alignment: 'right', localized: true }),
+    key('ControlRight', 'Right Ctrl', { text: 'Ctrl', width: 70, alignment: 'right', localized: true }),
+  ],
 ]
 
 export const navigationKeys = [
   ['Insert', 'Insert'], ['Home', 'Home'], ['PageUp', 'Page Up'], ['Delete', 'Delete'], ['End', 'End'], ['PageDown', 'Page Down'],
   ['ArrowUp', '↑'], ['ArrowLeft', '←'], ['ArrowDown', '↓'], ['ArrowRight', '→'],
-].map(([id, text]) => ({ ...key(id, text, 1, 'numpad'), label: id.startsWith('Arrow') ? id.replace('Arrow', 'Arrow ') : text }))
+].map(([id, text]) => key(id, id.startsWith('Arrow') ? id.replace('Arrow', 'Arrow ') : text, {
+  text: id === 'PageUp' ? 'PgUp' : id === 'PageDown' ? 'PgDn' : text,
+  localized: !id.startsWith('Arrow'),
+  fontSize: id === 'Delete' ? 13 : 14,
+}, 'numpad'))
 
 export const numpadRows = [
   [['NumLock', 'Num Lock'], ['NumpadDivide', '/'], ['NumpadMultiply', '*'], ['NumpadSubtract', '-']],
@@ -69,7 +112,7 @@ export const numpadRows = [
   [['Numpad1', '1'], ['Numpad2', '2'], ['Numpad3', '3'], ['NumpadEnter', 'Enter']],
   [['Numpad0', '0'], ['NumpadDecimal', '.']],
 ].map((row) => row.map(([id, text]) => ({
-  ...key(id, text, 1, 'numpad'), label: `Numpad ${text}`,
+  ...key(id, `Numpad ${text}`, { text, width: id === 'Numpad0' ? 112 : 53, localized: id === 'NumLock' || id === 'NumpadEnter' }, 'numpad'),
 })))
 
 export const commandsById = new Map([

@@ -12,13 +12,15 @@ export function sourceGlyph(source: MappingSource) {
   return `/steaminputglyphs/sd_${side}trackpad_${source.label.toLowerCase()}.svg`
 }
 
-export function MappingGlyph({ src, label, className, white = false }: {
+export function MappingGlyph({ src, label, className, white = false, size = 22, block = false }: {
   src: string
   label: string
   className?: string
   white?: boolean
+  size?: number
+  block?: boolean
 }) {
-  return <img src={src} alt={label} className={className} style={{ width: 22, height: 22, objectFit: 'contain', filter: white ? 'brightness(0) invert(1)' : undefined }} />
+  return <img src={src} alt={label} className={className} style={{ width: size, height: size, display: block ? 'block' : undefined, objectFit: 'contain', filter: white ? 'brightness(0) invert(1)' : undefined }} />
 }
 
 const stickClickPaths = {

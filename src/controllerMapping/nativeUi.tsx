@@ -81,3 +81,4 @@ export const DirectionalButton = IconsModule?.DirectionalButton as ComponentType
 export const Carat = IconsModule?.Carat as ComponentType<{ direction: string }> | undefined
 export const SettingsIcon = IconsModule?.Settings as ComponentType | undefined
 export const GenericGamepad = IconsModule?.GenericGamepad as ComponentType<{ className?: string; 'aria-hidden'?: boolean }> | undefined
+export const WholeMouseImage = IconsModule?.WholeMouseImage as ComponentType | undefined

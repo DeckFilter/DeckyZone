@@ -1,12 +1,12 @@
 import { Focusable, GamepadButton, type GamepadEvent, NavEntryPositionPreferences as FocusPreference, Tabs } from '@decky/ui'
 import { type CSSProperties, type ReactNode, type Ref, useRef, useState } from 'react'
-import { FaMouse } from 'react-icons/fa'
 import {
-  gamepadCommands, keyboardRows, mouseCommands, navigationKeys, numpadRows,
+  gamepadCommands, mouseCommands,
   sourceLabel, type MappingCommand, type MappingSource,
 } from './commands'
-import { ABXYButton, Carat, DirectionalButton, GenericGamepad, MappingFocusable, MappingFocusGroup, type NavHandle } from './nativeUi'
+import { ABXYButton, Carat, DirectionalButton, GenericGamepad, MappingFocusable, MappingFocusGroup, WholeMouseImage, type NavHandle } from './nativeUi'
 import { MappingGlyph, sourceGlyph, StickClickGlyph } from './MappingGlyph'
+import { KeyboardLayout, NumpadLayout } from './KeyboardLayout'
 
 type Props = {
   source: MappingSource
@@ -20,8 +20,12 @@ type Props = {
 type CommandKeyProps = {
   command: MappingCommand
   children?: ReactNode
+  secondaryLabel?: ReactNode
+  icon?: ReactNode
   className?: string
   style?: CSSProperties
+  labelStyle?: CSSProperties
+  noFocusRing?: boolean
   navRef?: Ref<NavHandle | null>
   onGamepadDirection?: (event: GamepadEvent) => void
 }
@@ -56,6 +60,7 @@ function CardinalGroup({ entries, shape, classes: css, className = '', renderKey
         ...entry,
         className: `dz-mapping-cardinal ${css.CardinalButtonGroupButton} ${css[['TopButton', 'BottomButton', 'LeftButton', 'RightButton', 'CenterButton'][index]]}`,
         navRef: refs[index],
+        noFocusRing: true,
         onGamepadDirection: direction,
       }))}
     </Group>
@@ -76,7 +81,7 @@ export default function CommandPicker({ source, selected, classes: css, onSelect
     onCancel()
   }
 
-  const commandKey = ({ command, children, className = '', style, navRef, onGamepadDirection }: CommandKeyProps) => (
+  const commandKey = ({ command, children, secondaryLabel, icon, className = '', style, labelStyle, navRef, onGamepadDirection, noFocusRing = false }: CommandKeyProps) => (
     <MappingFocusable
       key={command.id}
       className={`dz-mapping-command ${className} ${selected?.id === command.id ? css.SelectedBinding ?? '' : ''}`}
@@ -86,17 +91,20 @@ export default function CommandPicker({ source, selected, classes: css, onSelect
       data-command={command.id}
       aria-label={command.label}
       aria-pressed={selected?.id === command.id}
+      aria-disabled={busy}
       preferredFocus={selected?.id === command.id}
       onActivate={() => { void select(command) }}
       focusable={!busy}
       onOKActionDescription="Select"
-      noFocusRing
+      noFocusRing={noFocusRing}
     >
-      <div className={css.KeyboardKeyLabel}>{children ?? command.label}</div>
+      {icon}
+      {secondaryLabel != null && <div className={css.KeyboardKeyLabel}>{secondaryLabel}</div>}
+      <div className={css.KeyboardKeyLabel} style={labelStyle}>{children ?? command.label}</div>
     </MappingFocusable>
   )
   const gamepadKey = (id: string, className: string, children?: ReactNode) => commandKey({
-    command: gamepadCommands[id], className, children,
+    command: gamepadCommands[id], className, children, noFocusRing: true,
   })
   const cardinal = (prefix: string, shape: 'Circle' | 'Diamond', labels: ReactNode[], center?: ReactNode, className?: string) => (
     <CardinalGroup
@@ -127,6 +135,13 @@ export default function CommandPicker({ source, selected, classes: css, onSelect
       }))}
     />
   )
+  const prompt = (category: 'gamepad' | 'mouse' | 'keyboard') => (
+    <div className={css.ChooseBindingLabel}>
+      <div className={css.FrontText}>Select a {category} command for</div>
+      <div className={css.GroupText}>{source.group === 'Dials' ? (source.id.startsWith('left-') ? 'Left Dial' : 'Right Dial') : source.group} → </div>
+      <div className={css.InputGlyph}><MappingGlyph src={sourceGlyph(source)} label={sourceLabel(source)} white={source.group === 'Dials'} size={25} block /></div>
+    </div>
+  )
   const gamepad = (
     <Focusable className={css.ColumnContainer} flow-children="row" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
       <Focusable className={`${css.Column ?? ''} ${css.Left ?? ''}`} flow-children="column" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
@@ -138,11 +153,7 @@ export default function CommandPicker({ source, selected, classes: css, onSelect
         {cardinal('dpad', 'Diamond', dpad, undefined, css.InsetLeftGroup)}
       </Focusable>
       <Focusable className={css.Column} flow-children="column" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
-        <div className={css.ChooseBindingLabel}>
-          <div className={css.FrontText}>Select a gamepad command for</div>
-          <div className={css.GroupText}>{source.group === 'Dials' ? (source.id.startsWith('left-') ? 'Left Dial' : 'Right Dial') : source.group} → </div>
-          <div className={css.InputGlyph}><MappingGlyph src={sourceGlyph(source)} label={sourceLabel(source)} white={source.group === 'Dials'} /></div>
-        </div>
+        {prompt('gamepad')}
         <Focusable className={css.SelectStartGroup} flow-children="row">
           {gamepadKey('select', css.SelectButton ?? 'dz-mapping-key')}
           {gamepadKey('start', css.StartButton ?? 'dz-mapping-key')}
@@ -159,45 +170,39 @@ export default function CommandPicker({ source, selected, classes: css, onSelect
       </Focusable>
     </Focusable>
   )
-  const keyboard = (
-    <Focusable className="dz-mapping-keyboard" flow-children="column" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
-      {keyboardRows.map((row, index) => (
-        <Focusable key={index} className="dz-mapping-key-row" flow-children="row" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
-          {row.map((key) => commandKey({ command: key, children: key.text, className: 'dz-mapping-key', style: { flex: `${key.width} 1 0` } }))}
-        </Focusable>
-      ))}
-    </Focusable>
-  )
-  const numpad = (
-    <Focusable className="dz-mapping-numpad" flow-children="row" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
-      <Focusable className="dz-mapping-navigation" flow-children="grid" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
-        {navigationKeys.map((key) => commandKey({
-          command: key,
-          children: key.text,
-          className: 'dz-mapping-key',
-          style: key.id === 'numpad:ArrowUp' ? { gridColumn: 2 } : key.id === 'numpad:ArrowLeft' ? { gridColumn: 1 } : undefined,
-        }))}
-      </Focusable>
-      <Focusable flow-children="column" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
-        {numpadRows.map((row, index) => (
-          <Focusable key={index} className="dz-mapping-key-row" flow-children="row" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
-            {row.map((key) => commandKey({ command: key, children: key.text, className: 'dz-mapping-key' }))}
-          </Focusable>
-        ))}
-      </Focusable>
-    </Focusable>
-  )
-  const mouseColumn = (commands: MappingCommand[]) => (
-    <Focusable className="dz-mapping-mouse-column" flow-children="column" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
-      {commands.map((command) => commandKey({ command, className: 'dz-mapping-key' }))}
-    </Focusable>
-  )
+  const keyboard = <div className={css.KeyboardPageContainer}>{prompt('keyboard')}<KeyboardLayout classes={css} renderKey={commandKey} /></div>
+  const numpad = <>{prompt('keyboard')}<NumpadLayout classes={css} renderKey={commandKey} /></>
+  const mouseKey = (id: string, label?: string, glyph?: string, className = '') => {
+    const command = mouseCommands.find((item) => item.id === `mouse:${id}`)!
+    return commandKey({
+      command,
+      children: label,
+      icon: glyph ? <img src={`/steaminputglyphs/${glyph}.svg`} alt="" aria-hidden /> : undefined,
+      className: `${css.MouseKey} ${className}`,
+    })
+  }
   const mouse = (
-    <Focusable className="dz-mapping-mouse" flow-children="row" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
-      {mouseColumn(mouseCommands.slice(0, 5))}
-      <FaMouse className="dz-mapping-mouse-art" aria-hidden />
-      {mouseColumn(mouseCommands.slice(5))}
-    </Focusable>
+    <>
+      {prompt('mouse')}
+      <Focusable className={css.MousePageContainer} flow-children="row" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
+        <Focusable className={css.GamepadKeyColumn} flow-children="column" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
+          {mouseKey('left', 'Left Mouse Click', 'shared_mouse_l_click', css.LeftMouseClickGap)}
+          {mouseKey('middle', 'Middle Mouse Click', 'shared_mouse_mid_click')}
+          {mouseKey('right', 'Right Mouse Click', 'shared_mouse_r_click')}
+          {mouseKey('back', 'Mouse 4 Click', 'shared_mouse_4', css.ForwardButtonGap)}
+          {mouseKey('forward', 'Mouse 5 Click', 'shared_mouse_5')}
+        </Focusable>
+        <div className={css.MouseCenterImage} style={{ alignSelf: 'flex-start' }} aria-hidden>
+          {WholeMouseImage && <WholeMouseImage />}
+        </div>
+        <Focusable className={`${css.GamepadKeyColumn} ${css.MouseMovementContainer}`} flow-children="column" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
+          <Focusable className={css.GamepadKeyColumn} flow-children="column" navEntryPreferPosition={FocusPreference.PREFERRED_CHILD}>
+            {mouseKey('wheel-up', 'Scroll Wheel Up', 'shared_mouse_scroll_up')}
+            {mouseKey('wheel-down', 'Scroll Wheel Down', 'shared_mouse_scroll_down')}
+          </Focusable>
+        </Focusable>
+      </Focusable>
+    </>
   )
 
   return (
@@ -208,6 +213,7 @@ export default function CommandPicker({ source, selected, classes: css, onSelect
       onSecondaryButton={selected && !busy ? () => { void select() } : undefined}
       onSecondaryActionDescription={selected ? 'Clear' : undefined}
       data-mapping-source={source.id}
+      aria-busy={busy}
     >
       <Tabs
         activeTab={tab}
@@ -220,17 +226,7 @@ export default function CommandPicker({ source, selected, classes: css, onSelect
           { id: 'mouse', title: 'Mouse', content: mouse },
           { id: 'keyboard', title: 'Keyboard', content: keyboard },
           { id: 'numpad', title: 'Numpad', content: numpad },
-        ].map((item) => ({ ...item, content: (
-          <>
-            {item.id !== 'gamepad' && <div className="dz-mapping-prompt">Choose a command for {sourceLabel(source)}</div>}
-            {item.content}
-            {selected && (
-              <div className="dz-mapping-remove">
-                <MappingFocusable className="dz-mapping-key dz-mapping-command" focusable={!busy} onActivate={() => { void select() }} onOKActionDescription="Clear">Clear command</MappingFocusable>
-              </div>
-            )}
-          </>
-        ) }))}
+        ]}
       />
     </MappingFocusable>
   )
