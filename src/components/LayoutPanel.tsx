@@ -13,7 +13,7 @@ type Props = {
 const setLegacyLayoutEnabled = callable<[boolean], PluginSettings>('set_legacy_layout_enabled')
 const LAYOUT_UPDATE_FAILED_NOTICE = "Couldn't update layout."
 const LEGACY_LAYOUT_EXPLAINER =
-  'Shows every DeckyZone Quick Access Menu section in one scrolling list instead of icon tabs. This affects only the Quick Access Menu.'
+  'Shows these settings in one scrolling list instead of icon tabs in the Quick Access Menu.'
 
 const LayoutPanel = ({ settings, onSettingsChange }: Props) => {
   const [saving, setSaving] = useState(false)
@@ -61,7 +61,6 @@ const LayoutPanel = ({ settings, onSettingsChange }: Props) => {
           label="Legacy Layout"
           explainerTitle="Legacy Layout"
           explainer={LEGACY_LAYOUT_EXPLAINER}
-          settingsDescription="Changes the Quick Access Menu layout"
           checked={settings.legacyLayoutEnabled}
           disabled={saving}
           onChange={(enabled: boolean) => void handleLegacyLayoutChange(enabled)}

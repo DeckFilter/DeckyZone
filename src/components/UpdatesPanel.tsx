@@ -13,7 +13,7 @@ import { SteamExplainerButtonItem } from './SteamExplainer'
 import { SettingsRow, SettingsSection, useSettingsItemLayout, useSettingsSurface } from './SettingsSurface'
 
 const otaUpdate = callable<[], boolean>('ota_update')
-const CHECK_VERSION_EXPLAINER = 'Checks GitHub for the latest published DeckyZone release.'
+const CHECK_VERSION_EXPLAINER = 'Checks GitHub for the latest plugin release.'
 
 type Props = {
   installedVersionNum: string

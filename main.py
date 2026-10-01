@@ -12,6 +12,8 @@ from pathlib import Path
 
 import decky
 import controller_targets
+import controller_mappings
+from controller_mapping_runtime import MappingRuntime
 import firmware_info
 import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_device_profile
@@ -309,9 +311,14 @@ class DeckyZoneService:
         self._rumble_device_path = None
         self._rumble_task = None
         self._rumble_running = False
+        self._rumble_gain_lock = asyncio.Lock()
+        self._rumble_gain_by_path = {}
         self._controller_mode_monitor_task = None
         self._controller_mode_monitor_running = False
         self._directional_trackpad_backup = None
+        self._mapping_runtime = MappingRuntime(decky.DECKY_PLUGIN_RUNTIME_DIR, self.logger, lambda direction: decky.emit("controller_mapping_brightness", direction))
+        self._mapping_sync_lock = asyncio.Lock()
+        self._mapping_save_lock = asyncio.Lock()
         self._zotac_raw_command_seq = 0
         self._libc = ctypes.CDLL(ctypes.util.find_library("c") or None, use_errno=True)
 
@@ -352,12 +359,35 @@ class DeckyZoneService:
         return STARTUP_MODE
 
     def _resolve_controller_target_gamepad_device_path(self, target_mode):
-        return self._resolve_input_device_path_by_match(
-            lambda device_name: controller_targets.is_target_gamepad_device_name(
-                target_mode,
-                device_name,
-            )
-        )
+        try:
+            target_paths = self._get_inputplumber_target_device_paths()
+        except Exception:
+            self._inputplumber_available = False
+            return None
+        attached = False
+        for target_path in target_paths:
+            try:
+                if self._get_inputplumber_target_device_type(target_path) == target_mode:
+                    attached = True
+                    break
+            except Exception:
+                continue
+        if not attached:
+            return None
+
+        for device_path in self._get_zotac_mouse_candidate_paths():
+            if not controller_targets.is_virtual_gamepad_event_device(device_path):
+                continue
+            try:
+                name = self._read_input_device_name(device_path)
+            except Exception:
+                continue
+            if controller_targets.is_target_gamepad_device_name(target_mode, name):
+                return device_path
+
+        if target_mode == controller_targets.STEAM_UHID_TARGET_MODE:
+            return controller_targets.resolve_steam_uhid_device_path()
+        return None
 
     def _is_current_controller_runtime_healthy(self):
         if not self._is_controller_runtime_required():
@@ -387,7 +417,7 @@ class DeckyZoneService:
         if not self._resolve_inputplumber_keyboard_device_path():
             return False
 
-        if self.settings_store.get_home_button_enabled():
+        if self._should_enable_home_button_navigation():
             return self._get_inputplumber_profile_path() == str(
                 self._get_home_button_override_profile_path()
             )
@@ -462,7 +492,9 @@ class DeckyZoneService:
                 profile_path = None
 
             try:
-                target_gamepad_path = self._resolve_startup_gamepad_device_path() or None
+                target_gamepad_path = self._resolve_controller_target_gamepad_device_path(
+                    self._get_current_controller_target_mode()
+                ) or None
             except Exception:
                 target_gamepad_path = None
 
@@ -966,6 +998,23 @@ class DeckyZoneService:
         self._inputplumber_available = True
         return inputplumber_target_sync.parse_busctl_array_output(result.stdout)
 
+    def _get_inputplumber_target_device_type(self, target_path):
+        result = self.command_runner(
+            self._busctl_args(
+                "get-property",
+                "org.shadowblip.InputPlumber",
+                target_path,
+                "org.shadowblip.Input.Target",
+                "DeviceType",
+            ),
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=self.get_env(),
+        )
+        return inputplumber_target_sync.parse_busctl_string_output(result.stdout)
+
     def _get_inputplumber_profile_yaml(self):
         result = self.command_runner(
             self._busctl_args(
@@ -1212,6 +1261,8 @@ class DeckyZoneService:
         return self.settings_store.get_per_game_rumble_intensity(app_id)
 
     def _should_include_mouse_target(self, app_id=None):
+        if self.settings_store.get_effective_controller_mapping(app_id or self._active_per_game_app_id) is not None:
+            return True
         return not self._should_enable_directional_trackpads(app_id)
 
     def _remove_directional_trackpad_capability_map(self):
@@ -1240,16 +1291,30 @@ class DeckyZoneService:
 
     def _sync_directional_trackpad_source_files(self, app_id=None):
         del app_id
-        return self._disable_directional_trackpad_source_files()
+        changed = self._disable_directional_trackpad_source_files(keep_mapping_source=True)
+        mapping_changed = controller_mappings.sync_source_file(
+            MANAGED_INPUTPLUMBER_DEVICES_DIR,
+            "/usr/share/inputplumber/devices/50-zotac-zone.yaml",
+            self.settings_store.has_custom_controller_mappings(),
+        )
+        return mapping_changed or changed
 
-    def _disable_directional_trackpad_source_files(self):
+    def _disable_directional_trackpad_source_files(self, keep_mapping_source=False):
         device_override_changed = self._remove_directional_trackpad_device_override()
         capability_map_changed = self._remove_directional_trackpad_capability_map()
-        return capability_map_changed or device_override_changed
+        mapping_source_changed = False if keep_mapping_source else controller_mappings.sync_source_file(
+            MANAGED_INPUTPLUMBER_DEVICES_DIR,
+            "/usr/share/inputplumber/devices/50-zotac-zone.yaml",
+            False,
+        )
+        return mapping_source_changed or capability_map_changed or device_override_changed
 
     def _has_directional_trackpad_source_files(self):
         return (
-            (
+            (MANAGED_INPUTPLUMBER_DEVICES_DIR / controller_mappings.SOURCE_FILENAME).exists()
+            or (MANAGED_INPUTPLUMBER_CAPABILITY_MAPS_DIR / controller_mappings.SOURCE_FILENAME).exists()
+            or (MANAGED_INPUTPLUMBER_CAPABILITY_MAPS_DIR / controller_mappings.OUTPUT_MAP_FILENAME).exists()
+            or (
                 MANAGED_INPUTPLUMBER_DEVICES_DIR
                 / MANAGED_DIRECTIONAL_TRACKPAD_DEVICE_OVERRIDE_FILENAME
             ).exists()
@@ -1402,7 +1467,7 @@ class DeckyZoneService:
             insert_index = len(lines)
 
         mapping_lines = self._build_keyboard_mapping_lines(
-            mapping_indent,
+            runtime_profile_utils.mapping_entry_indent(profile_yaml),
             RUNTIME_PROFILE_HOME_BUTTON_MAPPING_NAME,
             "QuickAccess2",
             "KeyF18",
@@ -1432,12 +1497,14 @@ class DeckyZoneService:
         if self._home_button_original_profile_yaml is not None:
             return True
 
-        self._home_button_original_profile_path = (
-            self._get_inputplumber_profile_path() or None
-        )
-        self._home_button_original_profile_yaml = (
-            self._get_inputplumber_profile_yaml()
-        )
+        profile_path = self._get_inputplumber_profile_path() or None
+        if profile_path == str(self._get_home_button_override_profile_path()):
+            profile_path = DEFAULT_INPUTPLUMBER_PROFILE_PATH
+            profile_yaml = self.read_text(profile_path)
+        else:
+            profile_yaml = self._get_inputplumber_profile_yaml()
+        self._home_button_original_profile_path = profile_path
+        self._home_button_original_profile_yaml = profile_yaml
         return True
 
     def _load_home_button_override_profile(self):
@@ -1535,6 +1602,9 @@ class DeckyZoneService:
         return mapping_lines
 
     def _build_runtime_input_profile_yaml(self, profile_yaml, app_id=None):
+        custom_mapping = self.settings_store.get_effective_controller_mapping(app_id or self._active_per_game_app_id)
+        if custom_mapping is not None:
+            profile_yaml = controller_mappings.input_profile(profile_yaml, custom_mapping)
         lines = profile_yaml.splitlines()
         trailing_newline = profile_yaml.endswith("\n")
         mapping_indent = ""
@@ -1563,7 +1633,7 @@ class DeckyZoneService:
             insert_index = len(lines)
 
         mapping_lines = self._build_runtime_input_profile_mapping_lines(
-            mapping_indent,
+            runtime_profile_utils.mapping_entry_indent(profile_yaml),
             app_id,
         )
         lines = lines[:insert_index] + mapping_lines + lines[insert_index:]
@@ -1583,6 +1653,7 @@ class DeckyZoneService:
         self._reset_runtime_input_profile_state()
 
     async def _restart_inputplumber_after_managed_device_update(self, reason):
+        await self._mapping_runtime.stop()
         try:
             self._release_zotac_mouse_device()
             self._startup_target_active = False
@@ -1694,24 +1765,31 @@ class DeckyZoneService:
         return result["ok"]
 
     def _sync_directional_trackpad_button_runtime(self, app_id=None):
+        if self.settings_store.get_effective_controller_mapping(app_id or self._active_per_game_app_id) is not None:
+            return True
         if self._should_enable_directional_trackpads(app_id):
             return self._apply_directional_trackpad_button_mappings()
 
         return self._restore_directional_trackpad_button_mappings()
 
     def _should_enable_runtime_input_profile(self, app_id=None):
-        return bool(self._get_active_per_game_runtime_mappings(app_id))
+        return bool(self._get_active_per_game_runtime_mappings(app_id)) or self.settings_store.get_effective_controller_mapping(app_id or self._active_per_game_app_id) is not None
 
     def _ensure_runtime_input_profile_original_profile(self):
         if self._runtime_input_profile_original_profile_yaml is not None:
             return True
 
-        self._runtime_input_profile_original_profile_path = (
-            self._get_inputplumber_profile_path() or None
-        )
-        self._runtime_input_profile_original_profile_yaml = (
-            self._get_inputplumber_profile_yaml()
-        )
+        profile_path = self._get_inputplumber_profile_path() or None
+        if profile_path in {
+            str(self._get_runtime_inputplumber_profile_path()),
+            str(self._get_home_button_override_profile_path()),
+        }:
+            profile_path = DEFAULT_INPUTPLUMBER_PROFILE_PATH
+            profile_yaml = self.read_text(profile_path)
+        else:
+            profile_yaml = self._get_inputplumber_profile_yaml()
+        self._runtime_input_profile_original_profile_path = profile_path
+        self._runtime_input_profile_original_profile_yaml = profile_yaml
         return True
 
     def _load_runtime_input_profile(self, app_id=None):
@@ -1892,9 +1970,7 @@ class DeckyZoneService:
         return self._resolve_input_device_path_by_name(INPUTPLUMBER_KEYBOARD_DEVICE_NAME)
 
     def _resolve_startup_gamepad_device_path(self):
-        return self._resolve_input_device_path_by_match(
-            controller_targets.is_startup_target_gamepad_device_name
-        )
+        return self._resolve_controller_target_gamepad_device_path(STARTUP_MODE)
 
     async def _wait_for_resolved_input_device_path(
         self,
@@ -1958,8 +2034,8 @@ class DeckyZoneService:
             self._startup_target_active = False
             return "InputPlumber target devices did not settle after retries."
 
-        # The DBus target object can appear before the actual target gamepad
-        # input device is created, so verify the real device before succeeding.
+        # The D-Bus object may precede the kernel device, including UHID targets
+        # that Steam reads through hidraw without creating an evdev gamepad.
         if not await self._wait_for_resolved_input_device_path(
             self._resolve_startup_gamepad_device_path
         ):
@@ -2052,6 +2128,10 @@ class DeckyZoneService:
         await self._sync_home_button_navigation_state()
 
     async def _apply_startup_runtime_once(self):
+        await self._mapping_runtime.stop()
+        if self.settings_store.get_effective_controller_mapping(self._active_per_game_app_id) is not None and self._has_directional_trackpad_backup():
+            if not self._restore_directional_trackpad_button_mappings():
+                return "Previous trackpad mappings could not be restored."
         if not await self._sync_directional_trackpad_source_runtime(
             self._active_per_game_app_id
         ):
@@ -2082,6 +2162,7 @@ class DeckyZoneService:
         if not await self._wait_for_startup_runtime_ready():
             return "Startup runtime did not reach keyboard/profile-ready state."
 
+        await self._sync_controller_mapping_runtime(self.settings_store.get_effective_controller_mapping(self._active_per_game_app_id))
         return None
 
     async def _apply_startup_runtime_with_retries(self):
@@ -2285,12 +2366,18 @@ class DeckyZoneService:
             return False
 
     def _should_enable_home_button_navigation(self):
-        return self.settings_store.get_home_button_enabled() and (
+        action = self.settings_store.get_home_button_action(self._active_per_game_app_id)
+        return action == "steam_home" and (
             self._startup_target_active
             or self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET
         )
 
     async def _sync_home_button_navigation_state(self):
+        try:
+            self._restore_home_button_profile()
+        except Exception as error:
+            self.logger.warning(f"Failed to restore Home button profile: {error}")
+            return False
         base_profile_result = self._sync_runtime_input_profile_state(
             self._active_per_game_app_id
         )
@@ -2337,7 +2424,8 @@ class DeckyZoneService:
         return await self._sync_home_button_navigation_state()
 
     def _should_enable_brightness_dial_fixer(self):
-        return self.settings_store.get_brightness_dial_fix_enabled() and (
+        profile = self.settings_store.get_effective_controller_mapping(self._active_per_game_app_id)
+        return profile is None and (
             self._startup_target_active
             or self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET
         )
@@ -2375,6 +2463,8 @@ class DeckyZoneService:
         return bool(await self.start_rumble_fixer(app_id))
 
     def _sync_trackpad_suppression_state(self, app_id=None):
+        if self.settings_store.get_effective_controller_mapping(app_id or self._active_per_game_app_id) is not None:
+            return self._release_zotac_mouse_device()
         if self._should_disable_trackpads(app_id) or self._should_enable_directional_trackpads(app_id):
             return self._grab_zotac_mouse_device()
 
@@ -2440,6 +2530,73 @@ class DeckyZoneService:
         )
         self._inputplumber_available = True
 
+    def get_controller_mapping(self, app_id="0"):
+        return self.settings_store.get_controller_mapping(app_id)
+
+    async def set_controller_mapping(self, app_id, profile, enabled=True):
+        app_id = controller_mappings.app_id(app_id)
+        profile = controller_mappings.validate(profile) if profile is not None else None
+        async with self._mapping_save_lock:
+            if app_id == DEFAULT_APP_ID and profile is not None and "buttons" not in profile:
+                profile["buttons"] = self.get_controller_mapping(app_id)["profile"]["buttons"]
+            if not self.is_supported_device() or not self.probe_inputplumber_available():
+                raise RuntimeError("Controller mappings require a ZONE with InputPlumber.")
+            if not self._is_controller_mode_snapshot_safe(self._get_controller_mode_snapshot()):
+                raise RuntimeError("Switch the controller to Gamepad mode first.")
+            previous = (
+                self.settings_store._read_settings().get("controllerMapping")
+                if app_id == DEFAULT_APP_ID
+                else self.settings_store.snapshot_game_settings(app_id)
+            )
+            try:
+                self.settings_store.set_controller_mapping(app_id, profile, enabled)
+                if not await self.sync_per_game_target(None, settings_app_id=app_id):
+                    raise RuntimeError("Controller mappings did not apply.")
+            except (Exception, asyncio.CancelledError):
+                if app_id == DEFAULT_APP_ID:
+                    self.settings_store.set_controller_mapping(app_id, previous)
+                else:
+                    self.settings_store.restore_game_settings(app_id, previous)
+                try:
+                    await self.sync_per_game_target(None, settings_app_id=app_id)
+                except Exception as error:
+                    self.logger.error(f"Mapping rollback failed: {error}")
+                raise
+            return {**self.get_controller_mapping(app_id), "settings": self._current_settings()}
+
+    async def _save_game_controller_settings(self, app_id, save):
+        async with self._mapping_save_lock:
+            previous = self.settings_store.snapshot_game_settings(app_id)
+            try:
+                save()
+                if self.settings_store.snapshot_game_settings(app_id) == previous:
+                    return self._current_settings()
+                if not await self.sync_per_game_target(None, settings_app_id=app_id):
+                    raise RuntimeError("Game controller settings did not apply.")
+            except (Exception, asyncio.CancelledError):
+                self.settings_store.restore_game_settings(app_id, previous)
+                try:
+                    if not await self.sync_per_game_target(None, settings_app_id=app_id):
+                        self.logger.error("Game settings rollback did not apply.")
+                except Exception as error:
+                    self.logger.error(f"Game settings rollback failed: {error}")
+                raise
+            return self._current_settings()
+
+    async def update_game_controller_settings(self, app_id, patch):
+        app_id = self.settings_store.validate_game_settings_app_id(app_id)
+        patch = self.settings_store.validate_game_controller_settings_patch(patch)
+        return await self._save_game_controller_settings(
+            app_id,
+            lambda: self.settings_store.update_game_controller_settings(app_id, patch),
+        )
+
+    async def remove_game_settings(self, app_id):
+        app_id = self.settings_store.validate_game_settings_app_id(app_id)
+        return await self._save_game_controller_settings(
+            app_id, lambda: self.settings_store.remove_game_settings(app_id)
+        )
+
     def set_per_game_settings_enabled(self, app_id, enabled):
         if app_id in (None, "", DEFAULT_APP_ID):
             return self._current_settings()
@@ -2503,9 +2660,39 @@ class DeckyZoneService:
             await self._sync_rumble_state(app_id)
         return self._current_settings()
 
-    async def sync_per_game_target(self, app_id):
-        app_id = str(app_id or DEFAULT_APP_ID)
-        self._active_per_game_app_id = app_id
+    async def _sync_controller_mapping_runtime(self, profile):
+        try:
+            return await self._mapping_runtime.sync(profile)
+        except Exception:
+            self._restore_runtime_input_profile()
+            raise
+
+    async def sync_per_game_target(self, app_id, *, settings_app_id=None):
+        async with self._mapping_sync_lock:
+            if settings_app_id is not None:
+                app_id = str(self._active_per_game_app_id or DEFAULT_APP_ID)
+                if settings_app_id not in (DEFAULT_APP_ID, app_id):
+                    return True
+            else:
+                app_id = str(app_id or DEFAULT_APP_ID)
+                self._active_per_game_app_id = app_id
+            try:
+                profile = self.settings_store.get_effective_controller_mapping(app_id)
+                await self._mapping_runtime.stop()
+                if profile is not None and self._has_directional_trackpad_backup():
+                    if not self._restore_directional_trackpad_button_mappings():
+                        raise RuntimeError("Could not restore the previous trackpad mode.")
+                result = await self._sync_per_game_target(app_id)
+                if result:
+                    await self._sync_controller_mapping_runtime(profile)
+            except Exception:
+                self._mapping_runtime.defer_recovery()
+                raise
+            if not result:
+                self._mapping_runtime.defer_recovery()
+            return result
+
+    async def _sync_per_game_target(self, app_id):
         per_game_settings_enabled = (
             app_id != DEFAULT_APP_ID
             and self.settings_store.get_per_game_settings_enabled(app_id)
@@ -2973,6 +3160,7 @@ class DeckyZoneService:
         if not device_path:
             raise RuntimeError("Controller mode interface unavailable.")
 
+        await self._mapping_runtime.stop()
         try:
             reply = self._send_zotac_raw_command(
                 device_path,
@@ -2994,6 +3182,7 @@ class DeckyZoneService:
         return self._current_settings()
 
     async def _disable_effective_controller_runtime(self):
+        await self._mapping_runtime.stop()
         had_active_controller_target = (
             self._startup_target_active
             or self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET
@@ -3105,6 +3294,15 @@ class DeckyZoneService:
                     await self._reconcile_controller_mode_runtime(
                         controller_mode_snapshot
                     )
+                if self._is_controller_mode_snapshot_safe(controller_mode_snapshot) and not self._mapping_sync_lock.locked():
+                    profile = self.settings_store.get_effective_controller_mapping(self._active_per_game_app_id)
+                    if self._mapping_runtime.needs_recovery(profile):
+                        try:
+                            if not await self.sync_per_game_target(self._active_per_game_app_id):
+                                self._mapping_runtime.defer_recovery()
+                        except Exception:
+                            self._mapping_runtime.defer_recovery()
+                            raise
                 last_controller_mode_signature = controller_mode_signature
             except asyncio.CancelledError:
                 raise
@@ -3228,6 +3426,7 @@ class DeckyZoneService:
         return self._current_settings()
 
     async def disable_startup_target_runtime(self):
+        await self._mapping_runtime.stop()
         self._startup_target_active = False
 
         if self._temporary_target_mode == MISSING_GLYPH_FIX_TARGET:
@@ -3255,72 +3454,10 @@ class DeckyZoneService:
             return False
 
     async def set_home_button_enabled(self, enabled):
-        if enabled and not self.probe_inputplumber_available():
-            return self._current_settings()
-
-        return await self._set_controller_runtime_feature_enabled(
-            enabled=enabled,
-            read_enabled=self.settings_store.get_home_button_enabled,
-            write_enabled=self.settings_store.set_home_button_enabled,
-            feature_name="Home Button",
-        )
-
-    async def _set_controller_runtime_feature_enabled(
-        self,
-        *,
-        enabled,
-        read_enabled,
-        write_enabled,
-        feature_name,
-    ):
-        previous_enabled = bool(read_enabled())
-        write_enabled(bool(enabled))
-
-        apply_error = None
-        try:
-            applied = await self.sync_per_game_target(self._active_per_game_app_id)
-        except Exception as error:
-            applied = False
-            apply_error = error
-
-        if applied:
-            return self._current_settings()
-
-        try:
-            write_enabled(previous_enabled)
-        except Exception as rollback_error:
-            self.logger.error(
-                f"Failed to restore {feature_name} after controller runtime failure: "
-                f"{rollback_error}"
-            )
-            raise RuntimeError(
-                f"Failed to apply {feature_name} and restore its previous setting."
-            ) from rollback_error
-
-        try:
-            restored = await self.sync_per_game_target(self._active_per_game_app_id)
-        except Exception as rollback_error:
-            restored = False
-            self.logger.warning(
-                f"Failed to reconcile controller runtime after restoring "
-                f"{feature_name}: {rollback_error}"
-            )
-
-        if not restored:
-            self.logger.warning(
-                f"Controller runtime remained out of sync after restoring {feature_name}."
-            )
-
-        message = f"Failed to apply {feature_name}. The previous setting was restored."
-        if not restored:
-            message = (
-                f"Failed to apply {feature_name}. The saved setting was restored, "
-                "but the controller runtime could not be reconciled."
-            )
-
-        if apply_error is not None:
-            raise RuntimeError(message) from apply_error
-        raise RuntimeError(message)
+        profile = self.get_controller_mapping(DEFAULT_APP_ID)["profile"]
+        profile["buttons"]["home"] = "steam_home" if enabled else "screenshot"
+        result = await self.set_controller_mapping(DEFAULT_APP_ID, profile)
+        return result["settings"]
 
     async def _brightness_dial_loop(self):
         while self._brightness_dial_running:
@@ -3409,15 +3546,7 @@ class DeckyZoneService:
         )
 
     async def set_brightness_dial_fix_enabled(self, enabled):
-        if enabled and not self.probe_inputplumber_available():
-            return self._current_settings()
-
-        return await self._set_controller_runtime_feature_enabled(
-            enabled=enabled,
-            read_enabled=self.settings_store.get_brightness_dial_fix_enabled,
-            write_enabled=self.settings_store.set_brightness_dial_fix_enabled,
-            feature_name="Brightness Dial",
-        )
+        return self._current_settings()
 
     async def set_gyro_mount_matrix_fix_enabled(self, enabled):
         state = self._get_gyro_mount_matrix_fix_state()
@@ -3593,27 +3722,37 @@ class DeckyZoneService:
     # a native HID/sysfs method via save_config, vibration_intensity, and
     # motor_test; a future change could evaluate that path or add a
     # compatibility/testing switch between methods if needed.
+    def _rumble_device_identity(self, device_path):
+        if not device_path:
+            return None
+        try:
+            state = os.stat(device_path)
+            return (state.st_dev, state.st_ino, state.st_rdev)
+        except OSError:
+            return None
+
     async def _apply_rumble_gain_once(self, device_path=None, app_id=None):
         device_path = device_path or self._rumble_device_path
         if not device_path:
             return False
 
-        try:
-            self._write_event_to_device(
-                device_path,
-                self._build_gain_event(self._get_effective_rumble_intensity(app_id)),
-            )
-            return True
-        except OSError as error:
-            self.logger.warning(f"Failed to apply rumble intensity: {error}")
-            return False
+        async with self._rumble_gain_lock:
+            try:
+                intensity = self._get_effective_rumble_intensity(app_id)
+                self._write_event_to_device(device_path, self._build_gain_event(intensity))
+                identity = self._rumble_device_identity(device_path)
+                if identity is not None:
+                    self._rumble_gain_by_path[device_path] = (identity, intensity)
+                else:
+                    self._rumble_gain_by_path.pop(device_path, None)
+                return True
+            except OSError as error:
+                self.logger.warning(f"Failed to apply rumble intensity: {error}")
+                return False
 
     async def _rumble_loop(self):
         while self._rumble_running:
-            await self._apply_rumble_gain_once(
-                self._rumble_device_path,
-                app_id=self._active_per_game_app_id,
-            )
+            await self._apply_rumble_gain_once(self._rumble_device_path)
             await self.sleep(DEFAULT_RUMBLE_REAPPLY_INTERVAL_SECONDS)
 
     async def start_rumble_fixer(self, app_id=None):
@@ -3667,8 +3806,7 @@ class DeckyZoneService:
         await self._sync_rumble_state()
         return self._current_settings()
 
-    async def test_rumble(self):
-        intensity = max(0.0, min(1.0, self._get_effective_rumble_intensity() / 100.0))
+    def _send_rumble_preview_command(self, *args):
         try:
             self.command_runner(
                 self._busctl_args(
@@ -3676,34 +3814,7 @@ class DeckyZoneService:
                     "org.shadowblip.InputPlumber",
                     INPUTPLUMBER_DBUS_PATH,
                     "org.shadowblip.Output.ForceFeedback",
-                    "Rumble",
-                    "d",
-                    str(intensity),
-                ),
-                check=True,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=self.get_env(),
-            )
-        except subprocess.CalledProcessError as error:
-            detail = (error.stderr or error.stdout or str(error)).strip()
-            self.logger.warning(f"Failed to send test rumble via InputPlumber: {detail}")
-            return False
-        except Exception as error:
-            self.logger.warning(f"Failed to send test rumble via InputPlumber: {error}")
-            return False
-
-        await self.sleep(RUMBLE_PREVIEW_DURATION_MS / 1000.0)
-
-        try:
-            self.command_runner(
-                self._busctl_args(
-                    "call",
-                    "org.shadowblip.InputPlumber",
-                    INPUTPLUMBER_DBUS_PATH,
-                    "org.shadowblip.Output.ForceFeedback",
-                    "Stop",
+                    *args,
                 ),
                 check=True,
                 text=True,
@@ -3714,11 +3825,56 @@ class DeckyZoneService:
             return True
         except subprocess.CalledProcessError as error:
             detail = (error.stderr or error.stdout or str(error)).strip()
-            self.logger.warning(f"Failed to stop test rumble via InputPlumber: {detail}")
-            return False
+            self.logger.warning(f"Failed to {args[0]} test rumble via InputPlumber: {detail}")
         except Exception as error:
-            self.logger.warning(f"Failed to stop test rumble via InputPlumber: {error}")
-            return False
+            self.logger.warning(f"Failed to {args[0]} test rumble via InputPlumber: {error}")
+        return False
+
+    async def test_rumble(self, app_id=None):
+        if app_id is not None:
+            app_id = controller_mappings.app_id(app_id)
+        async with self._mapping_save_lock, self._mapping_sync_lock, self._rumble_gain_lock:
+            if app_id is None:
+                intensity = self._get_effective_rumble_intensity()
+            elif app_id == DEFAULT_APP_ID:
+                intensity = self.settings_store.get_rumble_intensity()
+            else:
+                entry = self.settings_store.get_per_game_settings().get(app_id, {})
+                intensity = entry.get("rumbleIntensity", self.settings_store.get_rumble_intensity())
+            intensity = max(0.0, min(1.0, intensity / 100.0))
+            device_path = self._rumble_device_path
+            known_gain = self._rumble_gain_by_path.get(device_path) if app_id is not None else None
+            previous_gain = None
+            if known_gain is not None:
+                if known_gain[0] == self._rumble_device_identity(device_path):
+                    previous_gain = known_gain[1]
+                else:
+                    self._rumble_gain_by_path.pop(device_path, None)
+            result = False
+            gain_changed = False
+            try:
+                if previous_gain is not None:
+                    self._write_event_to_device(device_path, self._build_gain_event(100))
+                    gain_changed = True
+                result = self._send_rumble_preview_command("Rumble", "d", str(intensity))
+                if result:
+                    await self.sleep(RUMBLE_PREVIEW_DURATION_MS / 1000.0)
+            except OSError as error:
+                self.logger.warning(f"Failed to set preview rumble gain: {error}")
+            finally:
+                stopped = self._send_rumble_preview_command("Stop")
+                result = result and stopped
+                if gain_changed:
+                    if self._rumble_device_identity(device_path) != known_gain[0]:
+                        self._rumble_gain_by_path.pop(device_path, None)
+                        result = False
+                    else:
+                        try:
+                            self._write_event_to_device(device_path, self._build_gain_event(previous_gain))
+                        except OSError as error:
+                            self.logger.warning(f"Failed to restore rumble gain after preview: {error}")
+                            result = False
+            return result
 
     async def wait_for_inputplumber_dbus(
         self,
@@ -3771,6 +3927,10 @@ class DeckyZoneService:
         return False
 
     async def apply_startup_mode(self):
+        async with self._mapping_sync_lock:
+            return await self._apply_startup_mode()
+
+    async def _apply_startup_mode(self):
         if not self.is_supported_device():
             self._set_status("unsupported", UNSUPPORTED_MESSAGE)
             return self.get_status()
@@ -4025,6 +4185,7 @@ class DeckyZoneService:
             "stopControllerModeMonitor",
             self.stop_controller_mode_monitor,
         )
+        await self._run_cleanup_step(steps, "stopControllerMappings", self._mapping_runtime.stop)
         await self._run_cleanup_step(
             steps,
             "stopRemainingBatteryTimeBridge",
@@ -4112,6 +4273,7 @@ class DeckyZoneService:
             "stopControllerModeMonitor",
             self.stop_controller_mode_monitor,
         )
+        await self._run_cleanup_step(steps, "stopControllerMappings", self._mapping_runtime.stop)
         await self._run_cleanup_step(
             steps,
             "stopRemainingBatteryTimeBridge",
@@ -4408,6 +4570,18 @@ class Plugin:
     async def set_vram_size_gb(self, size_gb):
         return await self.service.set_vram_size_gb(size_gb)
 
+    async def get_controller_mapping(self, app_id="0"):
+        return self.service.get_controller_mapping(app_id)
+
+    async def set_controller_mapping(self, app_id, profile, enabled=True):
+        return await self.service.set_controller_mapping(app_id, profile, enabled)
+
+    async def update_game_controller_settings(self, app_id, patch):
+        return await self.service.update_game_controller_settings(app_id, patch)
+
+    async def remove_game_settings(self, app_id):
+        return await self.service.remove_game_settings(app_id)
+
     async def set_per_game_settings_enabled(self, app_id, enabled):
         return self.service.set_per_game_settings_enabled(app_id, enabled)
 
@@ -4454,8 +4628,8 @@ class Plugin:
     async def sync_missing_glyph_fix_target(self, app_id):
         return await self.sync_per_game_target(app_id)
 
-    async def test_rumble(self):
-        return await self.service.test_rumble()
+    async def test_rumble(self, app_id=None):
+        return await self.service.test_rumble(app_id)
 
     async def get_latest_version_num(self):
         return await self.service.get_latest_version_num()

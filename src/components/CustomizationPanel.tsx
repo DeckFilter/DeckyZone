@@ -22,7 +22,7 @@ const setHideUnsupportedButtonsEnabled = callable<[boolean], PluginSettings>(
 const ZOTAC_CONTROLLER_ARTWORK_EXPLAINER =
   "Replaces supported Steam controller previews, game launch animations, calibration images, and button glyphs with Zotac versions. Launch animations follow the selected layout's controller, mouse, or touchscreen controls."
 const HIDE_UNSUPPORTED_BUTTONS_EXPLAINER =
-  "Hides the L5 and R5 controls and Steam Input trackpad settings that do not work on the Zotac Zone. The Zone's trackpads remain available through DeckyZone's Trackpad Mode setting."
+  "Hides the L5 and R5 controls and Steam Input trackpad settings that do not work on the ZONE. Configure the trackpads in Controller settings > Trackpads."
 const CUSTOMIZATION_UPDATE_FAILED_NOTICE = "Couldn't update setting."
 const CONTROLLER_ARTWORK_APPLY_FAILED_NOTICE = "Couldn't apply controller artwork live."
 const BUTTON_HIDING_APPLY_FAILED_NOTICE = "Couldn't update hidden buttons live."
@@ -130,7 +130,6 @@ const CustomizationPanel = ({ settings, onSettingsChange }: Props) => {
           label="Zotac Controller Artwork"
           explainerTitle="Zotac Controller Artwork"
           explainer={ZOTAC_CONTROLLER_ARTWORK_EXPLAINER}
-          settingsDescription="Uses Zotac images and button glyphs"
           checked={settings.zotacGlyphsEnabled}
           onChange={(value: boolean) => void handleZotacGlyphsChange(value)}
           disabled={savingZotacGlyphs}
@@ -141,7 +140,6 @@ const CustomizationPanel = ({ settings, onSettingsChange }: Props) => {
           label="Hide Unsupported Controls"
           explainerTitle="Unsupported Controls"
           explainer={HIDE_UNSUPPORTED_BUTTONS_EXPLAINER}
-          settingsDescription="Hides unused buttons and trackpad settings"
           checked={settings.hideUnsupportedButtonsEnabled}
           onChange={(value: boolean) => void handleHideUnsupportedButtonsChange(value)}
           disabled={savingHideUnsupportedButtons}

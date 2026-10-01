@@ -3,6 +3,7 @@ import { SettingsRow, useSettingsItemLayout } from '../SettingsSurface'
 import { SteamExplainerSliderField, SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
+  scopeDescription?: string
   inputplumberAvailable: boolean
   rumbleEnabled: boolean
   rumbleAvailable: boolean
@@ -16,7 +17,7 @@ type Props = {
 }
 
 const RUMBLE_EXPLAINER =
-  "Lets DeckyZone set and periodically reapply the controller's vibration strength. Use Intensity to adjust it and Test Rumble to preview it. Turning this off stops DeckyZone from managing rumble gain."
+  'Keeps the controller at your chosen vibration strength. Adjust Intensity, then use Test Rumble to try it. Turning this off stops automatic adjustments.'
 const RUMBLE_INTENSITY_EXPLAINER = 'Adjusts vibration strength. 75% is recommended; 100% is very strong.'
 const RUMBLE_UNAVAILABLE_MESSAGE = 'Rumble device is not available'
 const RUMBLE_NOTCH_LABELS: NotchLabel[] = [
@@ -29,6 +30,7 @@ function getRumbleExplainer(rumbleAvailable: boolean) {
 }
 
 const RumblePanel = ({
+  scopeDescription,
   inputplumberAvailable,
   rumbleEnabled,
   rumbleAvailable,
@@ -49,7 +51,7 @@ const RumblePanel = ({
           label="Custom Rumble Strength"
           explainerTitle="Custom Rumble Strength"
           explainer={getRumbleExplainer(rumbleAvailable)}
-          settingsDescription={rumbleAvailable ? 'Lets DeckyZone manage vibration strength' : RUMBLE_UNAVAILABLE_MESSAGE}
+          description={rumbleAvailable ? scopeDescription : RUMBLE_UNAVAILABLE_MESSAGE}
           checked={rumbleEnabled}
           onChange={(value: boolean) => onRumbleToggleChange(value)}
           disabled={savingRumble}

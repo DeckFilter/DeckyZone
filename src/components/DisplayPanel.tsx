@@ -24,10 +24,8 @@ const ZOTAC_PROFILE_EXPLAINER =
   'Adds the Zotac OLED Gamescope profile when it is missing.'
 const NATIVE_COLOR_TEMPERATURE_HINT =
   'For the most accurate OLED colors, enable Use Native Color Temperature in Steam Settings > Display.'
-const LOW_BRIGHTNESS_TINT_NOTE =
-  "Green Tint Compensation only changes the OLED profile's white point. It does not correct the separate panel tint observed from 12% through 35% brightness on the author's unit."
-const GREEN_TINT_COMMUNITY_NOTE =
-  "This white-point adjustment came from the community, but I don't see a noticeable improvement on my unit. It does not correct the brightness-dependent panel tint I observed from 12% through 35%. Owners of other handhelds believed to use the same AMOLED panel have reported similar low-brightness tint, which suggests it may be a panel characteristic."
+const GREEN_TINT_EXPLAINER =
+  "Adjusts the OLED profile's white point. It may not correct green tint at low brightness."
 
 function getGreenTintDescription(isBaseProfileAvailable: boolean) {
   if (!isBaseProfileAvailable) {
@@ -37,15 +35,12 @@ function getGreenTintDescription(isBaseProfileAvailable: boolean) {
   return undefined
 }
 
-function getGreenTintExplainer(settings: PluginSettings, isBaseProfileAvailable: boolean) {
+function getGreenTintExplainer(isBaseProfileAvailable: boolean) {
   if (!isBaseProfileAvailable) {
-    return `Green Tint Compensation requires the Zotac OLED profile. Enable the profile first. ${GREEN_TINT_COMMUNITY_NOTE}`
+    return `Enable the Zotac OLED profile first. ${GREEN_TINT_EXPLAINER}`
   }
 
-  const profile = settings.gamescopeZotacProfileBuiltIn
-    ? 'built-in Zotac OLED profile'
-    : 'Zotac OLED profile'
-  return `Adjusts the ${profile}'s white point to reduce its green tint. ${GREEN_TINT_COMMUNITY_NOTE}`
+  return GREEN_TINT_EXPLAINER
 }
 
 function getDisplayVerificationNotice(settings: PluginSettings) {
@@ -149,10 +144,7 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
   return (
     <>
       {surface === 'settings' && (
-        <>
-          <SettingsDialogBodyText>{NATIVE_COLOR_TEMPERATURE_HINT}</SettingsDialogBodyText>
-          <SettingsDialogBodyText>{LOW_BRIGHTNESS_TINT_NOTE}</SettingsDialogBodyText>
-        </>
+        <SettingsDialogBodyText>{NATIVE_COLOR_TEMPERATURE_HINT}</SettingsDialogBodyText>
       )}
       <SettingsSection title="Display" settingsTitle={null}>
         {!settings.gamescopeZotacProfileBuiltIn && (
@@ -161,7 +153,6 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
               label="Enable Zotac OLED Profile"
               explainerTitle="Zotac OLED Profile"
               explainer={ZOTAC_PROFILE_EXPLAINER}
-              settingsDescription="Adds the Zotac OLED profile"
               checked={settings.gamescopeZotacProfileInstalled}
               onChange={(value: boolean) => void handleZotacProfileChange(value)}
               disabled={savingZotacProfile}
@@ -172,8 +163,7 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
           <SteamExplainerToggleField
             label="Green Tint Compensation"
             explainerTitle="Green Tint Compensation"
-            explainer={getGreenTintExplainer(settings, isBaseProfileAvailable)}
-            settingsDescription="Adjusts the OLED profile's white point"
+            explainer={getGreenTintExplainer(isBaseProfileAvailable)}
             checked={settings.gamescopeGreenTintFixEnabled}
             onChange={(value: boolean) => void handleGreenTintFixChange(value)}
             disabled={savingGreenTintFix || !isBaseProfileAvailable}

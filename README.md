@@ -4,74 +4,80 @@
 [![](https://img.shields.io/github/downloads/DeckFilter/DeckyZone/latest/total)](https://github.com/DeckFilter/DeckyZone/releases/latest)
 [![](https://img.shields.io/github/v/release/DeckFilter/DeckyZone)](https://github.com/DeckFilter/DeckyZone/releases/latest)
 
-DeckyZone is a Decky plugin for the Zotac Gaming Zone that aims to bridge the most common compatibility gaps until full compatibility lands. I started with controller-related fixes first, because those were the first issues I ran into and I was especially hyped about getting the dials working.
+DeckyZone is a Decky Loader plugin for the Zotac Gaming Zone. It adds custom controller mappings, display fixes and hardware settings.
 
 ![screenshot](./img/DeckyZone.jpg)
 
 ## Installation
 
-Run the following in terminal:
+Run this command in a terminal:
 
 ```bash
 curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh | sh
 ```
 
-## Current Features
+## Current features
 
-Status key: ✅ tested/working, ❌ not currently working in my testing, ❓ untested or unknown, — unavailable by design.
-
-All compatibility fixes are opt-in and can be disabled at any time.
+Status key: ✅ tested and working, ❌ failed testing, ❓ untested or unknown, N/A unavailable by design.
 
 ### Controller
 
-| Feature                               | SteamOS | Bazzite | CachyOS |
-| ------------------------------------- | -------------- | ------- | ------- |
-| Controller Mode status and recovery   | ✅             | ✅      | ✅      |
-| Home Button navigation                | ✅             | ✅      | ✅      |
-| Brightness Dial control               | ✅             | ✅      | ✅      |
-| Gyro Orientation Fix                  | ✅             | ✅      | ✅      |
-| Trackpad Mode: Default                | ✅             | ✅      | ✅      |
-| Trackpad Mode: Disabled               | ✅             | ✅      | ✅      |
-| Trackpad Mode: Directional Buttons    | ✅             | ✅      | ✅      |
-| Vibration / Rumble Intensity          | ✅             | ✅      | ✅      |
-| Test Rumble                           | ✅             | ✅      | ✅      |
-| Per-game Trackpad and Rumble settings | ✅             | ✅      | ✅      |
-| Per-game Button Prompt Fix            | ✅             | ✅      | ✅      |
+| Feature                              | SteamOS | Bazzite | CachyOS |
+| ------------------------------------ | ------- | ------- | ------- |
+| Controller mode status and recovery  | ✅      | ✅      | ✅      |
+| Steam Home action                    | ✅      | ✅      | ✅      |
+| Brightness dial control              | ✅      | ✅      | ✅      |
+| Gyro Orientation Fix                 | ✅      | ✅      | ✅      |
+| Default trackpad behavior            | ✅      | ✅      | ✅      |
+| Trackpad disabling                   | ✅      | ✅      | ✅      |
+| Trackpad button input                | ✅      | ✅      | ✅      |
+| Custom Rumble Strength               | ✅      | ✅      | ✅      |
+| Test Rumble                          | ✅      | ✅      | ✅      |
+| Per-game trackpad and rumble settings | ✅      | ✅      | ✅      |
+| Simulate Xbox Controller per game    | ✅      | ✅      | ✅      |
 
-DeckyZone activates its InputPlumber controller runtime while Home Button, Brightness Dial, a non-default trackpad mode, or an active per-game controller override needs it. Returning the last dependent feature to its default restores the inherited controller target.
+In Gamepad mode, the left dial controls volume and the right dial controls brightness by default. Brightness support works automatically while the plugin is running.
 
-Gyro Orientation Fix installs a temporary DeckyZone-owned InputPlumber Zotac IMU mount-matrix override until the upstream device profile includes the same matrix.
+Open **Controller settings** in the Controller panel to configure mappings and rumble globally or for individual games. **General** contains **Custom Rumble Strength**, **Intensity** and **Test Rumble**. Game profiles also include **Simulate Xbox Controller**. These quick controls remain available in the Quick Access Menu, which shows whether rumble changes apply globally or to the current game.
 
-Trackpad modes:
+Under **Dials**, choose **Volume**, **Brightness** or **Custom** for either dial. Custom lets you assign a command to each direction. In global settings, **Buttons** lets the Home button take a **Screenshot (Default)** or open **Steam Home**. This action applies to every game.
 
-- `Default`: normal controller behavior with mouse available.
-- `Disabled`: turns off both trackpads.
-- `Directional Buttons`: left trackpad is D-pad, right trackpad is A/B/X/Y.
+Each trackpad has its own **Behavior** setting:
+
+- **Scroll Wheel (Default)** on the left and **As Mouse (Default)** on the right.
+- **None** turns off that trackpad.
+- **Button Pad** lets you assign commands to its four directions.
+
+Games without custom settings use the global settings. Use **Game settings** on the global controller screen to edit saved profiles without launching a game, including profiles with only rumble or Xbox simulation settings. Opening a profile does not change it; saving a change enables that game's settings. A game without saved mappings continues to use the global mappings.
+
+The trash button removes all of a game's controller settings after confirmation, including mappings, rumble overrides and Xbox simulation. The game then uses global mappings and rumble settings. Use **Global settings** to return to the global controller screen.
+
+Gyro Orientation Fix corrects the gyro orientation when InputPlumber does not include the fix. Changing this setting restarts InputPlumber. Once InputPlumber includes the fix, you can turn this setting off to remove the temporary correction.
 
 ### Customization
 
 | Feature                    | SteamOS | Bazzite | CachyOS |
-| -------------------------- | -------------- | ------- | ------- |
-| Zotac Controller Artwork   | ✅             | ✅      | ✅      |
-| Hide Unsupported Controls  | ✅             | ✅      | ✅      |
-| Remaining Battery Time Fix | ✅             | —       | —       |
+| -------------------------- | ------- | ------- | ------- |
+| Zotac Controller Artwork   | ✅      | ✅      | ✅      |
+| Hide Unsupported Controls  | ✅      | ✅      | ✅      |
+| Remaining Battery Time Fix | ✅      | N/A     | N/A     |
 
 Zotac Controller Artwork replaces supported Steam controller previews, game launch animations, calibration images, and button glyphs with Zotac versions. Launch animations follow Steam's controller, mouse, or touchscreen hint for the selected layout.
 
-Hide Unsupported Controls removes the unused L5 and R5 controls and Steam Input trackpad settings that do not work with the Zotac Zone. The physical trackpads remain available through DeckyZone's Trackpad Mode setting. Existing installations inherit the previous controller-artwork behavior when this separate setting is first added.
+Hide Unsupported Controls hides the L5 and R5 controls and Steam Input trackpad settings that do not work on the ZONE. Configure the physical trackpads in **Controller settings > Trackpads**.
 
-Remaining Battery Time Fix is available only on SteamOS. It passes UPower's charging and discharging estimates to Steam through `/run/vpower` while leaving Valve's `vpower` service running. It turns itself off after `vpower` provides valid estimates for both states.
+Remaining Battery Time Fix shows estimated time to full or empty in Steam. It is available only on SteamOS and turns itself off when the system provides valid estimates for both charging and discharging.
 
 ### Display
 
-| Feature                   | SteamOS | Bazzite | CachyOS |
-| ------------------------- | -------------- | ------- | ------- |
-| Enable Zotac OLED Profile | Built in       | ✅      | ✅      |
-| Green Tint Compensation   | ✅             | ✅      | ✅      |
+| Feature                   | SteamOS  | Bazzite | CachyOS |
+| ------------------------- | -------- | ------- | ------- |
+| Enable Zotac OLED Profile | Built in | ✅      | ✅      |
+| Green Tint Compensation   | ✅       | ✅      | ✅      |
 
-Display changes require a reboot after toggling them. `HDR / Washed out colors` was fixed out of the box in my SteamOS `main`, SteamOS 3.8.1 Preview, Bazzite, and CachyOS testing.
+Reboot after changing display settings. Previous testing found that HDR and washed-out colors needed no additional fix on SteamOS `main`, SteamOS 3.8.1 Preview, Bazzite and CachyOS.
 
-Green Tint Compensation only changes the Gamescope profile's white point. It does not correct the panel's brightness-dependent tint. On my unit, manual testing found the issue from 12% through 35% brightness; 11% and 36% looked neutral. The exact range may vary between panels.
+Green Tint Compensation adjusts the OLED profile's white point. It may not correct green tint at low brightness.
 
 #### Display research resources
 
@@ -87,38 +93,29 @@ Green Tint Compensation only changes the Gamescope profile's white point. It doe
 ### Performance
 
 | Feature   | SteamOS | Bazzite | CachyOS |
-| --------- | -------------- | ------- | ------- |
-| VRAM Size | ✅             | ✅      | ✅      |
+| --------- | ------- | ------- | ------- |
+| VRAM Size | ✅      | ✅      | ✅      |
 
-VRAM Size sets the UMA framebuffer size (4-8GB, same range as the Zotac launcher on Windows). The Zone stores this setting in a CMOS byte that the BIOS reads at boot, so changes require a reboot to apply. The panel shows both the active size and the pending size until then. Resetting the BIOS (e.g. after full battery drain) reverts it to the 4GB default.
+VRAM Size reserves 4 to 8 GB of system memory for the integrated GPU, matching the range in the Zotac launcher on Windows. Higher values leave less memory for games and SteamOS. Changes take effect after a reboot; until then, the panel shows the active and pending sizes. A BIOS reset, which can happen after a full battery drain, restores the 4 GB default.
 
-## Compatibility Notes
+## Compatibility notes
 
-Controller features rely on InputPlumber and Zotac input/HID support. Non-SteamOS compatibility depends on what that OS image currently ships and exposes to Decky Loader.
+Controller features require InputPlumber and drivers for the ZONE's input devices. Compatibility on other distributions depends on the InputPlumber version and drivers they include. Unloading the plugin restores the previous controller emulation.
 
-## Related Plugins
+## Related plugins
 
-### TDP & Fan Control
-
-- [PowerControl](https://github.com/mengmeet/PowerControl)
-
-I already contributed patches there and it's included in the latest release. It was much faster to extend this plugin than to integrate the same functionality into DeckyZone itself.
-
-### RGB Control
-
-- [HueSync](https://github.com/honjow/HueSync)
-
-I already contributed patches there. It was again much faster to extend this plugin than to integrate the same functionality into DeckyZone itself.
+- [PowerControl](https://github.com/mengmeet/PowerControl) for TDP and fan control.
+- [HueSync](https://github.com/honjow/HueSync) for RGB lighting.
 
 ## Feedback
 
-Feedback is really appreciated. Please open an issue if you have feedback, bugs, or feature requests.
+Open an issue to report a bug, request a feature or share feedback.
 
-If you would like to talk directly, you can also join the Discord server:
+Join the Discord server for discussion:
 
 - https://discord.gg/dyMMQNKdMH
 
-## Future Ideas
+## Future ideas
 
 These are ideas, not promised features.
 
@@ -126,14 +123,14 @@ These are ideas, not promised features.
 
 - Startup movie(s)
 
-### Troubleshooting / Tips & Tricks
+### Troubleshooting / tips & tricks
 
 - Camera detected status
 - Battery warning to help prevent BIOS reset
 
 ## Credits
 
-Projects currently inspiring DeckyZone:
+Inspired by:
 
 - [Legion Go Remapper](https://github.com/aarron-lee/LegionGoRemapper)
 - [HueSync](https://github.com/honjow/HueSync)

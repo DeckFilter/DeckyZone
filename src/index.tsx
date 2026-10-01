@@ -4,6 +4,7 @@ import {
   Router,
   SteamSpinner,
   Tabs,
+  useParams,
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener, routerHook } from '@decky/api'
 import { Fragment, type ReactNode, useState } from 'react'
@@ -25,7 +26,8 @@ import {
   syncStoredHideUnsupportedButtonsRuntimeEnabled,
   syncStoredZotacGlyphsRuntimeEnabled,
 } from "./glyphs/zotacGlyphRuntime"
-import { DECKYZONE_ROUTE } from './routes'
+import { DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE } from './routes'
+import ControllerMappingPage from './controllerMapping/ControllerMappingPage'
 import {
   DeckyZoneState,
   DeckyZoneStateProvider,
@@ -50,8 +52,6 @@ const BOOTSTRAP_TIMEOUT_MS = 10_000
 const BRIGHTNESS_DIAL_FIX_STEP = 5
 const REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT = 'remaining_battery_time_fix_disabled'
 
-let brightnessDialFixEnabled = false
-let homeButtonEnabled = false
 let currentBrightnessPercent = 50
 let brightnessChangeRegistration: { unregister?: () => void } | null = null
 let brightnessDialFixEventListener: ((direction: BrightnessDialDirection) => void) | null = null
@@ -85,17 +85,7 @@ function clampBrightnessPercent(value: number) {
   return Math.min(100, Math.max(0, value))
 }
 
-function setBrightnessDialFixRuntimeEnabled(enabled: boolean) {
-  brightnessDialFixEnabled = enabled
-}
-
-function setHomeButtonRuntimeEnabled(enabled: boolean) {
-  homeButtonEnabled = enabled
-}
-
 function applySettingsRuntime(settings: PluginSettings) {
-  setBrightnessDialFixRuntimeEnabled(settings.brightnessDialFixEnabled)
-  setHomeButtonRuntimeEnabled(settings.homeButtonEnabled)
   syncStoredZotacGlyphsRuntimeEnabled(settings.zotacGlyphsEnabled)
   syncStoredHideUnsupportedButtonsRuntimeEnabled(settings.hideUnsupportedButtonsEnabled)
 }
@@ -131,10 +121,6 @@ function registerBrightnessDialFixListeners() {
 
   if (!brightnessDialFixEventListener) {
     brightnessDialFixEventListener = (direction: BrightnessDialDirection) => {
-      if (!brightnessDialFixEnabled) {
-        return
-      }
-
       applyBrightnessDialDelta(direction === 'up' ? BRIGHTNESS_DIAL_FIX_STEP : -BRIGHTNESS_DIAL_FIX_STEP)
     }
 
@@ -596,6 +582,15 @@ function Content() {
 }
 
 export default definePlugin(() => {
+  const mappingRoute = `${DECKYZONE_MAPPING_ROUTE}/:appId/:section?/:sourceId?`
+  const MappingRoute = () => {
+    const { appId, sourceId } = useParams<{ appId: string; sourceId?: string }>()
+    return (
+      <ErrorBoundary title="Controller Settings">
+        <DeckyZoneStateProvider store={deckyZoneState}><ControllerMappingPage key={appId} appId={appId} sourceId={sourceId} /></DeckyZoneStateProvider>
+      </ErrorBoundary>
+    )
+  }
   const SettingsRoute = () => (
     <DeckyZoneStateProvider store={deckyZoneState}>
       <SettingsSurfaceProvider surface="settings">
@@ -607,8 +602,12 @@ export default definePlugin(() => {
     </DeckyZoneStateProvider>
   )
 
+  routerHook.addRoute(mappingRoute, MappingRoute, { exact: true })
   routerHook.addRoute(DECKYZONE_ROUTE, SettingsRoute, { exact: false })
   registerBrightnessDialFixListeners()
+  const mappingBrightnessListener = addEventListener<[BrightnessDialDirection]>('controller_mapping_brightness', direction => {
+    applyBrightnessDialDelta(direction === 'up' ? BRIGHTNESS_DIAL_FIX_STEP : -BRIGHTNESS_DIAL_FIX_STEP)
+  })
   RunningApps.register()
   deckyZoneState.setActiveGame(RunningApps.activeAppInfo())
   updateNoticeGeneration += 1
@@ -618,10 +617,6 @@ export default definePlugin(() => {
   startUpdateNoticeAfterBootstrap(bootstrap, currentUpdateNoticeGeneration)
   void refreshStateAfterBootstrap(bootstrap)
   const unregisterHomeNavigationListener = addEventListener('zotac_home_short_pressed', () => {
-    if (!homeButtonEnabled) {
-      return
-    }
-
     Navigation.Navigate('/library/home')
     Navigation.CloseSideMenus()
   })
@@ -652,10 +647,12 @@ export default definePlugin(() => {
     icon: <ZotacIcon />,
     onDismount() {
       routerHook.removeRoute(DECKYZONE_ROUTE)
+      routerHook.removeRoute(mappingRoute)
       updateNoticeGeneration += 1
       resetBootstrap()
       resetStartupCheck()
       removeEventListener('zotac_home_short_pressed', unregisterHomeNavigationListener)
+      removeEventListener('controller_mapping_brightness', mappingBrightnessListener)
       removeEventListener(
         REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
         remainingBatteryTimeAutoDisabledListener,

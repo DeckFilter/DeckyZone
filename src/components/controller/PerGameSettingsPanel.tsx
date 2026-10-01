@@ -16,9 +16,9 @@ type Props = {
 const INPUTPLUMBER_UNAVAILABLE_MESSAGE = 'InputPlumber is not available'
 const NO_ACTIVE_GAME_PER_GAME_SETTINGS_MESSAGE = 'Launch a game to enable per-game settings'
 const PER_GAME_SETTINGS_EXPLAINER =
-  'Stores separate button prompt, trackpad, and rumble settings for the running game. Other games keep using the global settings.'
+  "Uses this game's controller mappings, Xbox controller simulation and rumble settings. Games without their own settings use the global settings."
 const BUTTON_PROMPT_FIX_EXPLAINER =
-  "Switches the running game's virtual controller to Xbox Elite so Steam uses compatible button prompts and glyphs."
+  'Simulates an Xbox Elite controller for this game. Fixes missing button glyphs in Mafia 1 and Mafia 3 and may help in other games. Please report any other games where this helps.'
 // TODO: Re-enable these remap options after M1/M2 remap behavior is fully confirmed on-device.
 // const M1_REMAP_DESCRIPTION = 'Maps M1 while this fix is on'
 // const M2_REMAP_DESCRIPTION = 'Maps M2 while this fix is on'
@@ -69,7 +69,7 @@ function getPerGameSettingsDescription(activeGame: ActiveGame | null, inputplumb
     return NO_ACTIVE_GAME_PER_GAME_SETTINGS_MESSAGE
   }
 
-  return `Overrides settings for ${activeGame.display_name}`
+  return activeGame.display_name
 }
 
 const PerGameSettingsPanel = ({
@@ -113,27 +113,45 @@ const PerGameSettingsPanel = ({
           label="Enable Per-Game Settings"
           explainerTitle="Per-Game Settings"
           explainer={getPerGameSettingsExplainer(activeGame, inputplumberAvailable)}
-          settingsDescription={getPerGameSettingsDescription(activeGame, inputplumberAvailable)}
+          description={getPerGameSettingsDescription(activeGame, inputplumberAvailable)}
           checked={isPerGameSettingsEnabled}
           onChange={(value: boolean) => onPerGameSettingsToggleChange(value)}
           disabled={!activeGame || savingPerGameSettings || !inputplumberAvailable}
         />
       </SettingsRow>
       {activeGame && isPerGameSettingsEnabled && (
-        <SettingsRow>
-          <SteamExplainerToggleField
-            label="Button Prompt Fix"
-            explainerTitle="Button Prompt Fix"
-            explainer={getButtonPromptFixExplainer(inputplumberAvailable)}
-            settingsDescription="Uses compatible Xbox button prompts"
-            checked={isButtonPromptFixEnabled}
-            onChange={(value: boolean) => onButtonPromptFixToggleChange(value)}
-            disabled={savingPerGameSettings || savingButtonPromptFix || !inputplumberAvailable}
-          />
-        </SettingsRow>
+        <XboxControllerSetting
+          inputplumberAvailable={inputplumberAvailable}
+          checked={isButtonPromptFixEnabled}
+          onChange={onButtonPromptFixToggleChange}
+          disabled={savingPerGameSettings || savingButtonPromptFix}
+        />
       )}
     </>
   )
 }
+
+export const XboxControllerSetting = ({
+  inputplumberAvailable,
+  checked,
+  disabled,
+  onChange,
+}: {
+  inputplumberAvailable: boolean
+  checked: boolean
+  disabled: boolean
+  onChange: (enabled: boolean) => void
+}) => (
+  <SettingsRow>
+    <SteamExplainerToggleField
+      label="Simulate Xbox Controller"
+      explainerTitle="Simulate Xbox Controller"
+      explainer={getButtonPromptFixExplainer(inputplumberAvailable)}
+      checked={checked}
+      onChange={onChange}
+      disabled={disabled || !inputplumberAvailable}
+    />
+  </SettingsRow>
+)
 
 export default PerGameSettingsPanel

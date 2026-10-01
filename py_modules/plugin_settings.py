@@ -1,12 +1,13 @@
+from copy import deepcopy
 import os
 
 from settings import SettingsManager
 import trackpad_modes
+import controller_mappings
 
 
 STARTUP_APPLY_KEY = "startupApplyEnabled"
 HOME_BUTTON_ENABLED_KEY = "homeButtonEnabled"
-BRIGHTNESS_DIAL_FIX_ENABLED_KEY = "brightnessDialFixEnabled"
 TRACKPAD_MODE_KEY = "trackpadMode"
 LEGACY_TRACKPADS_DISABLED_KEY = "trackpadsDisabled"
 ZOTAC_GLYPHS_ENABLED_KEY = "zotacGlyphsEnabled"
@@ -26,7 +27,6 @@ LEGACY_DISABLE_TRACKPADS_KEY = "disableTrackpads"
 M1_REMAP_TARGET_KEY = "m1RemapTarget"
 M2_REMAP_TARGET_KEY = "m2RemapTarget"
 DEFAULT_HOME_BUTTON_ENABLED = False
-DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED = False
 DEFAULT_TRACKPAD_MODE = trackpad_modes.DEFAULT_TRACKPAD_MODE
 DEFAULT_ZOTAC_GLYPHS_ENABLED = False
 DEFAULT_HIDE_UNSUPPORTED_BUTTONS_ENABLED = False
@@ -102,6 +102,7 @@ def _normalize_global_rumble_intensity(settings):
 def _default_per_game_settings_entry(settings=None):
     settings = settings or _read_settings()
     return {
+        "controllerMapping": None,
         ENABLED_KEY: False,
         BUTTON_PROMPT_FIX_ENABLED_KEY: False,
         PER_GAME_TRACKPAD_MODE_KEY: _normalize_global_trackpad_mode(settings),
@@ -163,6 +164,12 @@ def _normalize_legacy_missing_glyph_fix_entry(entry, settings):
     return None
 
 
+def _without_game_home_button(profile):
+    if not isinstance(profile, dict):
+        return profile
+    return {key: value for key, value in profile.items() if key != "buttons"}
+
+
 def _normalize_per_game_settings_entry(entry, settings):
     if not isinstance(entry, dict):
         return _normalize_legacy_missing_glyph_fix_entry(entry, settings)
@@ -170,7 +177,10 @@ def _normalize_per_game_settings_entry(entry, settings):
     if ENABLED_KEY not in entry and BUTTON_PROMPT_FIX_ENABLED_KEY not in entry:
         return _normalize_legacy_missing_glyph_fix_entry(entry, settings)
 
-    return {
+    normalized_entry = {
+        "controllerMapping": controller_mappings.normalize(
+            _without_game_home_button(entry.get("controllerMapping"))
+        ),
         ENABLED_KEY: bool(entry.get(ENABLED_KEY, False)),
         BUTTON_PROMPT_FIX_ENABLED_KEY: bool(
             entry.get(BUTTON_PROMPT_FIX_ENABLED_KEY, False)
@@ -198,28 +208,21 @@ def _normalize_per_game_settings_entry(entry, settings):
             entry.get(M2_REMAP_TARGET_KEY)
         ),
     }
+    # An absent mapping preserves legacy trackpad overrides; null inherits global mappings.
+    if "controllerMapping" not in entry and (
+        PER_GAME_TRACKPAD_MODE_KEY in entry or LEGACY_DISABLE_TRACKPADS_KEY in entry
+    ):
+        normalized_entry.pop("controllerMapping")
+    return normalized_entry
 
 
 def get_home_button_enabled():
-    settings = _read_settings()
-    return bool(settings.get(HOME_BUTTON_ENABLED_KEY, DEFAULT_HOME_BUTTON_ENABLED))
-
-
-def set_home_button_enabled(enabled):
-    _write_setting(HOME_BUTTON_ENABLED_KEY, bool(enabled))
-    return get_home_button_enabled()
+    return get_home_button_action("0") == "steam_home"
 
 
 def get_brightness_dial_fix_enabled():
-    settings = _read_settings()
-    return bool(
-        settings.get(BRIGHTNESS_DIAL_FIX_ENABLED_KEY, DEFAULT_BRIGHTNESS_DIAL_FIX_ENABLED)
-    )
-
-
-def set_brightness_dial_fix_enabled(enabled):
-    _write_setting(BRIGHTNESS_DIAL_FIX_ENABLED_KEY, bool(enabled))
-    return get_brightness_dial_fix_enabled()
+    # Compatibility value for older frontends; brightness support is automatic.
+    return True
 
 
 def get_trackpad_mode():
@@ -417,11 +420,8 @@ def get_effective_trackpad_mode(app_id=None):
 
 
 def is_startup_controller_runtime_required(app_id=None):
-    return bool(
-        get_home_button_enabled()
-        or get_brightness_dial_fix_enabled()
-        or get_effective_trackpad_mode(app_id) != trackpad_modes.TRACKPAD_MODE_DEFAULT
-    )
+    # Default dial brightness needs the keyboard target even without a saved mapping.
+    return True
 
 
 def is_controller_runtime_required(app_id=None):
@@ -488,6 +488,90 @@ def get_per_game_m2_remap_target(app_id):
     )
 
 
+def validate_game_settings_app_id(app_id):
+    app_id = controller_mappings.app_id(app_id)
+    if app_id == "0":
+        raise ValueError("A game ID is required.")
+    return app_id
+
+
+def validate_game_controller_settings_patch(patch):
+    if not isinstance(patch, dict) or not patch:
+        raise ValueError("Controller settings must contain at least one change.")
+    boolean_keys = {ENABLED_KEY, BUTTON_PROMPT_FIX_ENABLED_KEY, PER_GAME_RUMBLE_ENABLED_KEY}
+    for key, value in patch.items():
+        if key in boolean_keys:
+            if type(value) is not bool:
+                raise ValueError(f"{key} must be a boolean.")
+        elif key == PER_GAME_RUMBLE_INTENSITY_KEY:
+            if type(value) is not int or not 0 <= value <= 100:
+                raise ValueError("Rumble intensity must be an integer from 0 to 100.")
+        else:
+            raise ValueError(f"Unknown controller setting: {key}.")
+    return dict(patch)
+
+
+def snapshot_game_settings(app_id):
+    settings = _read_settings()
+    snapshot = {}
+    for key in (PER_GAME_SETTINGS_KEY, LEGACY_MISSING_GLYPH_FIX_GAMES_KEY):
+        games = settings.get(key, {})
+        snapshot[key] = {
+            "groupPresent": key in settings,
+            "present": isinstance(games, dict) and app_id in games,
+            "entry": deepcopy(games.get(app_id)) if isinstance(games, dict) else None,
+        }
+    return snapshot
+
+
+def restore_game_settings(app_id, snapshot):
+    settings = _read_settings()
+    for key, previous in snapshot.items():
+        games = dict(settings.get(key) or {})
+        if previous["present"]:
+            games[app_id] = deepcopy(previous["entry"])
+        else:
+            games.pop(app_id, None)
+        if games or previous["groupPresent"]:
+            settings[key] = games
+        else:
+            settings.pop(key, None)
+    setting_file.commit()
+
+
+def update_game_controller_settings(app_id, patch):
+    app_id = validate_game_settings_app_id(app_id)
+    patch = validate_game_controller_settings_patch(patch)
+    entry = get_per_game_settings().get(app_id)
+    if entry is None and patch == {ENABLED_KEY: False}:
+        return
+    settings = _read_settings()
+    games = dict(settings.get(PER_GAME_SETTINGS_KEY) or {})
+    raw_entry = games.get(app_id)
+    current_entry = dict(entry or _default_per_game_settings_entry(settings))
+    if isinstance(raw_entry, dict):
+        current_entry.update(raw_entry)
+    if "controllerMapping" in current_entry:
+        current_entry["controllerMapping"] = _without_game_home_button(
+            current_entry["controllerMapping"]
+        )
+    current_entry.update(patch)
+    if ENABLED_KEY not in patch:
+        current_entry[ENABLED_KEY] = True
+    games[app_id] = current_entry
+    _write_setting(PER_GAME_SETTINGS_KEY, games)
+
+
+def remove_game_settings(app_id):
+    app_id = validate_game_settings_app_id(app_id)
+    settings = _read_settings()
+    for key in (PER_GAME_SETTINGS_KEY, LEGACY_MISSING_GLYPH_FIX_GAMES_KEY):
+        games = settings.get(key)
+        if isinstance(games, dict):
+            games.pop(app_id, None)
+    setting_file.commit()
+
+
 def set_per_game_settings_enabled(app_id, enabled):
     if app_id is None:
         return get_per_game_settings()
@@ -542,6 +626,8 @@ def set_per_game_trackpad_mode(app_id, mode):
     current_entry[PER_GAME_TRACKPAD_MODE_KEY] = trackpad_modes.normalize_trackpad_mode(
         mode
     )
+    if current_entry.get("controllerMapping") is None:
+        current_entry.pop("controllerMapping", None)
     games[app_id] = current_entry
 
     _write_setting(PER_GAME_SETTINGS_KEY, games)
@@ -656,3 +742,107 @@ def set_missing_glyph_fix_enabled(app_id, enabled):
 
 def set_missing_glyph_fix_trackpads_disabled(app_id, disabled):
     return set_per_game_trackpads_disabled(app_id, disabled)
+
+
+def has_custom_controller_mappings():
+    return get_effective_controller_mapping("0") is not None or any(
+        entry.get(ENABLED_KEY) and entry.get("controllerMapping") is not None
+        for entry in get_per_game_settings().values()
+    )
+
+
+def get_effective_controller_mapping(app_id=None):
+    settings = _read_settings()
+    global_profile = controller_mappings.normalize(settings.get("controllerMapping"))
+    entry = get_per_game_settings().get(str(app_id or "0"), {})
+    home = _global_home_action(settings, global_profile)
+    if entry.get(ENABLED_KEY) and entry.get("controllerMapping") is not None:
+        return _resolve_mapping_buttons(entry["controllerMapping"], home)
+    return _resolve_mapping_buttons(
+        _resolve_legacy_trackpad_mapping(global_profile, entry),
+        home,
+    )
+
+
+def _resolve_legacy_trackpad_mapping(profile, entry):
+    if (
+        profile is None
+        or not entry.get(ENABLED_KEY)
+        or "controllerMapping" in entry
+    ):
+        return profile
+    trackpads = controller_mappings.defaults(entry[PER_GAME_TRACKPAD_MODE_KEY])
+    return {
+        **profile,
+        "behaviors": trackpads["behaviors"],
+        "bindings": {
+            **{
+                source: command
+                for source, command in profile["bindings"].items()
+                if source not in controller_mappings.SOURCES[4:]
+            },
+            **trackpads["bindings"],
+        },
+    }
+
+
+def _global_home_action(settings, global_profile):
+    if global_profile is not None and "buttons" in global_profile:
+        return global_profile["buttons"]["home"]
+    return (
+        "steam_home"
+        if settings.get(HOME_BUTTON_ENABLED_KEY, DEFAULT_HOME_BUTTON_ENABLED)
+        else "screenshot"
+    )
+
+
+def _resolve_mapping_buttons(profile, home):
+    if profile is None:
+        return None
+    return {**profile, "buttons": {"home": home}}
+
+
+def get_home_button_action(app_id=None):
+    settings = _read_settings()
+    profile = controller_mappings.normalize(settings.get("controllerMapping"))
+    return _global_home_action(settings, profile)
+
+
+def get_controller_mapping(app_id):
+    app_id = controller_mappings.app_id(app_id)
+    settings = _read_settings()
+    global_profile = controller_mappings.normalize(settings.get("controllerMapping"))
+    home = _global_home_action(settings, global_profile)
+    if global_profile is None:
+        global_profile = controller_mappings.defaults(_normalize_global_trackpad_mode(settings))
+        global_profile["buttons"]["home"] = home
+    else:
+        global_profile = _resolve_mapping_buttons(global_profile, home)
+    entry = get_per_game_settings().get(app_id, {})
+    enabled = app_id == "0" or bool(entry.get(ENABLED_KEY))
+    profile = entry.get("controllerMapping") if app_id != "0" else None
+    if profile is None and app_id != "0":
+        profile = _resolve_legacy_trackpad_mapping(global_profile, entry)
+    return {
+        "appId": app_id,
+        "enabled": enabled,
+        "profile": _resolve_mapping_buttons(profile, home) or global_profile,
+    }
+
+
+def set_controller_mapping(app_id, profile, enabled=True):
+    app_id = controller_mappings.app_id(app_id)
+    if profile is not None:
+        if app_id != "0":
+            profile = _without_game_home_button(profile)
+        profile = controller_mappings.validate(profile)
+    if app_id == "0":
+        _write_setting("controllerMapping", profile)
+    else:
+        games = get_per_game_settings()
+        entry = dict(games.get(app_id) or _default_per_game_settings_entry())
+        entry["controllerMapping"] = profile
+        entry[ENABLED_KEY] = bool(enabled)
+        games[app_id] = entry
+        _write_setting(PER_GAME_SETTINGS_KEY, games)
+    return get_controller_mapping(app_id)
