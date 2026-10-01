@@ -102,6 +102,7 @@ def _normalize_global_rumble_intensity(settings):
 def _default_per_game_settings_entry(settings=None):
     settings = settings or _read_settings()
     return {
+        "controllerMapping": None,
         ENABLED_KEY: False,
         BUTTON_PROMPT_FIX_ENABLED_KEY: False,
         PER_GAME_TRACKPAD_MODE_KEY: _normalize_global_trackpad_mode(settings),
@@ -176,7 +177,7 @@ def _normalize_per_game_settings_entry(entry, settings):
     if ENABLED_KEY not in entry and BUTTON_PROMPT_FIX_ENABLED_KEY not in entry:
         return _normalize_legacy_missing_glyph_fix_entry(entry, settings)
 
-    return {
+    normalized_entry = {
         "controllerMapping": controller_mappings.normalize(
             _without_game_home_button(entry.get("controllerMapping"))
         ),
@@ -207,6 +208,12 @@ def _normalize_per_game_settings_entry(entry, settings):
             entry.get(M2_REMAP_TARGET_KEY)
         ),
     }
+    # An absent mapping preserves legacy trackpad overrides; null inherits global mappings.
+    if "controllerMapping" not in entry and (
+        PER_GAME_TRACKPAD_MODE_KEY in entry or LEGACY_DISABLE_TRACKPADS_KEY in entry
+    ):
+        normalized_entry.pop("controllerMapping")
+    return normalized_entry
 
 
 def get_home_button_enabled():
@@ -619,6 +626,8 @@ def set_per_game_trackpad_mode(app_id, mode):
     current_entry[PER_GAME_TRACKPAD_MODE_KEY] = trackpad_modes.normalize_trackpad_mode(
         mode
     )
+    if current_entry.get("controllerMapping") is None:
+        current_entry.pop("controllerMapping", None)
     games[app_id] = current_entry
 
     _write_setting(PER_GAME_SETTINGS_KEY, games)
@@ -749,7 +758,32 @@ def get_effective_controller_mapping(app_id=None):
     home = _global_home_action(settings, global_profile)
     if entry.get(ENABLED_KEY) and entry.get("controllerMapping") is not None:
         return _resolve_mapping_buttons(entry["controllerMapping"], home)
-    return _resolve_mapping_buttons(global_profile, home)
+    return _resolve_mapping_buttons(
+        _resolve_legacy_trackpad_mapping(global_profile, entry),
+        home,
+    )
+
+
+def _resolve_legacy_trackpad_mapping(profile, entry):
+    if (
+        profile is None
+        or not entry.get(ENABLED_KEY)
+        or "controllerMapping" in entry
+    ):
+        return profile
+    trackpads = controller_mappings.defaults(entry[PER_GAME_TRACKPAD_MODE_KEY])
+    return {
+        **profile,
+        "behaviors": trackpads["behaviors"],
+        "bindings": {
+            **{
+                source: command
+                for source, command in profile["bindings"].items()
+                if source not in controller_mappings.SOURCES[4:]
+            },
+            **trackpads["bindings"],
+        },
+    }
 
 
 def _global_home_action(settings, global_profile):
@@ -778,7 +812,6 @@ def get_controller_mapping(app_id):
     app_id = controller_mappings.app_id(app_id)
     settings = _read_settings()
     global_profile = controller_mappings.normalize(settings.get("controllerMapping"))
-    has_global_mapping = global_profile is not None
     home = _global_home_action(settings, global_profile)
     if global_profile is None:
         global_profile = controller_mappings.defaults(_normalize_global_trackpad_mode(settings))
@@ -788,9 +821,8 @@ def get_controller_mapping(app_id):
     entry = get_per_game_settings().get(app_id, {})
     enabled = app_id == "0" or bool(entry.get(ENABLED_KEY))
     profile = entry.get("controllerMapping") if app_id != "0" else None
-    if profile is None and not has_global_mapping and enabled and app_id != "0" and entry.get(PER_GAME_TRACKPAD_MODE_KEY) != settings.get(TRACKPAD_MODE_KEY, DEFAULT_TRACKPAD_MODE):
-        profile = controller_mappings.defaults(entry[PER_GAME_TRACKPAD_MODE_KEY])
-        profile["buttons"]["home"] = home
+    if profile is None and app_id != "0":
+        profile = _resolve_legacy_trackpad_mapping(global_profile, entry)
     return {
         "appId": app_id,
         "enabled": enabled,

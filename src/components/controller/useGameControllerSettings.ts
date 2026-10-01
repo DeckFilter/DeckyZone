@@ -167,11 +167,21 @@ export default function useGameControllerSettings({
     if (mounted.current) setSaving(true)
     return enqueue(async () => {
       try {
+        const patch: GameControllerSettingsPatch = Object.fromEntries(
+          (Object.keys(edit.patch) as SettingKey[])
+            .filter((key) => isCurrentField(edit, key))
+            .map((key) => [key, edit.patch[key]]),
+        )
+        if (!Object.keys(patch).length) return true
+        if (edit.appId !== '0' && patch.enabled === undefined) {
+          // The RPC enables profiles when this field is omitted. Keep the last saved choice.
+          patch.enabled = edit.baseline.values.enabled ?? false
+        }
         const next = edit.appId !== '0'
-          ? await updateGameSettings(edit.appId, edit.patch)
-          : edit.patch.rumbleIntensity !== undefined
-            ? await setRumbleIntensity(edit.patch.rumbleIntensity)
-            : await setRumbleEnabled(edit.patch.rumbleEnabled!)
+          ? await updateGameSettings(edit.appId, patch)
+          : patch.rumbleIntensity !== undefined
+            ? await setRumbleIntensity(patch.rumbleIntensity)
+            : await setRumbleEnabled(patch.rumbleEnabled!)
         updateBaseline(edit, next)
         publish((current) => reconcileEdit(current, edit))
         return true
