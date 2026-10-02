@@ -8,7 +8,7 @@ import {
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener, routerHook } from '@decky/api'
 import { Fragment, type ReactNode, useState } from 'react'
-import { FaDesktop, FaEllipsisH, FaGamepad, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
+import { FaDesktop, FaEllipsisH, FaFan, FaGamepad, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
 import ControllerPanel from "./components/ControllerPanel"
 import SystemInformationPage from "./pages/SystemInformationPage"
 import DisplayPanel from "./components/DisplayPanel"
@@ -16,6 +16,7 @@ import ErrorBoundary from "./components/ErrorBoundary"
 import CustomizationPanel from "./components/CustomizationPanel"
 import LayoutPanel from './components/LayoutPanel'
 import PerformancePanel from "./components/PerformancePanel"
+import FanControlPanel from './components/FanControlPanel'
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
 import { SettingsRow, SettingsSection, SettingsSurfaceProvider } from './components/SettingsSurface'
 import TroubleshootingPanel from "./components/TroubleshootingPanel"
@@ -501,6 +502,11 @@ function Content() {
       />
     </ErrorBoundary>
   )
+  const fanPanel = (
+    <ErrorBoundary title="Fan control">
+      <FanControlPanel />
+    </ErrorBoundary>
+  )
   const layoutPanel = (
     <ErrorBoundary title="Layout">
       <LayoutPanel
@@ -535,6 +541,7 @@ function Content() {
         {customizationPanel}
         {displayPanel}
         {performancePanel}
+        {fanPanel}
         {updatesPanel}
         {troubleshootingPanel}
         {layoutPanel}
@@ -586,6 +593,15 @@ function Content() {
               content: (
                 <div style={tabContentStyle}>
                   {performancePanel}
+                </div>
+              ),
+            },
+            {
+              id: 'fan-control',
+              title: <TabIcon label="Fan control"><FaFan size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {fanPanel}
                 </div>
               ),
             },

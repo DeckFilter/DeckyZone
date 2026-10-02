@@ -1,7 +1,7 @@
 """Conditional ZOTAC sysfs adapter. Reads are driver caches, not telemetry.
 
 ABI source: Neptune 5ab4af5e2eb9, drivers/platform/x86/zotac-zone-platform.c.
-That implementation is NOT approved for writes; see probe.py and README.md.
+That implementation is NOT approved for writes; see probe.py.
 """
 
 from dataclasses import dataclass
