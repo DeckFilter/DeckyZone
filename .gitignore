@@ -55,3 +55,6 @@ out/*
 cli/
 cli/*
 cli/decky
+
+# Generated offline bridge payload
+/defaults/assets/native-performance/

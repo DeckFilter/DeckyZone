@@ -247,11 +247,12 @@ def test_bridge_toggle_reconciles_systemd_state(tmp_path, monkeypatch, enabled):
 
     monkeypatch.setattr(control, "INSTALL", tmp_path)
     monkeypatch.setattr(control.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(control, "install", lambda payload: None)
     states = iter([
         {"installed": True, "enabled": not enabled, "active": not enabled,
-         "available": True, "blockedReason": None},
+         "available": True, "needsSetup": False, "blockedReason": None},
         {"installed": True, "enabled": enabled, "active": enabled,
-         "available": True, "blockedReason": None},
+         "available": True, "needsSetup": False, "blockedReason": None},
     ])
     monkeypatch.setattr(control, "status", lambda: next(states))
     calls = []
@@ -287,6 +288,7 @@ def test_bridge_toggle_reports_failed_transition(tmp_path, monkeypatch):
 
     monkeypatch.setattr(control, "INSTALL", tmp_path)
     monkeypatch.setattr(control.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(control, "install", lambda payload: None)
     monkeypatch.setattr(control, "status", lambda: {
         "installed": True, "enabled": False, "active": False,
         "available": True, "blockedReason": None,

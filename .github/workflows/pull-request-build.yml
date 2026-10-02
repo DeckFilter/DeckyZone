@@ -56,6 +56,10 @@ jobs:
             "DeckyZone/plugin.json"
             "DeckyZone/assets/gamescope/zotac.zone.oled.lua"
             "DeckyZone/assets/gamescope/zotac.zone.green-tint.lua"
+            "DeckyZone/assets/native-performance/payload.json"
+            "DeckyZone/assets/native-performance/bin/ryzenadj"
+            "DeckyZone/assets/native-performance/vendor/dbus_next/__init__.py"
+            "DeckyZone/assets/native-performance/services/performance_bridge/control.py"
           )
 
           test -f "${package}"

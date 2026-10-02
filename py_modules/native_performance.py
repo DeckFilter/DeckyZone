@@ -1,4 +1,4 @@
-"""Control the separately installed bridge through its fixed command interface."""
+"""Install and control the bridge using DeckyZone's bundled offline payload."""
 
 import json
 from pathlib import Path
@@ -6,6 +6,7 @@ import subprocess
 
 
 INSTALL = Path("/var/lib/deckyzone-performance")
+PAYLOAD = Path(__file__).resolve().parents[1] / "assets/native-performance"
 
 
 def unavailable(reason):
@@ -14,6 +15,7 @@ def unavailable(reason):
         "enabled": False,
         "active": False,
         "available": False,
+        "needsSetup": True,
         "blockedReason": reason,
         "conflictingPlugins": [],
     }
@@ -22,19 +24,21 @@ def unavailable(reason):
 def request(action):
     if action not in ("status", "enable", "disable"):
         raise ValueError("Unknown native performance action")
-    if not (INSTALL / "services/performance_bridge/control.py").is_file():
+    if not (PAYLOAD / "services/performance_bridge/control.py").is_file():
         return {
             "ok": False,
-            "state": unavailable("Install or update the native performance bridge first"),
-            "error": "Native performance bridge is not installed or needs updating",
+            "state": unavailable("Native performance files are missing; reinstall DeckyZone"),
+            "error": "Native performance files are missing; reinstall DeckyZone",
         }
     result = subprocess.run(
         ["/usr/bin/python3", "-m", "services.performance_bridge.control", action],
-        cwd=INSTALL,
-        env={"PATH": "/usr/bin", "PYTHONPATH": str(INSTALL / "vendor")},
+        cwd=PAYLOAD,
+        env={"PATH": "/usr/bin", "PYTHONPATH": str(PAYLOAD / "vendor")},
         capture_output=True,
         text=True,
-        timeout=8 if action == "status" else 75,
+        # Include Manager recovery and failure cleanup after an interrupted OS
+        # update; either can wait for systemd's normal service stop timeout.
+        timeout=8 if action == "status" else 600,
         check=False,
     )
     try:

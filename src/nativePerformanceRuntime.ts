@@ -38,17 +38,35 @@ async function bounded<T>(operation: Promise<T>, timeoutMs: number): Promise<T> 
   }
 }
 
+function getManagerService(): ManagerService | undefined {
+  return findModuleExport((value: Record<string, unknown> | undefined) =>
+    typeof value?.GetState === 'function' &&
+    typeof value?.RegisterForNotifyStateChanged === 'function' &&
+    typeof value?.RefreshScreenReaderAutoLocale === 'function',
+  ) as ManagerService | undefined
+}
+
+export async function nativePerformanceControlsVisible(): Promise<boolean | null> {
+  try {
+    const manager = getManagerService()
+    if (!manager) return null
+    const response = await bounded(manager.GetState({}), 2000)
+    if (!response.BSuccess()) return null
+    const state = response.Body().toObject().state
+    if (!state) return null
+    return state.platform_performance_profiles_available?.includes('custom') ?? false
+  } catch {
+    return null
+  }
+}
+
 export function startNativePerformanceRuntime(): () => void {
   const settings = (window as unknown as { settingsStore?: SteamSettings }).settingsStore
   const client = window.SteamClient?.Settings as unknown as {
     RegisterForSettingsChanges?: (callback: () => void) => Registration
   }
   // Resolve by the inspected API contract, never by Steam's changing module IDs.
-  const manager = findModuleExport((value: Record<string, unknown> | undefined) =>
-    typeof value?.GetState === 'function' &&
-    typeof value?.RegisterForNotifyStateChanged === 'function' &&
-    typeof value?.RefreshScreenReaderAutoLocale === 'function',
-  ) as ManagerService | undefined
+  const manager = getManagerService()
   if (!settings?.GetClientSetting || !client?.RegisterForSettingsChanges || !manager) {
     console.warn('[deckyzone-native-tdp] Steam restoration API unavailable')
     return () => {}

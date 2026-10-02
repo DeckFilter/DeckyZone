@@ -61,6 +61,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
+The native performance payload includes RyzenAdj 0.18.0 (LGPL-3.0), with its
+source and license in assets/native-performance/licenses, and dbus-next 0.2.3
+(MIT), with its license in assets/native-performance/vendor/dbus_next-0.2.3.dist-info.
+
 PowerControl fan editor (src/components/fan), adapted from
 https://github.com/mengmeet/PowerControl, commit e0babc6cb6cef6d6d7ba055ebb28571b7667435e.
 
