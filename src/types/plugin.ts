@@ -194,3 +194,27 @@ export type PluginResetResult = {
   status: PluginStatus
   steps: CleanupStepResult[]
 }
+
+export type FanPoint = { temperature: number; fanRPMpercent: number }
+export type PowerControlFanProfile = { name: string; curve: FanPoint[] }
+export type FanProfile = { id: string; name: string; curve: FanPoint[] }
+export type FanControlState = {
+  mode: 'auto' | 'custom'
+  curve: FanPoint[]
+  defaultCurve: FanPoint[]
+  revision: number
+  profiles: FanProfile[]
+  selectedProfileId: string | null
+  maxProfiles: number
+  error: string
+  available: boolean
+  active: boolean
+  suspended: boolean
+  blockedReason: string
+  conflictingPlugins: string[]
+  temperature: number | null
+  rpm: number | null
+  dutyPercent: number | null
+  hardwareMode?: number
+}
+export type FanControlResult = { ok: true; state: FanControlState } | { ok: false; error: string }

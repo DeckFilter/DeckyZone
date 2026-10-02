@@ -24,6 +24,7 @@ import {
   FaClipboardList,
   FaCog,
   FaDesktop,
+  FaFan,
   FaGamepad,
   FaSlidersH,
   FaTachometerAlt,
@@ -34,6 +35,7 @@ import ErrorBoundary from '../components/ErrorBoundary'
 import CustomizationPanel from '../components/CustomizationPanel'
 import LayoutPanel from '../components/LayoutPanel'
 import PerformancePanel from '../components/PerformancePanel'
+import FanControlPanel from '../components/FanControlPanel'
 import ProductSpecificationsPage from './ProductSpecificationsPage'
 import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
 import TroubleshootingPanel, { type ResetPluginOutcome } from '../components/TroubleshootingPanel'
@@ -44,6 +46,7 @@ import {
   DECKYZONE_GENERAL_ROUTE,
   DECKYZONE_CUSTOMIZATION_ROUTE,
   DECKYZONE_PERFORMANCE_ROUTE,
+  DECKYZONE_FAN_CONTROL_ROUTE,
   DECKYZONE_SPECIFICATIONS_ROUTE,
 } from '../routes'
 import { useDeckyZoneState } from '../state/DeckyZoneState'
@@ -711,6 +714,18 @@ const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
             </DialogBody>
           ),
           route: DECKYZONE_PERFORMANCE_ROUTE,
+        },
+        {
+          title: 'Fan control',
+          icon: <FaFan />,
+          content: (
+            <DialogBody>
+              <ErrorBoundary title="Fan control">
+                <FanControlPanel />
+              </ErrorBoundary>
+            </DialogBody>
+          ),
+          route: DECKYZONE_FAN_CONTROL_ROUTE,
         },
         {
           title: 'Specifications',

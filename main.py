@@ -15,6 +15,7 @@ import controller_targets
 import controller_mappings
 from controller_mapping_runtime import MappingRuntime
 import firmware_info
+from fan_control import FanControl
 import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_device_profile
 import inputplumber_target_sync
@@ -4331,6 +4332,7 @@ class Plugin:
         self.loop = None
         self.startup_task = None
         self.service = service or DeckyZoneService()
+        self.fan_control = FanControl(decky.DECKY_PLUGIN_SETTINGS_DIR, decky.DECKY_HOME)
 
     async def _cancel_startup_task(self, timeout=None):
         step = {
@@ -4458,6 +4460,7 @@ class Plugin:
 
     async def _reset_plugin_cleanup(self):
         steps = []
+        fan_step = await self._run_cleanup_step(steps, "stopFanControl", lambda: self.fan_control.shutdown(reset=True))
         startup_step = await self._run_cleanup_step(
             steps,
             "cancelStartupTask",
@@ -4484,9 +4487,9 @@ class Plugin:
                 "steps": [],
             }
 
-        steps = [startup_step, *result.get("steps", [])]
+        steps = [fan_step, startup_step, *result.get("steps", [])]
         result["steps"] = steps
-        result["ok"] = bool(startup_step["ok"] and result.get("ok", True))
+        result["ok"] = bool(fan_step["ok"] and startup_step["ok"] and result.get("ok", True))
         return result
 
     def _log_cleanup_result(self, action_name, result):
@@ -4505,6 +4508,44 @@ class Plugin:
 
     async def get_settings(self):
         return self.service.get_settings()
+
+    async def get_fan_control_status(self):
+        return await asyncio.to_thread(self.fan_control.status)
+
+    async def _fan_control_result(self, operation):
+        try:
+            return {"ok": True, "state": await operation()}
+        except Exception as error:
+            # Decky's exception transport otherwise hides actionable validation
+            # messages behind a generic "Python Exception".
+            return {"ok": False, "error": str(error)}
+
+    async def set_fan_control_mode(self, mode):
+        return await self._fan_control_result(lambda: self.fan_control.set_mode(mode))
+
+    async def save_fan_curve(self, curve, revision):
+        return await self._fan_control_result(lambda: self.fan_control.save_curve(curve, revision))
+
+    async def select_fan_profile(self, profile_id, revision):
+        return await self._fan_control_result(lambda: self.fan_control.select_profile(profile_id, revision))
+
+    async def save_fan_profile(self, profile_id, name, curve, revision):
+        return await self._fan_control_result(lambda: self.fan_control.save_profile(profile_id, name, curve, revision))
+
+    async def duplicate_fan_profile(self, profile_id, revision):
+        return await self._fan_control_result(lambda: self.fan_control.duplicate_profile(profile_id, revision))
+
+    async def delete_fan_profile(self, profile_id, revision):
+        return await self._fan_control_result(lambda: self.fan_control.delete_profile(profile_id, revision))
+
+    async def get_powercontrol_fan_profiles(self):
+        return await self.fan_control.imports()
+
+    async def import_powercontrol_fan_curve(self, name, revision):
+        return await self._fan_control_result(lambda: self.fan_control.import_curve(name, revision))
+
+    async def import_powercontrol_fan_curves(self, profiles, revision):
+        return await self._fan_control_result(lambda: self.fan_control.import_curves(profiles, revision))
 
     async def get_native_performance_status(self):
         return await asyncio.to_thread(native_performance.get_status)
@@ -4648,6 +4689,7 @@ class Plugin:
     async def _main(self):
         self.loop = asyncio.get_event_loop()
         decky.logger.info("DeckyZone starting")
+        await self.fan_control.startup()
         settings = self.service.get_settings()
         await self.service.start_controller_mode_monitor()
         if settings["rumbleEnabled"]:
@@ -4676,6 +4718,7 @@ class Plugin:
         stopped = plugin_lifecycle.stop_method_listeners()
         decky.logger.info(f"Stopped {stopped} Decky method listener(s) before cleanup")
         steps = []
+        fan_step = await self._run_cleanup_step(steps, "stopFanControl", self.fan_control.shutdown)
         startup_step = await self._run_cleanup_step(
             steps,
             "cancelStartupTask",
@@ -4698,8 +4741,8 @@ class Plugin:
                 "steps": [],
             }
 
-        result["steps"] = [startup_step, *result.get("steps", [])]
-        result["ok"] = bool(startup_step["ok"] and result.get("ok", True))
+        result["steps"] = [fan_step, startup_step, *result.get("steps", [])]
+        result["ok"] = bool(fan_step["ok"] and startup_step["ok"] and result.get("ok", True))
         self._log_cleanup_result("unload", result)
 
     async def _uninstall(self):
