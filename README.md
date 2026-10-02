@@ -20,21 +20,21 @@ curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh |
 
 ✅ tested and working · ❓ untested · N/A unavailable
 
-| Feature                         | SteamOS  | Bazzite | CachyOS |
-| ------------------------------- | -------- | ------- | ------- |
-| Controller mode recovery        | ✅       | ✅      | ✅      |
-| Dials, trackpads and rumble      | ✅       | ✅      | ✅      |
-| Steam Home action               | ✅       | ✅      | ✅      |
-| Gyro Orientation Fix            | ✅       | ✅      | ✅      |
-| Per-game controller settings    | ✅       | ✅      | ✅      |
-| Zotac Controller Artwork        | ✅       | ✅      | ✅      |
-| Hide Unsupported Controls       | ✅       | ✅      | ✅      |
-| Remaining Battery Time Fix      | ✅       | N/A     | N/A     |
-| Zotac OLED Profile              | Built in | ✅      | ✅      |
-| Green Tint Compensation         | ✅       | ✅      | ✅      |
-| VRAM Size                       | ✅       | ✅      | ✅      |
-| Native performance controls     | ✅       | N/A     | N/A     |
-| Custom fan curves               | ✅       | ❓      | ❓      |
+| Feature                         | SteamOS  | Bazzite           | CachyOS           |
+| ------------------------------- | -------- | ----------------- | ----------------- |
+| Controller mode recovery        | ✅        | ✅                 | ✅                 |
+| Dials, trackpads and rumble     | ✅        | ✅                 | ✅                 |
+| Steam Home action               | ✅        | ✅                 | ✅                 |
+| Gyro Orientation Fix            | ✅        | ✅                 | ✅                 |
+| Per-game controller settings    | ✅        | ✅                 | ✅                 |
+| Zotac Controller Artwork        | ✅        | ✅                 | ✅                 |
+| Hide Unsupported Controls       | ✅        | ✅                 | ✅                 |
+| Remaining Battery Time Fix      | ✅        | N/A               | N/A               |
+| Zotac OLED Profile              | Built in | ✅                 | ✅                 |
+| Green Tint Compensation         | ✅        | ✅                 | ✅                 |
+| VRAM Size                       | ✅        | ✅                 | ✅                 |
+| Native performance controls     | ✅        | Not yet supported | Not yet supported |
+| Custom fan curves               | ✅        | ❓                 | ❓                 |
 
 Controller features require InputPlumber and the ZONE's input drivers. Support on other distributions depends on the drivers and software they include.
 
@@ -82,7 +82,7 @@ The TDP slider appears only in Custom. Steam saves per-game selections; keep Dec
 
 Setup installs the required files and can repair them after a SteamOS update. If the controls do not appear, use DeckyZone's **Restart Steam** option.
 
-Native controls require SteamOS, a ZONE G0A1W with BIOS 1.20 and Ryzen 7 8840U, and SteamOS Manager `26.4.0` or newer. DeckyZone checks compatibility before enabling the controls.
+DeckyZone currently supports native controls on SteamOS with a ZONE G0A1W, BIOS 1.20, Ryzen 7 8840U and SteamOS Manager `26.4.0` or newer. It checks compatibility before enabling the controls. Bazzite and CachyOS support still needs implementation and device testing.
 
 Turning off Custom's TDP limit can request 28 W. Disabling or removing native controls leaves the last power limit in place.
 
