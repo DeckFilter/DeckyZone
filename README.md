@@ -111,9 +111,12 @@ SteamOS Manager package `26.4.1-2`. It was tested on SteamOS 3.9.1 and 3.9.2.
 A different Manager version stops further bridge writes until it is validated.
 It uses RyzenAdj because this BIOS exposes no kernel power attributes.
 
-Installation is separate from a normal DeckyZone update. Once installed,
-**Performance → Native Performance Controls** controls the service and startup
-at boot. Disable PowerControl and SimpleDeckyTDP in Decky settings before
+Turn on **Performance → Native Performance Controls** to install and start the
+bridge. DeckyZone includes its dependencies and shows progress during setup.
+The toggle also repairs missing files and enables startup at boot. Setup adds
+SteamOS update rules to preserve the integration when switching branches.
+If Steam has not picked up the controls, DeckyZone offers **Restart Steam**.
+Disable PowerControl and SimpleDeckyTDP in Decky settings before
 enabling it; turning off their TDP switches is insufficient. Enabling either
 plugin later turns native controls off and blocks the toggle, even with the
 panel closed. After disabling the other plugin, turn native controls back on.
@@ -125,23 +128,14 @@ selected limits. Turning off Custom's TDP switch can request the maximum 28 W.
 Stopping or removing the bridge leaves the last applied limits in place.
 
 <details>
-<summary>Manual bridge setup and removal</summary>
-
-Use a verified bridge payload containing `services/` and `vendor/dbus_next/`
-(dbus-next 0.2.3). The installer requires root and the tested RyzenAdj 0.18.0
-binary at `/home/deck/homebrew/plugins/PowerControl/bin/ryzenadj`. PowerControl
-must be disabled. The installer checks the binary's hash and copies it into the
-bridge's own runtime directory. From the payload directory:
-
-```sh
-sudo python3 -m services.performance_bridge.install install --enable
-```
+<summary>Bridge diagnostics and removal</summary>
 
 Installation starts `deckyzone-performance.service`, reloads the D-Bus policy
 and restarts the system and user SteamOS Manager services. It preserves the
-packaged device configuration and refuses to overwrite existing integration
-files. State, the original configuration and file hashes are stored under
-`/var/lib/deckyzone-performance/`.
+packaged device configuration and refuses to overwrite integration files changed
+outside DeckyZone. State, the original configuration and file hashes are stored
+under `/var/lib/deckyzone-performance/`. Setup backs up an existing installation
+under `/var/lib/deckyzone-performance-backups/` and preserves saved limits.
 
 To inspect capabilities without changing settings:
 

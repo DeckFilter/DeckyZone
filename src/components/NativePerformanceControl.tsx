@@ -1,9 +1,13 @@
 import { callable } from '@decky/api'
+import { showModal } from '@decky/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { NativePerformanceResult, NativePerformanceState } from '../types/plugin'
+import { nativePerformanceControlsVisible } from '../nativePerformanceRuntime'
+import { showSteamRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
-import { SteamExplainerToggleField } from './SteamExplainer'
+import { SteamExplainerButtonItem, SteamExplainerToggleField } from './SteamExplainer'
 import { SettingsRow } from './SettingsSurface'
+import NativePerformanceProgressDialog from './NativePerformanceProgressDialog'
 
 const getStatus = callable<[], NativePerformanceState>('get_native_performance_status')
 const setEnabled = callable<[boolean], NativePerformanceResult>('set_native_performance_enabled')
@@ -14,6 +18,7 @@ const NativePerformanceControl = () => {
   const [state, setState] = useState<NativePerformanceState | null>(null)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [visibleInSteam, setVisibleInSteam] = useState<boolean | null>(null)
   const savingRef = useRef(false)
   const revision = useRef(0)
   const mounted = useRef(false)
@@ -26,7 +31,11 @@ const NativePerformanceControl = () => {
       const request = ++revision.current
       try {
         const next = await getStatus()
-        if (mounted.current && request === revision.current) setState(next)
+        const visible = next.active ? await nativePerformanceControlsVisible() : null
+        if (mounted.current && request === revision.current) {
+          setState(next)
+          setVisibleInSteam(visible)
+        }
       } catch {
         if (mounted.current && request === revision.current) {
           setState(null)
@@ -56,12 +65,29 @@ const NativePerformanceControl = () => {
     revision.current++ // Invalidate a status read started before this transaction.
     setSaving(true)
     setNotice(null)
+    setVisibleInSteam(null)
     setState({ ...state, enabled })
+    let progressTimer: ReturnType<typeof setTimeout> | undefined
     try {
-      const result = await setEnabled(enabled)
+      const operation = setEnabled(enabled)
+      progressTimer = setTimeout(() => {
+        showModal(<NativePerformanceProgressDialog operation={operation} message={
+          enabled
+            ? state.needsSetup
+              ? state.installed ? 'Repairing native performance controls…' : 'Installing native performance controls…'
+              : 'Starting native performance controls…'
+            : 'Stopping native performance controls…'
+        } />)
+      }, 600)
+      const result = await operation
+      clearTimeout(progressTimer)
       if (!mounted.current) return
       if (!result.state) throw new Error(result.error ?? "Couldn't read bridge status")
       setState(result.state)
+      if (result.ok && result.state.active) {
+        const visible = await nativePerformanceControlsVisible()
+        if (mounted.current) setVisibleInSteam(visible)
+      }
       if (!result.ok) setNotice(result.error ?? "Couldn't change native performance controls")
     } catch {
       // Refetch the authoritative state; the command may have reached systemd
@@ -74,6 +100,7 @@ const NativePerformanceControl = () => {
       }
       if (mounted.current) setNotice("Couldn't confirm native performance controls")
     } finally {
+      clearTimeout(progressTimer)
       savingRef.current = false
       if (mounted.current) setSaving(false)
     }
@@ -87,22 +114,37 @@ const NativePerformanceControl = () => {
         ? `Disable ${conflicts.join(' and ')} in Decky settings`
         : state.blockedReason
           ? `${state.enabled && !state.active ? 'Stopped: ' : ''}${state.blockedReason}`
+          : state.needsSetup
+            ? state.enabled
+              ? 'Turn off and on to repair native controls'
+              : state.installed ? 'Enable to repair native controls' : 'Enable to install native controls'
           : state.active
-            ? "Use Steam's Performance menu"
+            ? visibleInSteam === false
+              ? 'Restart Steam to show native controls'
+              : visibleInSteam === null ? "Checking Steam's controls…" : "Use Steam's Performance menu"
             : "Adds profiles and TDP control to Steam's Performance menu"
 
   return (
-    <SettingsRow>
-      <SteamExplainerToggleField
-        label="Native Performance Controls"
-        explainerTitle="Native Performance Controls"
-        explainer={EXPLAINER}
-        checked={state?.enabled ?? false}
-        description={description}
-        onChange={(value: boolean) => void change(value)}
-        disabled={saving || !state || !state.installed || conflicts.length > 0 || (!state.enabled && !state.available)}
-      />
-    </SettingsRow>
+    <>
+      <SettingsRow>
+        <SteamExplainerToggleField
+          label="Native Performance Controls"
+          explainerTitle="Native Performance Controls"
+          explainer={EXPLAINER}
+          checked={state?.enabled ?? false}
+          description={description}
+          onChange={(value: boolean) => void change(value)}
+          disabled={saving || !state || (!state.enabled && (!state.available || conflicts.length > 0))}
+        />
+      </SettingsRow>
+      {state?.active && visibleInSteam === false && !saving && (
+        <SettingsRow>
+          <SteamExplainerButtonItem label="Native controls" layout="below" onClick={showSteamRestartRequiredDialog}>
+            Restart Steam
+          </SteamExplainerButtonItem>
+        </SettingsRow>
+      )}
+    </>
   )
 }
 
