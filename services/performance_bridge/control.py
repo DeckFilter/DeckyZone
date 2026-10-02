@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 
-from .install import INSTALL, SERVICE, UNIT, install, installation_error, preflight
+from .install import INSTALL, SERVICE, UNIT, install, installation_error, preflight, verify_manager_relay
 from .ryzenadj import active_power_plugins, power_plugin_status
 from .sysfs import Unavailable
 
@@ -71,6 +71,12 @@ def set_enabled(enabled):
             return before
         # Stop never reapplies limits or resets another plugin.
         systemctl("enable" if enabled else "disable", "--now", UNIT)
+        if enabled:
+            try:
+                verify_manager_relay()
+            except Unavailable:
+                systemctl("disable", "--now", UNIT)
+                raise
         after = status()
         if after["enabled"] != enabled or after["active"] != enabled or (enabled and after["needsSetup"]):
             raise Unavailable(after["blockedReason"] or "Bridge state did not change")

@@ -10,11 +10,13 @@ import shutil
 import subprocess
 import tempfile
 import time
-import tomllib
 
 from .ryzenadj import BINARY_SHA256, INSTALL, check_device, check_ownership
-from .compatibility import check_environment
-from .sysfs import Unavailable
+from .compatibility import (
+    DEVICE_CONFIG, INTERFACE_PREFIX, adapted_device_config, check_environment,
+    check_interface_schema, check_manager_options,
+)
+from .sysfs import PROFILES, Unavailable
 
 CONFIG = Path("/etc/deckyzone/zone-performance.toml")
 UNIT = "deckyzone-performance.service"
@@ -33,14 +35,48 @@ def run(*args, timeout=65):
     return subprocess.run(args, text=True, capture_output=True, check=True, timeout=timeout)
 
 
-def user_systemctl(*args, timeout=65):
+def user_command(*args, timeout=65):
     user = pwd.getpwnam("deck")
     return run(
         "/usr/sbin/runuser", "-u", "deck", "--", "/usr/bin/env",
         f"XDG_RUNTIME_DIR=/run/user/{user.pw_uid}",
         f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{user.pw_uid}/bus",
-        "/usr/bin/systemctl", "--user", *args, timeout=timeout,
+        *args, timeout=timeout,
     )
+
+
+def user_systemctl(*args, timeout=65):
+    return user_command("/usr/bin/systemctl", "--user", *args, timeout=timeout)
+
+
+def verify_manager_relay():
+    """Read back the native contract; never probe it by writing power limits."""
+    bus = ("/usr/bin/busctl", "--user", "--timeout=2")
+    target = ("com.steampowered.SteamOSManager1", "/com/steampowered/SteamOSManager1")
+    deadline = time.monotonic() + 8
+    while True:
+        try:
+            profile = json.loads((INSTALL / "state.json").read_text())["profile"]
+            xml = user_command(*bus, "--xml-interface", "introspect", *target, timeout=3).stdout
+            check_interface_schema(xml, require_tdp=profile == "custom")
+            for interface, prop, expected in (
+                ("PerformanceProfile1", "AvailablePerformanceProfiles", set(PROFILES)),
+                ("RemoteInterface1", "RemoteInterfaces", {
+                    INTERFACE_PREFIX + "PerformanceProfile1",
+                    *([INTERFACE_PREFIX + "TdpLimit1"] if profile == "custom" else []),
+                }),
+            ):
+                reply = user_command(*bus, "--json=short", "get-property", *target,
+                                     INTERFACE_PREFIX + interface, prop, timeout=3).stdout
+                value = json.loads(reply)
+                if value.get("type") != "as" or not expected.issubset(value.get("data", [])):
+                    raise Unavailable("SteamOS Manager has not registered the native controls")
+            return
+        except (OSError, ValueError, KeyError, TypeError, AttributeError,
+                subprocess.SubprocessError, Unavailable) as error:
+            if time.monotonic() >= deadline:
+                raise Unavailable("SteamOS Manager could not expose native performance controls") from error
+            time.sleep(0.25)  # Read-only discovery can lag behind service startup.
 
 
 def reload_managers():
@@ -124,6 +160,8 @@ def installation_error(payload=None):
                 path = INSTALL / raw
                 if not path.is_file() or path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
                     return "Bridge update required"
+        if (INSTALL / "stock-zone-config.toml").read_text() != (Path("/") / DEVICE_CONFIG).read_text():
+            return "SteamOS Manager's device configuration changed"
     except (OSError, ValueError, Unavailable):
         return "Bridge installation could not be verified"
     return None
@@ -133,23 +171,14 @@ def preflight(payload):
     check_environment()
     check_device()
     check_ownership()
+    check_manager_options()
     payload_manifest(payload)
     check_existing()
 
 
 def integration_contents(payload):
-    original = Path("/usr/share/steamos-manager/devices/zotac-gaming-zone.toml").read_text()
-    config = tomllib.loads(original)
-    if config.get("performance_profile", {}).get("platform_profile_name") != "zotac_zone_platform":
-        raise Unavailable("Stock device configuration changed")
-    lines, skip = [], False
-    for line in original.splitlines():
-        if line.startswith("["):
-            skip = line in ("[performance_profile]", "[tdp_limit]", "[tdp_limit.firmware_attribute]")
-        if not skip:
-            lines.append(line)
-    adapted = "\n".join(lines).rstrip() + '\n\n[tdp_limit]\nmethod = "remote_interface"\n'
-    tomllib.loads(adapted)
+    original = (Path("/") / DEVICE_CONFIG).read_text()
+    adapted = adapted_device_config(original)
     packaging = payload / "services/performance_bridge/packaging"
     return original, {
         CONFIG: adapted,
