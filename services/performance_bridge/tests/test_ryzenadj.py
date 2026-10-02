@@ -6,7 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 from services.performance_bridge.controller import Controller
-from services.performance_bridge.compatibility import check_environment
+from services.performance_bridge.compatibility import (
+    DEVICE_CONFIG, MANAGER_SCHEMA, adapted_device_config, check_environment,
+)
 from services.performance_bridge.probe import check_runtime, inspect
 from services.performance_bridge.ryzenadj import RyzenAdjBackend, check_ownership
 from services.performance_bridge.sysfs import Unavailable
@@ -136,6 +138,40 @@ def environment(tmp_path):
     package = tmp_path / "usr/lib/holo/pacmandb/local/steamos-manager-26.4.1-2/desc"
     package.parent.mkdir(parents=True)
     package.write_text("%NAME%\nsteamos-manager\n\n%VERSION%\n26.4.1-2\n")
+    schema = tmp_path / MANAGER_SCHEMA
+    schema.parent.mkdir(parents=True)
+    schema.write_text('''<node>
+      <interface name="com.steampowered.SteamOSManager1.PerformanceProfile1">
+        <property name="AvailablePerformanceProfiles" type="as" access="read"/>
+        <property name="SuggestedDefaultPerformanceProfile" type="s" access="read"/>
+        <property name="PerformanceProfile" type="s" access="readwrite"/>
+      </interface>
+      <interface name="com.steampowered.SteamOSManager1.TdpLimit1">
+        <property name="TdpLimitMin" type="u" access="read"/>
+        <property name="TdpLimitMax" type="u" access="read"/>
+        <property name="TdpLimit" type="u" access="readwrite"/>
+      </interface>
+      <interface name="com.steampowered.SteamOSManager1.RemoteInterface1">
+        <property name="RemoteInterfaces" type="as" access="read"/>
+      </interface>
+    </node>''')
+    config = tmp_path / DEVICE_CONFIG
+    config.parent.mkdir(parents=True)
+    config.write_text('''[[device]]
+dmi.sys_vendor = "ZOTAC"
+dmi.board_name = "G0A1W"
+device = "zotac_gaming_zone"
+variant = "G0A1W"
+[performance_profile]
+platform_profile_name = "zotac_zone_platform"
+[tdp_limit]
+method = "firmware_attribute"
+[tdp_limit.firmware_attribute]
+attribute = "zotac_zone_platform"
+performance_profile = "custom"
+[gpu_performance]
+driver = "amdgpu"
+''')
     loader = tmp_path / "home/deck/homebrew/settings/loader.json"
     loader.parent.mkdir(parents=True)
     loader.write_text('{"disabled_plugins": []}')
@@ -157,11 +193,64 @@ def test_compatible_environment_and_os_release_fallback(environment):
     assert check_environment(environment)["os_id"] == "steamos"
 
 
-@pytest.mark.parametrize("version", ("25.3.0-1", "26.3.0-1", "26.4.1-3", "27.0.0-1"))
-def test_untested_manager_is_rejected(environment, version):
+@pytest.mark.parametrize("version", (
+    "26.4.0-1", "26.4.1-3", "26.5.0-1", "26.10.0-1", "27.0.0-1", "1:26.4.1-1",
+))
+def test_compatible_manager_releases_ignore_package_revision(environment, version):
     package = next(environment.glob("usr/lib/holo/pacmandb/local/*/desc"))
     package.write_text(f"%NAME%\nsteamos-manager\n\n%VERSION%\n{version}\n")
-    with pytest.raises(Unavailable, match="Requires tested SteamOS Manager"):
+    assert check_environment(environment)["manager_version"] == version
+
+
+@pytest.mark.parametrize("version", (
+    "25.3.0-1", "26.3.0-1", "1:26.3.0-1", "26.4.0rc1-1", "27.0.0beta1-1", "unknown",
+))
+def test_old_or_unrecognized_manager_is_rejected(environment, version):
+    package = next(environment.glob("usr/lib/holo/pacmandb/local/*/desc"))
+    package.write_text(f"%NAME%\nsteamos-manager\n\n%VERSION%\n{version}\n")
+    with pytest.raises(Unavailable, match="Requires SteamOS Manager 26.4.0 or newer"):
+        check_environment(environment)
+
+
+@pytest.mark.parametrize("before,after", (
+    ('name="TdpLimit" type="u"', 'name="TdpLimit" type="d"'),
+    ('name="PerformanceProfile" type="s" access="readwrite"',
+     'name="PerformanceProfile" type="s" access="read"'),
+    ('name="RemoteInterfaces"', 'name="ChangedRemoteInterfaces"'),
+))
+def test_changed_interface_stops_controller_before_power_write(environment, backend, before, after):
+    controller = Controller(backend, lambda: check_runtime(environment))
+    schema = environment / MANAGER_SCHEMA
+    schema.write_text(schema.read_text().replace(before, after))
+    with pytest.raises(Unavailable, match="missing a compatible"):
+        controller.change(watts=12)
+    assert not backend.calls
+    assert controller.fault
+
+
+def test_missing_interface_schema_blocks_even_current_manager(environment):
+    (environment / MANAGER_SCHEMA).unlink()
+    with pytest.raises(Unavailable, match="Cannot verify SteamOS Manager"):
+        check_environment(environment)
+
+
+def test_adapting_commented_headers_preserves_unrelated_device_settings(environment):
+    import tomllib
+
+    original = (environment / DEVICE_CONFIG).read_text().replace(
+        '[performance_profile]', '  [performance_profile] # local driver'
+    ).replace('[tdp_limit.firmware_attribute]', ' [tdp_limit.firmware_attribute] # firmware')
+    adapted = tomllib.loads(adapted_device_config(original))
+    assert "performance_profile" not in adapted
+    assert adapted["tdp_limit"] == {"method": "remote_interface"}
+    assert adapted["device"] == tomllib.loads(original)["device"]
+    assert adapted["gpu_performance"] == {"driver": "amdgpu"}
+
+
+def test_new_stock_power_backend_requires_revalidation(environment):
+    config = environment / DEVICE_CONFIG
+    config.write_text(config.read_text().replace('method = "firmware_attribute"', 'method = "amdgpu_hwmon"'))
+    with pytest.raises(Unavailable, match="power configuration changed"):
         check_environment(environment)
 
 
@@ -248,6 +337,7 @@ def test_bridge_toggle_reconciles_systemd_state(tmp_path, monkeypatch, enabled):
     monkeypatch.setattr(control, "INSTALL", tmp_path)
     monkeypatch.setattr(control.os, "geteuid", lambda: 0)
     monkeypatch.setattr(control, "install", lambda payload: None)
+    monkeypatch.setattr(control, "verify_manager_relay", lambda: None)
     states = iter([
         {"installed": True, "enabled": not enabled, "active": not enabled,
          "available": True, "needsSetup": False, "blockedReason": None},
@@ -259,6 +349,29 @@ def test_bridge_toggle_reconciles_systemd_state(tmp_path, monkeypatch, enabled):
     monkeypatch.setattr(control, "systemctl", lambda *args: calls.append(args))
     assert control.set_enabled(enabled)["enabled"] is enabled
     assert calls == [("enable" if enabled else "disable", "--now", control.UNIT)]
+
+
+def test_bridge_stops_when_manager_cannot_relay_controls(tmp_path, monkeypatch):
+    from services.performance_bridge import control
+
+    monkeypatch.setattr(control, "INSTALL", tmp_path)
+    monkeypatch.setattr(control.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(control, "install", lambda payload: None)
+    states = iter([
+        {"installed": True, "enabled": False, "active": False, "available": True},
+        {"installed": True, "enabled": True, "active": True, "needsSetup": False},
+    ])
+    monkeypatch.setattr(control, "status", lambda: next(states))
+    calls = []
+    monkeypatch.setattr(control, "systemctl", lambda *args: calls.append(args))
+
+    def unavailable():
+        raise Unavailable("Manager relay unavailable")
+
+    monkeypatch.setattr(control, "verify_manager_relay", unavailable)
+    with pytest.raises(Unavailable, match="Manager relay unavailable"):
+        control.set_enabled(True)
+    assert calls == [("enable", "--now", control.UNIT), ("disable", "--now", control.UNIT)]
 
 
 def test_bridge_toggle_allows_stop_but_never_start_when_blocked(tmp_path, monkeypatch):
@@ -289,6 +402,7 @@ def test_bridge_toggle_reports_failed_transition(tmp_path, monkeypatch):
     monkeypatch.setattr(control, "INSTALL", tmp_path)
     monkeypatch.setattr(control.os, "geteuid", lambda: 0)
     monkeypatch.setattr(control, "install", lambda payload: None)
+    monkeypatch.setattr(control, "verify_manager_relay", lambda: None)
     monkeypatch.setattr(control, "status", lambda: {
         "installed": True, "enabled": False, "active": False,
         "available": True, "blockedReason": None,
