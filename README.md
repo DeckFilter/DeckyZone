@@ -43,7 +43,7 @@ The TDP slider appears only in Custom. Steam saves per-game selections; keep Dec
 
 Setup installs the required files and can repair them after a SteamOS update. If the controls do not appear, use DeckyZone's **Restart Steam** option.
 
-Native controls require SteamOS, a ZONE G0A1W with BIOS 1.20 and Ryzen 7 8840U, and SteamOS Manager `26.4.0` or newer. DeckyZone checks compatibility before enabling the controls.
+DeckyZone currently supports native controls on SteamOS with a ZONE G0A1W, BIOS 1.20, Ryzen 7 8840U and SteamOS Manager `26.4.0` or newer. It checks compatibility before enabling the controls. Bazzite and CachyOS support still needs implementation and device testing.
 
 Turning off Custom's TDP limit can request 28 W. Disabling or removing native controls leaves the last power limit in place.
 
