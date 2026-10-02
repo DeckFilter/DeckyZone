@@ -107,8 +107,12 @@ the inspected ONE Launcher preset wattages; CPU boost, GPU clocks, CPU governors
 and fan settings stay unchanged. This is community support from DeckyZone.
 
 The bridge requires a ZONE G0A1W with BIOS 1.20, Ryzen 7 8840U, SteamOS and
-SteamOS Manager package `26.4.1-2`. It was tested on SteamOS 3.9.1 and 3.9.2.
-A different Manager version stops further bridge writes until it is validated.
+SteamOS Manager `26.4.0` or newer with compatible interfaces and device configuration.
+It was tested on SteamOS 3.8.28 Stable with Manager `26.4.1-1`, and on SteamOS
+3.9.1 and 3.9.2 with Manager `26.4.1-2`. Version `26.4.0` is the minimum from
+upstream source, not a separate device-tested build. Setup checks
+the configuration override option and verifies that Manager exposes the native
+controls after startup. Missing or changed interface contracts stop bridge writes.
 It uses RyzenAdj because this BIOS exposes no kernel power attributes.
 
 Turn on **Performance → Native Performance Controls** to install and start the
