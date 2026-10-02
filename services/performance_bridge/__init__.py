@@ -1,1 +1,1 @@
-"""Experimental SteamOS Manager provider; no validated hardware backend yet."""
+"""Opt-in SteamOS Manager provider for the validated ZOTAC ZONE hardware."""

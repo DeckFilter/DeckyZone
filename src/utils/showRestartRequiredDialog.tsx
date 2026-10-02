@@ -21,3 +21,16 @@ export function showRestartRequiredDialog() {
     />,
   )
 }
+
+export function showSteamRestartRequiredDialog() {
+  showModal(
+    <FocusedConfirmModal
+      strTitle="Restart Steam"
+      strDescription="Restart Steam to show native performance controls."
+      strOKButtonText="Restart Now"
+      strCancelButtonText="Later"
+      onOK={() => SteamClient.User.StartRestart(false)}
+      focusButton="secondary"
+    />,
+  )
+}

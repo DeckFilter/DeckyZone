@@ -7,19 +7,17 @@ import os
 from pathlib import Path
 import subprocess
 
-from .install import INSTALL, SERVICE, UNIT
-from .probe import inspect
-from .ryzenadj import active_power_plugins
+from .install import INSTALL, SERVICE, UNIT, install, installation_error, preflight
+from .ryzenadj import active_power_plugins, power_plugin_status
 from .sysfs import Unavailable
+
+PAYLOAD = Path(__file__).resolve().parents[2]
 
 
 def systemctl(*args):
     return subprocess.run(
-        ["/usr/bin/systemctl", *args],
-        capture_output=True,
-        text=True,
-        timeout=65,
-        check=True,
+        ["/usr/bin/systemctl", *args], capture_output=True, text=True,
+        timeout=65, check=True,
     ).stdout
 
 
@@ -29,32 +27,30 @@ def status():
         for line in systemctl(
             "show", UNIT,
             "--property=LoadState,ActiveState,SubState,UnitFileState,FragmentPath",
-        ).splitlines()
-        if "=" in line
+        ).splitlines() if "=" in line
     )
     owned = (
         properties.get("LoadState") == "loaded"
         and properties.get("FragmentPath") == str(SERVICE)
         and (INSTALL / "manifest.json").is_file()
     )
-    enabled = properties.get("UnitFileState") == "enabled"
-    active = properties.get("ActiveState") == "active"
-    report = inspect() if owned else None
+    enabled = owned and properties.get("UnitFileState") == "enabled"
+    active = owned and properties.get("ActiveState") == "active"
+    needs_setup = installation_error(PAYLOAD) is not None
     reason = None
-    if not owned:
-        reason = "Native performance bridge is not installed"
-    elif not report["available"]:
-        reason = "; ".join(report["blockers"])
-    elif enabled and not active:
+    conflicts = []
+    try:
+        conflicts = active_power_plugins(power_plugin_status())
+        preflight(PAYLOAD)
+    except (OSError, ValueError, Unavailable) as error:
+        reason = str(error)
+    available = reason is None
+    if available and enabled and not active and not needs_setup:
         reason = "Bridge stopped; turn it off and on to retry"
     return {
-        "installed": owned,
-        "enabled": enabled if owned else False,
-        "active": active if owned else False,
-        "available": bool(owned and report["available"]),
-        "blockedReason": reason,
-        "conflictingPlugins": active_power_plugins(report["decky_power_plugins"])
-        if report and report.get("decky_power_plugins") else [],
+        "installed": owned, "enabled": enabled, "active": active,
+        "available": available, "needsSetup": needs_setup,
+        "blockedReason": reason, "conflictingPlugins": conflicts,
     }
 
 
@@ -63,19 +59,20 @@ def set_enabled(enabled):
         raise ValueError("Enabled must be a boolean")
     if os.geteuid() != 0:
         raise Unavailable("Changing native performance controls requires root")
-    # Multiple UI surfaces/processes must not race service transitions.
-    with (INSTALL / "control.lock").open("a") as lock:
+    # This lock also covers a first installation, before INSTALL exists.
+    with (INSTALL.parent / "deckyzone-performance.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         before = status()
-        if not before["installed"]:
-            raise Unavailable(before["blockedReason"])
-        if enabled and not before["available"]:
-            raise Unavailable(before["blockedReason"])
-        # Keep this separate from rollback: user presets and integration files
-        # stay installed. Stop never reapplies limits or resets another plugin.
+        if enabled:
+            if not before["available"]:
+                raise Unavailable(before["blockedReason"])
+            install(PAYLOAD)
+        elif not before["installed"]:
+            return before
+        # Stop never reapplies limits or resets another plugin.
         systemctl("enable" if enabled else "disable", "--now", UNIT)
         after = status()
-        if after["enabled"] != enabled or after["active"] != enabled:
+        if after["enabled"] != enabled or after["active"] != enabled or (enabled and after["needsSetup"]):
             raise Unavailable(after["blockedReason"] or "Bridge state did not change")
         return after
 
@@ -93,7 +90,11 @@ def main():
             state = status()
         except (OSError, ValueError, Unavailable, subprocess.SubprocessError):
             state = None
-        print(json.dumps({"ok": False, "error": str(error), "state": state}))
+        message = (
+            "SteamOS took too long to respond. Try again."
+            if isinstance(error, subprocess.TimeoutExpired) else str(error)
+        )
+        print(json.dumps({"ok": False, "error": message, "state": state}))
         return 1
 
 
