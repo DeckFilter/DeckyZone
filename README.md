@@ -15,6 +15,8 @@ DeckyZone is a Decky Loader plugin for the Zotac Gaming Zone. It adds custom con
 - Zotac OLED display profile and green tint compensation.
 - SteamOS battery time estimate fix.
 - VRAM size selection (4–8 GB).
+- Native Steam performance profiles and TDP controls.
+- Global fan control with custom curves.
 
 ## Installation
 
@@ -28,117 +30,59 @@ Check for updates in **General > Software Updates**, or read the [release notes]
 
 ## Native performance controls
 
-#### Native performance controls
+Turn on **Performance > Native Performance Controls** in DeckyZone to add profiles to Steam's Performance menu:
 
-The optional bridge adds profiles to Steam's native Performance QAM: Low Power
-at 8 W, Balanced at 15 W, Performance at 28 W, and Custom with an 8 to 28 W
-slider in 1 W steps. The TDP slider appears only in Custom. These limits use
-the inspected ONE Launcher preset wattages; CPU boost, GPU clocks, CPU governors
-and fan settings stay unchanged. This is community support from DeckyZone.
+| Profile     | Power limit |
+| ----------- | ----------- |
+| Low Power   | 8 W         |
+| Balanced    | 15 W        |
+| Performance | 28 W        |
+| Custom      | 8 to 28 W   |
 
-The bridge requires a ZONE G0A1W with BIOS 1.20, Ryzen 7 8840U, SteamOS and
-SteamOS Manager `26.4.0` or newer with compatible interfaces and device configuration.
-It was tested on SteamOS 3.8.28 Stable with Manager `26.4.1-1`, and on SteamOS
-3.9.1 and 3.9.2 with Manager `26.4.1-2`. Version `26.4.0` is the minimum from
-upstream source, not a separate device-tested build. Setup checks
-the configuration override option and verifies that Manager exposes the native
-controls after startup. Missing or changed interface contracts stop bridge writes.
-It uses RyzenAdj because this BIOS exposes no kernel power attributes.
+The TDP slider appears only in Custom. Steam saves per-game selections; keep DeckyZone loaded to restore them. These presets use ONE Launcher's wattages and leave CPU boost, GPU clocks and fan settings unchanged.
 
-Turn on **Performance → Native Performance Controls** to install and start the
-bridge. DeckyZone includes its dependencies and shows progress during setup.
-The toggle also repairs missing files and enables startup at boot. Setup adds
-SteamOS update rules to preserve the integration when switching branches.
-If Steam has not picked up the controls, DeckyZone offers **Restart Steam**.
-Disable PowerControl and SimpleDeckyTDP in Decky settings before
-enabling it; turning off their TDP switches is insufficient. Enabling either
-plugin later turns native controls off and blocks the toggle, even with the
-panel closed. After disabling the other plugin, turn native controls back on.
-Installed but disabled plugins do not block it. Keep other TDP writers disabled.
+Setup installs the required files and can repair them after a SteamOS update. If the controls do not appear, use DeckyZone's **Restart Steam** option.
 
-Steam saves per-game selections. Keep DeckyZone loaded so it can restore the
-saved TDP after switching to Custom. Resume and charger changes reapply the
-selected limits. Turning off Custom's TDP switch can request the maximum 28 W.
-Stopping or removing the bridge leaves the last applied limits in place.
+Native controls require SteamOS, a ZONE G0A1W with BIOS 1.20 and Ryzen 7 8840U, and SteamOS Manager `26.4.0` or newer. DeckyZone checks compatibility before enabling the controls.
+
+Turning off Custom's TDP limit can request 28 W. Disabling or removing native controls leaves the last power limit in place.
 
 <details>
 <summary>Bridge diagnostics and removal</summary>
 
-Installation starts `deckyzone-performance.service`, reloads the D-Bus policy
-and restarts the system and user SteamOS Manager services. It preserves the
-packaged device configuration and refuses to overwrite integration files changed
-outside DeckyZone. State, the original configuration and file hashes are stored
-under `/var/lib/deckyzone-performance/`. Setup backs up an existing installation
-under `/var/lib/deckyzone-performance-backups/` and preserves saved limits.
-
-To inspect capabilities without changing settings:
+Inspect support without changing settings:
 
 ```sh
 cd /var/lib/deckyzone-performance
 sudo python3 -m services.performance_bridge probe
 ```
 
-To remove the integration and restore the stock Manager configuration:
+Remove native performance support and restore the system configuration:
 
 ```sh
 cd /var/lib/deckyzone-performance
 sudo python3 -m services.performance_bridge.install rollback --enable
 ```
 
-Removal preserves saved state and audit files. It refuses to remove integration
-files changed since installation. It remains available on an unsupported OS or
-Manager version.
-
-The bridge reports the last SMU-acknowledged request, not measured power. A
-command failure stops the bridge without retrying or undoing partial writes.
-The 28 W preset was acknowledged but has not been measured under sustained load.
-
 </details>
 
-### Fan control
+## Fan control
 
-Fan control has its own settings page and quick-access tab. Choose System Auto
-to let the device control the fan, or select a saved curve. System Auto is the
-default. Custom curves apply to all games; there are no per-game fan profiles.
-The quick-access graph shows the active curve and current fan setting.
+Open **Fan control** to choose System Auto or a saved curve. System Auto is the default. Curves apply to all games, and the quick-access graph shows the active curve.
 
-Under Custom curves, create, rename, duplicate or delete up to 16 saved curves.
-You can edit them while System Auto or another curve is active. Drag graph
-points or use the point buttons and temperature/speed sliders. Save curve
-stores your edits without activating the curve. Save and apply updates the
-active curve immediately. Cancel discards your edits. Deleting the active curve
-returns the fan to System Auto.
+Create and edit named curves without applying them, or import saved curves with **Import from PowerControl**. Importing leaves PowerControl's settings unchanged. Fixed-speed profiles are not imported. Deleting the active curve returns the fan to System Auto.
 
-Import from PowerControl lists the saved curves it finds. Importing keeps their
-names, adding a number if a name is already used. Your active profile, existing
-curves and PowerControl settings stay unchanged. Fixed-speed profiles are not
-imported. Older single-curve settings migrate automatically with the same mode,
-points and name; the original file is backed up as `fan-control.v1.json`.
+Custom curves use at least 10% fan speed and reach 100% at 95°C. The fan returns to System Auto if control fails, before sleep and when DeckyZone unloads. Your curve resumes after wake. Use **Restore System Auto** if another plugin left the fan in manual mode.
 
-Custom fan control requires the ZONE G0A1W's existing `zotac_platform` fan and
-`k10temp` CPU sensor, systemd, and the system `dbus-next` Python package. It does
-not require the native TDP bridge. Disable PowerControl and SimpleDeckyTDP in
-Decky settings before selecting a curve. Enabling either plugin returns the
-fan to System Auto. After disabling it, select your curve again to resume fan
-control. You can still edit saved curves while either plugin is enabled.
-If a disabled plugin left the fan in manual mode, use Restore System Auto.
-
-DeckyZone checks the temperature every second and calculates fan speed between
-the curve's points. It requests at least 10% fan speed and 100% at 95°C. The fan
-returns to System Auto if a sensor or fan control fails, when the plugin unloads,
-at shutdown, and before suspend. Your curve resumes after wake; normal plugin
-and device restarts preserve your selection. After a failure, select the curve
-again to restart fan control. CPU boost, TDP, GPU clocks, CPU governors and other
-plugins' settings stay unchanged.
-
-The editor is adapted from [PowerControl](https://github.com/mengmeet/PowerControl)
-under its BSD 3-Clause license; its copyright and license are included in LICENSE.
+Fan control works without native performance controls. It requires the G0A1W's `zotac_platform` fan driver, `k10temp` sensor, systemd and `dbus-next`.
 
 ## Compatibility and troubleshooting
 
 I test and develop DeckyZone on SteamOS. Bazzite and CachyOS compatibility is based on user reports.
 
 Controller features require InputPlumber and drivers for the ZONE's input devices.
+
+Disable PowerControl and SimpleDeckyTDP in Decky settings before using native performance controls or custom fan curves. Turning off their TDP switches is insufficient. Enabling either plugin turns native controls off and returns the fan to System Auto. After disabling it, re-enable native controls or select your fan curve again. Installed but disabled plugins do not block these features.
 
 - The battery time estimate fix is available only on SteamOS.
 - Green Tint Compensation may not correct green tint at low brightness.
@@ -157,12 +101,6 @@ DeckyZone is free. You can support development through:
 
 [GitHub Sponsors](https://github.com/sponsors/DeckFilter) · [Patreon](https://www.patreon.com/DeckFilter) · [Ko-fi](https://ko-fi.com/deckfilter) · [Buy Me a Coffee](https://www.buymeacoffee.com/deckfilter)
 
-## Related plugins
-
-- [PowerControl](https://github.com/mengmeet/PowerControl) for TDP and fan control.
-- [HueSync](https://github.com/honjow/HueSync) for RGB lighting.
-- [Brightness Bar](https://github.com/rasitayaz/decky-brightness-bar) for a brightness indicator.
-
 ## Credits and references
 
 The following projects provided code references, artwork and inspiration for DeckyZone:
@@ -174,3 +112,5 @@ The following projects provided code references, artwork and inspiration for Dec
 - [PowerControl](https://github.com/mengmeet/PowerControl)
 - [DeckyPlumber](https://github.com/aarron-lee/DeckyPlumber)
 - [OpenZone](https://github.com/OpenZotacZone/ZotacZone-Drivers)
+
+The fan editor is adapted from PowerControl under its BSD 3-Clause license. Copyright and license details are in LICENSE. For RGB lighting, use HueSync.
