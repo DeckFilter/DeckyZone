@@ -283,7 +283,7 @@ def validate_runtime(files: dict[str, RuntimeFile], version: str, native_require
     if not isinstance(plugin, dict) or plugin.get("name") != PLUGIN:
         raise PackageError("Packaged plugin.json name must be DeckyZone")
     validate_dbus_next(files)
-    validate_native(files, native_required)
+    validate_native(files, native_required or "py_modules/native_performance.py" in files)
 
 
 def collect_runtime(version: str) -> dict[str, RuntimeFile]:
