@@ -224,8 +224,10 @@ export type InputPlumberUpdateResult = PluginReapplyResult & {
 export type FanPoint = { temperature: number; fanRPMpercent: number }
 export type PowerControlFanProfile = { name: string; curve: FanPoint[] }
 export type FanProfile = { id: string; name: string; curve: FanPoint[] }
+export type FanMode = 'auto' | 'manual' | 'curve'
 export type FanControlState = {
-  mode: 'auto' | 'custom'
+  mode: FanMode
+  manualSpeed: number
   curve: FanPoint[]
   defaultCurve: FanPoint[]
   revision: number

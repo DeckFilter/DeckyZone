@@ -8,7 +8,7 @@ import signal
 import socket
 import time
 
-from fan_curve import FanSettings, atomic_json, curve_speed, read_json
+from fan_curve import FanSettings, atomic_json, requested_speed, read_json
 from fan_hardware import FanHardware, check_ownership
 
 RUNTIME = Path('/run/deckyzone-fan')
@@ -59,6 +59,7 @@ class FanWorker:
         self.inhibitor = None
         self.bus = None
         self.last_speed = None
+        self.last_revision = None
         self.zero_rpm_samples = 0
         self.signal_error = None
 
@@ -124,7 +125,7 @@ class FanWorker:
     def apply(self, config):
         check_ownership(self.homebrew)
         sample = self.hardware.sample()
-        speed = curve_speed(config['curve'], sample['temperature'])
+        speed = requested_speed(config, sample['temperature'])
         if not OWNER.exists():
             atomic_json(OWNER, {"device": self.hardware.identity})
             # Set a conservative duty before switching from the firmware policy.
@@ -133,9 +134,11 @@ class FanWorker:
             self.last_speed = None
         elif sample['hardwareMode'] != 1:
             raise RuntimeError('Another controller changed the fan mode')
-        if self.last_speed is None or abs(speed - self.last_speed) >= 3 or speed == 100:
+        if (self.last_speed is None or config['revision'] != self.last_revision
+                or abs(speed - self.last_speed) >= 3 or speed == 100):
             self.hardware.speed(speed)
             self.last_speed = speed
+            self.last_revision = config['revision']
         self.zero_rpm_samples = self.zero_rpm_samples + 1 if sample['rpm'] == 0 else 0
         if self.zero_rpm_samples >= 3:
             raise RuntimeError('Fan stopped reporting rotation; restored automatic control')
@@ -155,7 +158,7 @@ class FanWorker:
                 if not self.bus.connected:
                     raise RuntimeError('Lost the connection used for sleep protection')
                 config = self.settings.read()
-                if config['mode'] != 'custom':
+                if config['mode'] not in ('manual', 'curve'):
                     break
                 check_ownership(self.homebrew)
                 if not self.preparing:
@@ -199,7 +202,7 @@ def main():
             except (OSError, ValueError, TypeError, KeyError):
                 already_disabled = False
             if not already_disabled:
-                settings.fail('Fan worker stopped unexpectedly; select Custom Curve to try again')
+                settings.fail('Fan worker stopped unexpectedly; select Manual or Curve to try again')
         return
     try:
         asyncio.run(FanWorker(args.settings, args.homebrew, args.parent, args.parent_started).run())

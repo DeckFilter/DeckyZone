@@ -38,7 +38,7 @@ curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh |
 
 Controller features require InputPlumber and the ZONE's input drivers. Support on other distributions depends on the drivers and software they include.
 
-Disable PowerControl and SimpleDeckyTDP in Decky settings before using native performance controls or custom fan curves. Turning off their TDP switches is insufficient. Enabling either plugin turns native controls off and returns the fan to System Auto. After disabling it, re-enable native controls or select your fan curve again. Installed but disabled plugins do not block these features.
+Disable PowerControl and SimpleDeckyTDP in Decky settings before using native performance controls or Manual or Curve fan mode. Turning off their TDP switches is insufficient. Enabling either plugin turns native controls off and returns the fan to System Auto. After disabling it, re-enable native controls or select your fan mode again. Installed but disabled plugins do not block these features.
 
 ## Features
 
@@ -107,11 +107,13 @@ sudo python3 -m services.performance_bridge.install rollback --enable
 
 ### Fan control
 
-Open **Fan control** to choose System Auto or a saved curve. System Auto is the default. Curves apply to all games, and the quick-access graph shows the active curve.
+Open **Fan control** and choose a mode: **System Auto** lets the device control the fan, **Manual** holds a chosen speed, and **Curve** follows a saved curve. System Auto is the default. Fan settings apply to all games.
 
-Create and edit named curves without applying them, or import saved curves with **Import from PowerControl**. Importing leaves PowerControl's settings unchanged. Fixed-speed profiles are not imported. Deleting the active curve returns the fan to System Auto.
+In Curve mode, select a saved curve on the main screen. The graph shows the active curve. Open **Manage curves** to add, edit, duplicate, delete or import curves from PowerControl. Saving an active curve applies its changes; saving other curves leaves the current mode unchanged. Imports preserve PowerControl's settings and skip fixed-speed profiles. Deleting the active curve returns to System Auto.
 
-Custom curves use at least 10% fan speed and reach 100% at 95°C. The fan returns to System Auto if control fails, before sleep and when DeckyZone unloads. Your curve resumes after wake. Use **Restore System Auto** if another plugin left the fan in manual mode.
+The included **Default** curve uses ONE Launcher's curve points. You can edit it or add your own curves.
+
+Manual and Curve use at least 10% fan speed and reach 100% at 95°C. The fan returns to System Auto if control fails, before sleep and when DeckyZone unloads. Your selected mode resumes after wake. Use **Restore System Auto** if another plugin left the fan in manual mode.
 
 Fan control works without native performance controls. It requires the G0A1W's `zotac_platform` fan driver, `k10temp` sensor, systemd and `dbus-next`.
 

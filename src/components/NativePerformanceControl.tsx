@@ -132,7 +132,7 @@ const NativePerformanceControl = () => {
           explainerTitle="Native Performance Controls"
           explainer={EXPLAINER}
           checked={state?.enabled ?? false}
-          description={description}
+          settingsDescription={description}
           onChange={(value: boolean) => void change(value)}
           disabled={saving || !state || (!state.enabled && (!state.available || conflicts.length > 0))}
         />

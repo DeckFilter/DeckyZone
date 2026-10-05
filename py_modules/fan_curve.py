@@ -10,13 +10,15 @@ from pathlib import Path
 import tempfile
 import uuid
 
+# ONE Launcher 2.1.44: FanMode.GetDefault / Curve10 through Curve90.
 DEFAULT_CURVE = [
     {"temperature": t, "fanRPMpercent": p}
-    for t, p in ((10, 20), (20, 30), (30, 40), (40, 50), (50, 60),
-                 (60, 70), (70, 80), (80, 90), (90, 100))
+    for t, p in ((10, 40), (20, 40), (30, 40), (40, 40), (50, 50),
+                 (60, 60), (70, 80), (80, 90), (90, 100))
 ]
 MAX_POINTS = 16
 MAX_PROFILES = 16
+DEFAULT_MANUAL_SPEED = 50
 
 
 def profile_name(value):
@@ -46,11 +48,15 @@ def available_name(profiles, preferred):
 
 def normalize_settings(data):
     data = deepcopy(data)
-    if data.get('version') not in (1, 2) or data.get('mode') not in ('auto', 'custom'):
+    if data.get('version') not in (1, 2, 3):
+        raise ValueError('Fan settings are invalid; reset the saved curves')
+    if data.get('mode') not in (('auto', 'custom') if data['version'] < 3 else ('auto', 'manual', 'curve')):
         raise ValueError('Fan settings are invalid; reset the saved curves')
     if type(data.get('revision')) is not int or data['revision'] < 0:
         raise ValueError('Fan settings revision is invalid')
     if not isinstance(data.get('error', ''), str):
+        raise ValueError('Fan settings metadata is invalid')
+    if type(data.get('defaultCurveInitialized', False)) is not bool:
         raise ValueError('Fan settings metadata is invalid')
     if data['version'] == 1:
         source = data.get('source')
@@ -60,6 +66,10 @@ def normalize_settings(data):
             'id': 'default', 'name': available_name([], source or 'Custom curve'),
             'curve': validate_curve(data.get('curve')),
         }])
+    if data['version'] == 2:
+        data.update(version=3, mode='curve' if data['mode'] == 'custom' else 'auto',
+                    manualSpeed=DEFAULT_MANUAL_SPEED)
+    data['manualSpeed'] = validate_manual_speed(data.get('manualSpeed'))
     profiles = data.get('profiles')
     if not isinstance(profiles, list) or len(profiles) > MAX_PROFILES:
         raise ValueError(f'Use at most {MAX_PROFILES} saved fan curves')
@@ -82,7 +92,7 @@ def normalize_settings(data):
     selected = data.get('selectedProfileId')
     if selected is not None and (not isinstance(selected, str) or selected not in ids):
         raise ValueError('The selected fan curve does not exist')
-    if data['mode'] == 'custom' and selected is None:
+    if data['mode'] == 'curve' and selected is None:
         raise ValueError('Select a saved curve before enabling fan control')
     current = next((p for p in profiles if p['id'] == selected), None)
     # Derived compatibility fields let the supervised worker keep its existing
@@ -90,6 +100,32 @@ def normalize_settings(data):
     data['curve'] = deepcopy(current['curve'] if current else DEFAULT_CURVE)
     data['source'] = None
     return data
+
+
+def default_settings():
+    return normalize_settings({
+        'version': 3, 'mode': 'auto', 'manualSpeed': DEFAULT_MANUAL_SPEED,
+        'revision': 0, 'error': '', 'defaultCurveInitialized': True,
+        'selectedProfileId': 'default',
+        'profiles': [{'id': 'default', 'name': 'Default', 'curve': DEFAULT_CURVE}],
+    })
+
+
+def validate_manual_speed(value):
+    if type(value) not in (int, float) or not math.isfinite(value) or not 10 <= value <= 100:
+        raise ValueError('Fan speed must be between 10 and 100 percent')
+    return value
+
+
+def requested_speed(config, temperature):
+    if config['mode'] == 'curve':
+        return curve_speed(config['curve'], temperature)
+    if config['mode'] != 'manual':
+        raise ValueError('Select Manual or Curve before setting fan speed')
+    speed = validate_manual_speed(config['manualSpeed'])
+    if not math.isfinite(temperature) or not 0 < temperature <= 115:
+        raise ValueError('Temperature is unavailable or invalid')
+    return 100.0 if temperature >= 95 else speed
 
 
 def validate_curve(points):
@@ -167,8 +203,7 @@ class FanSettings:
 
     def read(self):
         if not self.path.exists():
-            return normalize_settings({"version": 1, "mode": "auto", "curve": deepcopy(DEFAULT_CURVE),
-                                       "revision": 0, "error": "", "source": None})
+            return default_settings()
         return normalize_settings(read_json(self.path))
 
     def write(self, data):
@@ -183,9 +218,16 @@ class FanSettings:
                 return
             original = read_json(self.path)
             data = self.read()
-            if original.get('version') == 1:
+            if not data.get('defaultCurveInitialized', False):
+                # Add once without changing existing curves or the active mode.
+                # A full library stays intact; Add still uses DEFAULT_CURVE.
+                if len(data['profiles']) < MAX_PROFILES:
+                    self.add_profile(data, 'Default', DEFAULT_CURVE)
+                data['defaultCurveInitialized'] = True
+                data['revision'] += 1
+            if original.get('version') in (1, 2):
                 # Keep the exact original bytes before the one-way schema upgrade.
-                backup = self.path.with_name('fan-control.v1.json')
+                backup = self.path.with_name(f"fan-control.v{original['version']}.json")
                 if not backup.exists():
                     with backup.open('xb') as output:
                         output.write(self.path.read_bytes())
@@ -244,7 +286,7 @@ class FanSettings:
         def delete(data):
             if not any(p['id'] == identity for p in data['profiles']):
                 raise ValueError('That saved curve no longer exists')
-            if data['mode'] == 'custom' and data['selectedProfileId'] == identity:
+            if data['mode'] == 'curve' and data['selectedProfileId'] == identity:
                 data.update(mode='auto', error='')
             data['profiles'] = [p for p in data['profiles'] if p['id'] != identity]
             if data['selectedProfileId'] == identity:
@@ -257,8 +299,7 @@ class FanSettings:
             try:
                 data = self.read()
             except (OSError, ValueError, TypeError, KeyError):
-                data = normalize_settings({'version': 1, 'mode': 'auto', 'curve': deepcopy(DEFAULT_CURVE),
-                                           'revision': 0, 'source': None})
+                data = default_settings()
             data.update(mode='auto', error=reason, revision=data['revision'] + 1)
             self.write(data)
 

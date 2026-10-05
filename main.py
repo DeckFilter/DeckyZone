@@ -4807,8 +4807,11 @@ class Plugin:
             # messages behind a generic "Python Exception".
             return {"ok": False, "error": str(error)}
 
-    async def set_fan_control_mode(self, mode):
-        return await self._fan_control_result(lambda: self.fan_control.set_mode(mode))
+    async def set_fan_control_mode(self, mode, revision=None):
+        return await self._fan_control_result(lambda: self.fan_control.set_mode(mode, revision))
+
+    async def set_manual_fan_speed(self, speed, revision):
+        return await self._fan_control_result(lambda: self.fan_control.set_manual_speed(speed, revision))
 
     async def save_fan_curve(self, curve, revision):
         return await self._fan_control_result(lambda: self.fan_control.save_curve(curve, revision))
