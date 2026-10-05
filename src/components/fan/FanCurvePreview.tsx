@@ -67,7 +67,7 @@ export default function FanCurvePreview({ name, curve, temperature, dutyPercent 
 
   return (
     <canvas ref={canvasRef} width={SIZE} height={SIZE} role="img"
-      aria-label={`${name} fan curve: CPU temperature and fan speed${hasReading ? `. Current setting: ${Math.round(temperature!)}°C, ${Math.round(dutyPercent!)}%` : ''}`}
+      aria-label={`${name} fan curve: temperature and fan speed${hasReading ? `. Current setting: ${Math.round(temperature!)}°C, ${Math.round(dutyPercent!)}%` : ''}`}
       style={{ display: 'block', width: '250px', maxWidth: '100%', height: 'auto',
         boxSizing: 'border-box', margin: '10px auto', padding: 0, border: '1px solid #1a9fff',
         borderRadius: '4px', backgroundColor: '#1a1f2c', pointerEvents: 'none' }} />
