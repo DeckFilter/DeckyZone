@@ -34,7 +34,7 @@ export default function FanImportDialog({ profiles, onImport, onClose, closeModa
       <p>{profiles.length ? `Found ${profiles.length} custom curve${profiles.length === 1 ? '' : 's'}.` : 'No fan curves available to import.'}</p>
       {!!profiles.length && <>
         <ul>{profiles.map(profile => <li key={profile.name}>{profile.name}</li>)}</ul>
-        <p>Your active profile and saved curves stay unchanged. Matching names get a number added.</p>
+        <p>Matching names get a number added.</p>
       </>}
       {error && <p role="alert">{error}</p>}
     </ConfirmModal>

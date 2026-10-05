@@ -9,7 +9,7 @@ import shlex
 import subprocess
 import time
 
-from fan_curve import DEFAULT_CURVE, MAX_PROFILES, FanSettings, powercontrol_curves, read_json
+from fan_curve import DEFAULT_CURVE, MAX_PROFILES, FanSettings, powercontrol_curves, read_json, validate_manual_speed
 from fan_hardware import FanHardware, check_ownership, conflicts
 from fan_worker import STATUS, parent_identity
 
@@ -35,6 +35,7 @@ class FanControl:
     def status(self):
         config = self.settings.read()
         state = {"mode": config['mode'], "curve": config['curve'], "revision": config['revision'],
+                 "manualSpeed": config['manualSpeed'],
                  "source": config.get('source'), "error": config.get('error', ''),
                  "profiles": config['profiles'], "selectedProfileId": config['selectedProfileId'],
                  "maxProfiles": MAX_PROFILES,
@@ -80,10 +81,10 @@ class FanControl:
             state = self.status()
             if state['active']:
                 return
-            if state['mode'] != 'custom':
+            if state['mode'] not in ('manual', 'curve'):
                 raise RuntimeError(state['error'] or 'Fan control could not start')
             time.sleep(0.1)
-        raise RuntimeError('Fan control did not report an applied curve')
+        raise RuntimeError('Fan control did not report an applied speed')
 
     def stop_worker(self):
         result = run('/usr/bin/systemctl', 'stop', UNIT, check=False)
@@ -102,43 +103,62 @@ class FanControl:
             try:
                 await asyncio.to_thread(self.settings.migrate)
                 config = await asyncio.to_thread(self.settings.read)
-                if config['mode'] == 'custom':
+                if config['mode'] in ('manual', 'curve'):
                     await asyncio.to_thread(self.start_worker)
             except Exception as error:
                 await asyncio.to_thread(self.settings.fail, str(error))
                 await asyncio.to_thread(self.stop_worker)
 
-    async def set_mode(self, mode):
+    async def set_mode(self, mode, revision=None):
         # Compatibility for an older frontend during a live plugin reload.
-        if mode not in ('auto', 'custom'):
-            raise ValueError('Select System Auto or a saved curve')
-        config = await asyncio.to_thread(self.settings.read)
-        identity = None
         if mode == 'custom':
-            identity = config['selectedProfileId'] or next((p['id'] for p in config['profiles']), None)
-            if identity is None:
-                raise ValueError('Create a fan curve first')
-        return await self.select_profile(identity, config['revision'])
+            mode = 'curve'
+        if mode not in ('auto', 'manual', 'curve'):
+            raise ValueError('Select System Auto, Manual, or Curve')
+        if revision is None:
+            config = await asyncio.to_thread(self.settings.read)
+            revision = config['revision']
+        return await self.configure(mode, None, revision)
 
     async def select_profile(self, identity, revision):
+        return await self.configure('auto' if identity is None else 'curve', identity, revision)
+
+    async def configure(self, mode, identity, revision):
         async with self.lock:
             if self.closing:
                 raise RuntimeError('DeckyZone is stopping')
-            if identity is not None:
+            if mode != 'auto':
                 await asyncio.to_thread(check_ownership, self.homebrew)
             def select(config):
-                if identity is not None and not any(p['id'] == identity for p in config['profiles']):
-                    raise ValueError('That saved curve no longer exists')
-                config.update(mode='auto' if identity is None else 'custom', error='')
-                if identity is not None:
-                    config['selectedProfileId'] = identity
+                if mode == 'curve':
+                    selected = identity if identity is not None else (config['selectedProfileId']
+                        or next((p['id'] for p in config['profiles']), None))
+                    if selected is None:
+                        raise ValueError('Add a curve in Manage curves first')
+                    if not any(p['id'] == selected for p in config['profiles']):
+                        raise ValueError('That saved curve no longer exists')
+                    config['selectedProfileId'] = selected
+                config.update(mode=mode, error='')
             await asyncio.to_thread(self.settings.edit, revision, select)
             try:
-                await asyncio.to_thread(self.start_worker if identity is not None else self.select_auto)
+                await asyncio.to_thread(self.select_auto if mode == 'auto' else self.start_worker)
             except Exception as error:
                 await asyncio.to_thread(self.settings.fail, str(error))
                 await asyncio.to_thread(self.stop_worker)
                 raise
+            return await asyncio.to_thread(self.status)
+
+    async def set_manual_speed(self, speed, revision):
+        speed = validate_manual_speed(speed)
+        async with self.lock:
+            if self.closing:
+                raise RuntimeError('DeckyZone is stopping')
+            await asyncio.to_thread(check_ownership, self.homebrew)
+            def update(config):
+                if config['mode'] != 'manual':
+                    raise ValueError('Select Manual before setting fan speed')
+                config['manualSpeed'] = speed
+            await asyncio.to_thread(self.settings.edit, revision, update)
             return await asyncio.to_thread(self.status)
 
     async def mutate_profiles(self, operation, *args):
@@ -160,7 +180,7 @@ class FanControl:
                 raise RuntimeError('DeckyZone is stopping')
             before = await asyncio.to_thread(self.settings.read)
             await asyncio.to_thread(self.settings.delete_profile, identity, revision)
-            if before['mode'] == 'custom' and before['selectedProfileId'] == identity:
+            if before['mode'] == 'curve' and before['selectedProfileId'] == identity:
                 # Stop waits for the independent firmware-restoration cleanup.
                 await asyncio.to_thread(self.stop_worker)
             return await asyncio.to_thread(self.status)
