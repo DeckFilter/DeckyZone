@@ -6,13 +6,18 @@ import { FiArrowLeft, FiArrowRight, FiPlus, FiTrash2 } from 'react-icons/fi'
 import type { FanPoint } from '../../types/plugin'
 import { FanPosition, getTextPosByCanvasPos } from './position'
 
-const SIZE = 300
+const WIDTH = 300
+const HEIGHT = 300
 const POINT_DISTANCE = 5
 
 type Props = {
   curve: FanPoint[]
   disabled: boolean
   saveLabel?: string
+  saveDisabled?: boolean
+  cancelLabel?: string
+  cancelDisabled?: boolean
+  onChange?: (curve: FanPoint[]) => void
   onSave: (curve: FanPoint[]) => Promise<void>
   onCancel: () => void
 }
@@ -30,56 +35,73 @@ function CurveControlButton({ children, action, onClick, disabled }: {
   )
 }
 
-export default function FanCurveEditor({ curve, disabled, saveLabel = 'Save', onSave, onCancel }: Props) {
+export default function FanCurveEditor({
+  curve, disabled, saveLabel = 'Save', saveDisabled = false,
+  cancelLabel = 'Cancel', cancelDisabled = false, onChange, onSave, onCancel,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const points = useRef(curve.map(p => new FanPosition(p.temperature, p.fanRPMpercent)))
   const selected = useRef<FanPosition | null>(points.current[0] ?? null)
   const pointer = useRef<{ id: number; x: number; y: number; time: number; target: FanPosition | null; moved: boolean } | null>(null)
   const [revision, redraw] = useState(0)
   const [error, setError] = useState('')
-  const refresh = () => {
+  const refresh = (changed = false) => {
     points.current.sort((a, b) => a.temperature! - b.temperature!)
     redraw(value => value + 1)
+    if (changed) {
+      setError('')
+      onChange?.(points.current.map(p => ({ temperature: p.temperature!, fanRPMpercent: p.fanRPMpercent! })))
+    }
   }
+
+  useEffect(() => {
+    const current = points.current.map(p => ({ temperature: p.temperature!, fanRPMpercent: p.fanRPMpercent! }))
+    if (JSON.stringify(current) === JSON.stringify(curve)) return
+    const temperature = selected.current?.temperature
+    points.current = curve.map(p => new FanPosition(p.temperature, p.fanRPMpercent))
+    selected.current = points.current.find(p => p.temperature === temperature) ?? points.current[0] ?? null
+    redraw(value => value + 1)
+  }, [curve])
 
   useEffect(() => {
     const canvas = canvasRef.current
     const ctx = canvas?.getContext('2d')
     if (!canvas || !ctx) return
     const dpr = canvas.ownerDocument.defaultView?.devicePixelRatio || 1
-    canvas.width = SIZE * dpr
-    canvas.height = SIZE * dpr
+    canvas.width = WIDTH * dpr
+    canvas.height = HEIGHT * dpr
     ctx.scale(dpr, dpr)
-    ctx.clearRect(0, 0, SIZE, SIZE)
+    ctx.clearRect(0, 0, WIDTH, HEIGHT)
     ctx.beginPath()
     ctx.strokeStyle = '#093455'
     for (let i = 1; i <= 10; i++) {
-      ctx.moveTo(i * 30, 0); ctx.lineTo(i * 30, SIZE)
-      ctx.moveTo(0, i * 30); ctx.lineTo(SIZE, i * 30)
+      ctx.moveTo(i * WIDTH / 10, 0); ctx.lineTo(i * WIDTH / 10, HEIGHT)
+      ctx.moveTo(0, i * HEIGHT / 10); ctx.lineTo(WIDTH, i * HEIGHT / 10)
     }
     ctx.stroke()
     ctx.fillStyle = '#FFFFFF'
+    ctx.font = '10px sans-serif'
     for (let i = 1; i <= 10; i++) {
-      ctx.textAlign = 'right'; ctx.fillText(`${i * 10}°C`, i * 30 - 2, SIZE - 2)
-      ctx.textAlign = 'left'; ctx.fillText(`${i * 10}%`, 2, SIZE - i * 30 + 10)
+      ctx.textAlign = 'right'; ctx.fillText(`${i * 10}°C`, i * WIDTH / 10 - 2, HEIGHT - 2)
+      ctx.textAlign = 'left'; ctx.fillText(`${i * 10}%`, 2, HEIGHT - i * HEIGHT / 10 + 10)
     }
     ctx.beginPath()
-    ctx.moveTo(0, SIZE)
+    ctx.moveTo(0, HEIGHT)
     ctx.strokeStyle = '#1E90FF'
     for (const point of points.current) {
-      const [x, y] = point.getCanvasPos(SIZE, SIZE)
+      const [x, y] = point.getCanvasPos(WIDTH, HEIGHT)
       ctx.lineTo(x, y); ctx.moveTo(x, y)
     }
-    ctx.lineTo(SIZE, 0); ctx.stroke()
+    ctx.lineTo(WIDTH, 0); ctx.stroke()
     for (const point of points.current) {
-      const [x, y] = point.getCanvasPos(SIZE, SIZE)
+      const [x, y] = point.getCanvasPos(WIDTH, HEIGHT)
       const label = `(${Math.trunc(point.temperature!)}°C,${Math.trunc(point.fanRPMpercent!)}%)`
-      const [tx, ty] = getTextPosByCanvasPos(x, y, SIZE, SIZE, ctx.measureText(label).width)
+      const [tx, ty] = getTextPosByCanvasPos(x, y, WIDTH, HEIGHT, ctx.measureText(label).width)
       ctx.beginPath()
       ctx.fillStyle = point === selected.current ? '#FF0000' : '#1A9FFF'
       ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill()
       ctx.fillStyle = '#FFFFFF'
-      ctx.fillText(label, tx, ty)
+      if (point === selected.current) ctx.fillText(label, tx, ty)
     }
   }, [revision])
 
@@ -94,12 +116,12 @@ export default function FanCurveEditor({ curve, disabled, saveLabel = 'Save', on
     refresh()
   }
   const remove = () => {
-    if (!selected.current || points.current.length <= 2) return
+    if (disabled || !selected.current || points.current.length <= 2) return
     const temperature = selected.current.temperature!
     points.current = points.current.filter(p => p !== selected.current)
     selected.current = points.current.reduce((closest, point) =>
       Math.abs(point.temperature! - temperature) < Math.abs(closest.temperature! - temperature) ? point : closest)
-    refresh()
+    refresh(true)
   }
   const add = () => {
     if (disabled || points.current.length >= 16) return
@@ -121,10 +143,10 @@ export default function FanCurveEditor({ curve, disabled, saveLabel = 'Save', on
     const speed = span === 0 ? right.fanRPMpercent! : left.fanRPMpercent! +
       (right.fanRPMpercent! - left.fanRPMpercent!) * (temperature - left.temperature!) / span
     const point = new FanPosition(temperature, Math.min(right.fanRPMpercent!, Math.max(left.fanRPMpercent!, Math.round(speed))))
-    points.current.push(point); selected.current = point; refresh()
+    points.current.push(point); selected.current = point; refresh(true)
   }
   const update = (key: 'temperature' | 'fanRPMpercent', value: number) => {
-    if (selected.current && !disabled) { selected.current[key] = value; refresh() }
+    if (selected.current && !disabled) { selected.current[key] = value; refresh(true) }
   }
   const save = async () => {
     setError('')
@@ -136,65 +158,69 @@ export default function FanCurveEditor({ curve, disabled, saveLabel = 'Save', on
   return (
     <div aria-label="Fan curve editor">
       <style>{`.dz-fan-curve-slider .${gamepadDialogClasses.FieldLabelValue} { white-space: nowrap; flex-shrink: 0; }`}</style>
-      <div style={{ marginBlockEnd: '20px', display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '8px 0' }}>
-        <canvas ref={canvasRef} width={SIZE} height={SIZE} aria-label="Fan curve: temperature and fan speed"
-          style={{ width: '300px', height: '300px', padding: 0, border: '1px solid #1a9fff', backgroundColor: '#1a1f2c', borderRadius: '4px', touchAction: 'none' }}
-          onPointerDown={event => {
-            if (disabled || pointer.current) return
-            const point = position(event)
-            pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY, time: Date.now(), target: near(point), moved: false }
-            event.currentTarget.setPointerCapture(event.pointerId)
-          }}
-          onPointerMove={event => {
-            const drag = pointer.current
-            if (disabled || !drag || drag.id !== event.pointerId) return
-            if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 3) drag.moved = true
-            if (drag.moved && drag.target) {
-              const point = position(event)
-              drag.target.temperature = Math.round(point.temperature!)
-              drag.target.fanRPMpercent = Math.round(point.fanRPMpercent!)
-              selected.current = drag.target; refresh()
-            }
-          }}
-          onPointerUp={event => {
-            const drag = pointer.current
-            if (!drag || drag.id !== event.pointerId) return
-            pointer.current = null
-            event.currentTarget.releasePointerCapture(event.pointerId)
-            if (disabled || drag.moved) return
-            const point = position(event)
-            const hit = near(point)
-            if (Date.now() - drag.time > 1000) {
-              selected.current = hit
-            } else if (hit) {
-              selected.current = hit; remove()
-            } else if (points.current.length < 16) {
-              const added = new FanPosition(Math.round(point.temperature!), Math.round(point.fanRPMpercent!))
-              points.current.push(added); selected.current = added
-            }
-            refresh()
-          }}
-          onPointerCancel={() => { pointer.current = null }}
-          onLostPointerCapture={() => { pointer.current = null }}
-        />
-        <div style={{ flex: '1 1 300px', minWidth: 0 }}>
-            <Field childrenLayout="below" highlightOnFocus={false}>
-              <Focusable style={{ width: '100%', display: 'flex', justifyContent: 'space-evenly' }}>
-                <CurveControlButton action="Add point" onClick={add} disabled={disabled || points.current.length >= 16}><FiPlus /></CurveControlButton>
-                <CurveControlButton action="Previous point" onClick={() => select(-1)} disabled={disabled}><FiArrowLeft /></CurveControlButton>
-                <CurveControlButton action="Next point" onClick={() => select(1)} disabled={disabled}><FiArrowRight /></CurveControlButton>
-                <CurveControlButton action="Delete point" onClick={remove} disabled={disabled || !selected.current || points.current.length <= 2}><FiTrash2 /></CurveControlButton>
-              </Focusable>
-            </Field>
-            <SliderField className="dz-fan-curve-slider" label="Temperature" value={selected.current?.temperature ?? 0} valueSuffix="°C" showValue layout="below"
-              disabled={disabled || !selected.current} step={1} min={0} max={100} onChange={v => update('temperature', v)} />
-            <SliderField className="dz-fan-curve-slider" label="Fan speed" value={selected.current?.fanRPMpercent ?? 0} valueSuffix="%" showValue layout="below"
-              disabled={disabled || !selected.current} step={1} min={0} max={100} onChange={v => update('fanRPMpercent', v)} />
+      <Focusable flow-children="row" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', padding: '8px 0' }}>
+        <div style={{ minWidth: 0 }}>
+          <Field childrenLayout="below" padding="none">
+            <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} aria-label="Fan curve: temperature and fan speed"
+              style={{ display: 'block', width: '100%', height: 'auto', padding: 0, backgroundColor: '#1a1f2c', touchAction: 'none' }}
+              onPointerDown={event => {
+                if (disabled || pointer.current) return
+                const point = position(event)
+                pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY, time: Date.now(), target: near(point), moved: false }
+                event.currentTarget.setPointerCapture(event.pointerId)
+              }}
+              onPointerMove={event => {
+                const drag = pointer.current
+                if (disabled || !drag || drag.id !== event.pointerId) return
+                if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 3) drag.moved = true
+                if (drag.moved && drag.target) {
+                  const point = position(event)
+                  drag.target.temperature = Math.round(point.temperature!)
+                  drag.target.fanRPMpercent = Math.round(point.fanRPMpercent!)
+                  selected.current = drag.target; refresh(true)
+                }
+              }}
+              onPointerUp={event => {
+                const drag = pointer.current
+                if (!drag || drag.id !== event.pointerId) return
+                pointer.current = null
+                event.currentTarget.releasePointerCapture(event.pointerId)
+                if (disabled || drag.moved) return
+                const point = position(event)
+                const hit = near(point)
+                if (Date.now() - drag.time > 1000) {
+                  selected.current = hit
+                } else if (hit) {
+                  selected.current = hit; remove()
+                } else if (points.current.length < 16) {
+                  const added = new FanPosition(Math.round(point.temperature!), Math.round(point.fanRPMpercent!))
+                  points.current.push(added); selected.current = added
+                }
+                refresh(true)
+              }}
+              onPointerCancel={() => { pointer.current = null }}
+              onLostPointerCapture={() => { pointer.current = null }}
+            />
+          </Field>
         </div>
-      </div>
-      <Focusable style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', padding: '8px 0' }}>
-        <DialogButton disabled={disabled} onClick={() => void save()}>{disabled ? 'Saving…' : saveLabel}</DialogButton>
-        <DialogButton disabled={disabled} onClick={onCancel}>Cancel</DialogButton>
+        <div style={{ minWidth: 0 }}>
+          <Field childrenLayout="below" padding="none" highlightOnFocus={false}>
+            <Focusable flow-children="row" style={{ display: 'flex', width: '100%', minWidth: 0 }}>
+              <CurveControlButton action="Add point" onClick={add} disabled={disabled || points.current.length >= 16}><FiPlus /></CurveControlButton>
+              <CurveControlButton action="Previous point" onClick={() => select(-1)} disabled={disabled}><FiArrowLeft /></CurveControlButton>
+              <CurveControlButton action="Next point" onClick={() => select(1)} disabled={disabled}><FiArrowRight /></CurveControlButton>
+              <CurveControlButton action="Delete point" onClick={remove} disabled={disabled || !selected.current || points.current.length <= 2}><FiTrash2 /></CurveControlButton>
+            </Focusable>
+          </Field>
+          <SliderField className="dz-fan-curve-slider" label="Temperature" value={selected.current?.temperature ?? 0} valueSuffix="°C" showValue layout="below"
+            disabled={disabled || !selected.current} step={1} min={0} max={100} onChange={v => update('temperature', v)} />
+          <SliderField className="dz-fan-curve-slider" label="Fan speed" value={selected.current?.fanRPMpercent ?? 0} valueSuffix="%" showValue layout="below"
+            disabled={disabled || !selected.current} step={1} min={0} max={100} onChange={v => update('fanRPMpercent', v)} />
+          <Focusable flow-children="column" style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px' }}>
+            <DialogButton style={{ minWidth: 0 }} disabled={disabled || saveDisabled} onClick={() => void save()}>{saveLabel}</DialogButton>
+            <DialogButton style={{ minWidth: 0 }} disabled={disabled || cancelDisabled} onClick={onCancel}>{cancelLabel}</DialogButton>
+          </Focusable>
+        </div>
       </Focusable>
       {error && <Field label={error} />}
     </div>
