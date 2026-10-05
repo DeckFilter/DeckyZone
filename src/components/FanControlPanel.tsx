@@ -128,11 +128,18 @@ export default function FanControlPanel() {
           <ButtonItem label="Manual fan control" layout={itemLayout} disabled={busy}
             onClick={() => { void change(() => selectProfile(null, state.revision)).catch(() => {}) }}>Restore System Auto</ButtonItem>
         </SettingsRow>}
-        {state?.available && <SettingsRow>
-          <Field label="Fan speed" description={state.temperature === null ? undefined : `CPU temperature: ${state.temperature.toFixed(1)}°C`}>
-            {state.rpm === null ? 'Unavailable' : `${state.rpm} RPM`}
-          </Field>
-        </SettingsRow>}
+        {state?.available && <>
+          <SettingsRow>
+            <Field label="Fan speed" childrenLayout={itemLayout}>
+              {state.rpm === null ? 'Unavailable' : `${state.rpm} RPM`}
+            </Field>
+          </SettingsRow>
+          <SettingsRow>
+            <Field label="Temperature" childrenLayout={itemLayout}>
+              {state.temperature === null ? 'Unavailable' : `${state.temperature.toFixed(1)}°C`}
+            </Field>
+          </SettingsRow>
+        </>}
         {surface === 'quick-access' && <SettingsRow>
           <ButtonItem layout="below" onClick={() => { Navigation.Navigate(DECKYZONE_FAN_CONTROL_ROUTE); Navigation.CloseSideMenus() }}>Manage custom curves</ButtonItem>
         </SettingsRow>}
