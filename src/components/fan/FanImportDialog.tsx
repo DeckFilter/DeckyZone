@@ -1,42 +1,40 @@
 import { ConfirmModal } from '@decky/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { PowerControlFanProfile } from '../../types/plugin'
+import { SteamExplainerDropdownItem } from '../SteamExplainer'
 
 type Props = {
   profiles: PowerControlFanProfile[]
-  onImport: () => Promise<void>
+  onImport: (profile: PowerControlFanProfile) => void
   onClose: () => void
   closeModal?: () => void
 }
 
-// Use the same asynchronous ConfirmModal pattern as ResetPluginConfirmModal.
+// Import replaces the editor draft. Save remains the only settings write.
 export default function FanImportDialog({ profiles, onImport, onClose, closeModal }: Props) {
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const inFlight = useRef(false)
+  const [selectedName, setSelectedName] = useState(profiles[0]?.name)
+  const confirmed = useRef(false)
   useEffect(() => () => onClose(), [onClose])
-  const importAll = async () => {
-    if (inFlight.current) return
-    inFlight.current = true; setSaving(true); setError('')
-    try {
-      await onImport()
-      closeModal?.()
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Couldn't import curves")
-      inFlight.current = false; setSaving(false)
-    }
+  const selected = profiles.find(profile => profile.name === selectedName)
+  const importCurve = () => {
+    if (confirmed.current || !selected) return
+    confirmed.current = true
+    onImport(selected)
+    closeModal?.()
   }
   return (
     <ConfirmModal closeModal={closeModal} strTitle="Import from PowerControl"
-      strOKButtonText={saving ? 'Importing…' : 'Import'} strCancelButtonText={profiles.length ? 'Cancel' : 'Close'}
-      bOKDisabled={saving || !profiles.length} bCancelDisabled={saving}
-      onOK={() => void importAll()}>
+      strOKButtonText="Import" strCancelButtonText={profiles.length ? 'Cancel' : 'Close'}
+      bOKDisabled={!selected} onOK={importCurve}>
       <p>{profiles.length ? `Found ${profiles.length} custom curve${profiles.length === 1 ? '' : 's'}.` : 'No fan curves available to import.'}</p>
       {!!profiles.length && <>
-        <ul>{profiles.map(profile => <li key={profile.name}>{profile.name}</li>)}</ul>
-        <p>Matching names get a number added.</p>
+        {profiles.length > 1
+          ? <SteamExplainerDropdownItem label="Curve" layout="inline" controlled selectedOption={selectedName}
+            rgOptions={profiles.map(profile => ({ data: profile.name, label: profile.name }))}
+            onChange={option => setSelectedName(option.data)} />
+          : <p>{selected?.name}</p>}
+        <p>Replaces the curve in the editor. Save to apply it.</p>
       </>}
-      {error && <p role="alert">{error}</p>}
     </ConfirmModal>
   )
 }

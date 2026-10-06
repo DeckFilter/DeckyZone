@@ -158,7 +158,7 @@ export default function FanCurveEditor({
   return (
     <div aria-label="Fan curve editor">
       <style>{`.dz-fan-curve-slider .${gamepadDialogClasses.FieldLabelValue} { white-space: nowrap; flex-shrink: 0; }`}</style>
-      <Focusable flow-children="row" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', padding: '8px 0' }}>
+      <Focusable flow-children="row" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', padding: '12px 0 8px' }}>
         <div style={{ minWidth: 0 }}>
           <Field childrenLayout="below" padding="none">
             <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} aria-label="Fan curve: temperature and fan speed"
@@ -203,7 +203,7 @@ export default function FanCurveEditor({
             />
           </Field>
         </div>
-        <div style={{ minWidth: 0 }}>
+        <Focusable flow-children="column" style={{ minWidth: 0 }}>
           <Field childrenLayout="below" padding="none" highlightOnFocus={false}>
             <Focusable flow-children="row" style={{ display: 'flex', width: '100%', minWidth: 0 }}>
               <CurveControlButton action="Add point" onClick={add} disabled={disabled || points.current.length >= 16}><FiPlus /></CurveControlButton>
@@ -220,7 +220,7 @@ export default function FanCurveEditor({
             <DialogButton style={{ minWidth: 0 }} disabled={disabled || saveDisabled} onClick={() => void save()}>{saveLabel}</DialogButton>
             <DialogButton style={{ minWidth: 0 }} disabled={disabled || cancelDisabled} onClick={onCancel}>{cancelLabel}</DialogButton>
           </Focusable>
-        </div>
+        </Focusable>
       </Focusable>
       {error && <Field label={error} />}
     </div>

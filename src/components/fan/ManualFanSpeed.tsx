@@ -1,6 +1,6 @@
+import { SliderField } from '@decky/ui'
 import { useEffect, useRef, useState } from 'react'
 import { useSettingsItemLayout } from '../SettingsSurface'
-import { SteamExplainerSliderField } from '../SteamExplainer'
 
 type Props = { value: number; disabled: boolean; busy: boolean; onChange: (value: number) => Promise<void> }
 
@@ -37,7 +37,7 @@ export default function ManualFanSpeed({ value, disabled, busy, onChange }: Prop
     }
   }
 
-  return <SteamExplainerSliderField label="Target speed" layout={layout}
+  return <SliderField label="Target speed" layout={layout}
     explainerTitle="Manual fan speed" explainer="Keeps the fan at your chosen speed. At 95°C, DeckyZone sets it to 100%."
     value={draft ?? value} min={10} max={100} step={1} showValue valueSuffix="%"
     disabled={disabled || (busy && !writing.current)} onChange={speed => { void update(speed) }} />
