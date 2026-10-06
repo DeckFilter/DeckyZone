@@ -158,7 +158,7 @@ class FanWorker:
                 if not self.bus.connected:
                     raise RuntimeError('Lost the connection used for sleep protection')
                 config = self.settings.read()
-                if config['mode'] not in ('manual', 'curve'):
+                if config['mode'] not in ('manual', 'custom'):
                     break
                 check_ownership(self.homebrew)
                 if not self.preparing:
@@ -202,7 +202,7 @@ def main():
             except (OSError, ValueError, TypeError, KeyError):
                 already_disabled = False
             if not already_disabled:
-                settings.fail('Fan worker stopped unexpectedly; select Manual or Curve to try again')
+                settings.fail('Fan worker stopped unexpectedly; select Manual or Custom to try again')
         return
     try:
         asyncio.run(FanWorker(args.settings, args.homebrew, args.parent, args.parent_started).run())

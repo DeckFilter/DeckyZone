@@ -7,16 +7,12 @@ export const fanApi = {
   status: callable<[], FanControlState>('get_fan_control_status'),
   mode: callable<[FanMode, number], FanControlResult>('set_fan_control_mode'),
   manualSpeed: callable<[number, number], FanControlResult>('set_manual_fan_speed'),
-  select: callable<[string | null, number], FanControlResult>('select_fan_profile'),
-  save: callable<[string | null, string, FanPoint[], number], FanControlResult>('save_fan_profile'),
-  duplicate: callable<[string, number], FanControlResult>('duplicate_fan_profile'),
-  delete: callable<[string, number], FanControlResult>('delete_fan_profile'),
+  save: callable<[FanPoint[], number], FanControlResult>('save_fan_curve'),
   imports: callable<[], PowerControlFanProfile[]>('get_powercontrol_fan_profiles'),
-  import: callable<[PowerControlFanProfile[], number], FanControlResult>('import_powercontrol_fan_curves'),
 }
 
 // Polls must never overwrite an optimistic selection or reconcile an older
-// request after a settings write. Both fan screens use the same transaction.
+// request after a settings write. Settings and QAM use the same transaction.
 export function useFanControl() {
   const [state, setState] = useState<FanControlState | null>(null)
   const current = useRef(state)
