@@ -17,7 +17,6 @@ import CustomizationPanel from "./components/CustomizationPanel"
 import LayoutPanel from './components/LayoutPanel'
 import PerformancePanel from "./components/PerformancePanel"
 import FanControlPanel from './components/FanControlPanel'
-import FanCurvesPage from './components/fan/FanCurvesPage'
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
 import { SettingsRow, SettingsSection, SettingsSurfaceProvider } from './components/SettingsSurface'
 import TroubleshootingPanel from "./components/TroubleshootingPanel"
@@ -28,7 +27,7 @@ import {
   syncStoredHideUnsupportedButtonsRuntimeEnabled,
   syncStoredZotacGlyphsRuntimeEnabled,
 } from "./glyphs/zotacGlyphRuntime"
-import { DECKYZONE_FAN_CURVES_ROUTE, DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE, openDeckyZoneSettings } from './routes'
+import { DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE, openDeckyZoneSettings } from './routes'
 import ControllerMappingPage from './controllerMapping/ControllerMappingPage'
 import {
   DeckyZoneState,
@@ -625,12 +624,6 @@ function Content() {
 }
 
 export default definePlugin(() => {
-  const fanCurvesRoute = `${DECKYZONE_FAN_CURVES_ROUTE}/:curveId?`
-  const FanCurvesRoute = () => {
-    return <ErrorBoundary title="Fan curves">
-      <SettingsSurfaceProvider surface="settings"><FanCurvesPage /></SettingsSurfaceProvider>
-    </ErrorBoundary>
-  }
   const mappingRoute = `${DECKYZONE_MAPPING_ROUTE}/:appId/:section?/:sourceId?`
   const MappingRoute = () => {
     const { appId, sourceId } = useParams<{ appId: string; sourceId?: string }>()
@@ -654,7 +647,6 @@ export default definePlugin(() => {
   )
 
   routerHook.addRoute(mappingRoute, MappingRoute, { exact: true })
-  routerHook.addRoute(fanCurvesRoute, FanCurvesRoute, { exact: true })
   routerHook.addRoute(DECKYZONE_ROUTE, SettingsRoute, { exact: false })
   registerBrightnessDialFixListeners()
   const mappingBrightnessListener = addEventListener<[BrightnessDialDirection]>('controller_mapping_brightness', direction => {
@@ -702,7 +694,6 @@ export default definePlugin(() => {
       stopNativePerformanceRuntime()
       routerHook.removeRoute(DECKYZONE_ROUTE)
       routerHook.removeRoute(mappingRoute)
-      routerHook.removeRoute(fanCurvesRoute)
       updateNoticeGeneration += 1
       resetBootstrap()
       resetStartupCheck()

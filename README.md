@@ -107,11 +107,9 @@ sudo python3 -m services.performance_bridge.install rollback --enable
 
 ### Fan control
 
-Open **Fan control** and choose a mode: **System Auto** lets the device control the fan, **Manual** holds a chosen speed, and **Curve** follows a saved curve. System Auto is the default. Fan settings apply to all games.
+Open **Fan control** and choose a mode: **System Auto** lets the device control the fan, **Manual** holds a chosen speed, and **Curve** follows your temperature curve. System Auto is the default. Fan settings apply to all games.
 
-In Curve mode, select a saved curve on the main screen. The graph shows the active curve. Open **Manage curves** to add, edit, duplicate, delete or import curves from PowerControl. Saving an active curve applies its changes; saving other curves leaves the current mode unchanged. Imports preserve PowerControl's settings and skip fixed-speed profiles. Deleting the active curve returns to System Auto.
-
-The included **Default** curve uses ONE Launcher's curve points. You can edit it or add your own curves.
+Edit the custom curve on the same page, then **Save and apply**. You can import a curve from PowerControl or reset to ONE Launcher's default points; both load a draft for you to save or discard. Import leaves PowerControl's settings unchanged. The quick-access menu shows the active curve.
 
 Manual and Curve use at least 10% fan speed and reach 100% at 95°C. The fan returns to System Auto if control fails, before sleep and when DeckyZone unloads. Your selected mode resumes after wake. Use **Restore System Auto** if another plugin left the fan in manual mode.
 

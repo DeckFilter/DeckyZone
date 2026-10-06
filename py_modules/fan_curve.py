@@ -1,14 +1,12 @@
 """Global fan settings and PowerControl's curve-only import boundary."""
 
 from contextlib import contextmanager
-from copy import deepcopy
 import fcntl
 import json
 import math
 import os
 from pathlib import Path
 import tempfile
-import uuid
 
 # ONE Launcher 2.1.44: FanMode.GetDefault / Curve10 through Curve90.
 DEFAULT_CURVE = [
@@ -17,97 +15,47 @@ DEFAULT_CURVE = [
                  (60, 60), (70, 80), (80, 90), (90, 100))
 ]
 MAX_POINTS = 16
-MAX_PROFILES = 16
 DEFAULT_MANUAL_SPEED = 50
 
 
-def profile_name(value):
-    if not isinstance(value, str) or not value.strip() or len(value.strip()) > 40:
-        raise ValueError('Use a curve name with 1–40 characters')
-    value = value.strip()
-    if any(ord(c) < 32 or ord(c) == 127 for c in value):
-        raise ValueError('Curve names cannot contain control characters')
-    if value.casefold() in ('auto', 'system auto'):
-        raise ValueError('System Auto is reserved for firmware cooling')
-    return value
-
-
-def available_name(profiles, preferred):
-    try:
-        name = profile_name(preferred[:40])
-    except ValueError:
-        name = 'Custom curve'
-    names = {p['name'].casefold() for p in profiles}
-    candidate, suffix = name, 2
-    while candidate.casefold() in names:
-        ending = f' ({suffix})'
-        candidate = name[:40 - len(ending)] + ending
-        suffix += 1
-    return candidate
-
-
 def normalize_settings(data):
-    data = deepcopy(data)
-    if data.get('version') not in (1, 2, 3):
-        raise ValueError('Fan settings are invalid; reset the saved curves')
-    if data.get('mode') not in (('auto', 'custom') if data['version'] < 3 else ('auto', 'manual', 'curve')):
-        raise ValueError('Fan settings are invalid; reset the saved curves')
+    if not isinstance(data, dict) or type(data.get('version')) is not int or data['version'] not in (1, 2, 3, 4):
+        raise ValueError('Fan settings are invalid')
+    version = data['version']
+    modes = ('auto', 'custom') if version < 3 else ('auto', 'manual', 'curve' if version == 3 else 'custom')
+    if data.get('mode') not in modes:
+        raise ValueError('Fan mode is invalid')
     if type(data.get('revision')) is not int or data['revision'] < 0:
         raise ValueError('Fan settings revision is invalid')
     if not isinstance(data.get('error', ''), str):
         raise ValueError('Fan settings metadata is invalid')
-    if type(data.get('defaultCurveInitialized', False)) is not bool:
-        raise ValueError('Fan settings metadata is invalid')
-    if data['version'] == 1:
-        source = data.get('source')
-        if source is not None and not isinstance(source, str):
-            raise ValueError('Fan settings metadata is invalid')
-        data.update(version=2, selectedProfileId='default', profiles=[{
-            'id': 'default', 'name': available_name([], source or 'Custom curve'),
-            'curve': validate_curve(data.get('curve')),
-        }])
-    if data['version'] == 2:
-        data.update(version=3, mode='curve' if data['mode'] == 'custom' else 'auto',
-                    manualSpeed=DEFAULT_MANUAL_SPEED)
-    data['manualSpeed'] = validate_manual_speed(data.get('manualSpeed'))
-    profiles = data.get('profiles')
-    if not isinstance(profiles, list) or len(profiles) > MAX_PROFILES:
-        raise ValueError(f'Use at most {MAX_PROFILES} saved fan curves')
-    ids, names = set(), set()
-    for profile in profiles:
-        if not isinstance(profile, dict):
-            raise ValueError('Invalid fan profile')
-        identity = profile.get('id')
-        if (not isinstance(identity, str) or not 1 <= len(identity) <= 64
-                or not all(c in 'abcdefghijklmnopqrstuvwxyz0123456789-' for c in identity)
-                or identity == 'auto' or identity in ids):
-            raise ValueError('Invalid fan profile ID')
-        profile['name'] = profile_name(profile.get('name'))
-        if profile['name'].casefold() in names:
-            raise ValueError('Choose a different name; that curve already exists')
-        ids.add(identity)
-        names.add(profile['name'].casefold())
-        profile.pop('source', None)
-        profile['curve'] = validate_curve(profile.get('curve'))
-    selected = data.get('selectedProfileId')
-    if selected is not None and (not isinstance(selected, str) or selected not in ids):
-        raise ValueError('The selected fan curve does not exist')
-    if data['mode'] == 'curve' and selected is None:
-        raise ValueError('Select a saved curve before enabling fan control')
-    current = next((p for p in profiles if p['id'] == selected), None)
-    # Derived compatibility fields let the supervised worker keep its existing
-    # effective-curve contract without a second mutable copy in the settings.
-    data['curve'] = deepcopy(current['curve'] if current else DEFAULT_CURVE)
-    data['source'] = None
-    return data
+    curve = data.get('curve')
+    if version in (2, 3):
+        profiles = data.get('profiles')
+        if not isinstance(profiles, list) or any(not isinstance(p, dict) for p in profiles):
+            raise ValueError('Saved fan curves are invalid')
+        selected = data.get('selectedProfileId')
+        current = next((p for p in profiles if p.get('id') == selected), None) if selected is not None else None
+        if (selected is not None and current is None) or (data['mode'] in ('custom', 'curve') and current is None):
+            raise ValueError('The selected fan curve does not exist')
+        # Preserve the selection even in Auto/Manual. If none was selected,
+        # keep the first saved curve, or ONE Launcher's default for an empty library.
+        current = current or next(iter(profiles), None)
+        curve = current.get('curve') if current is not None else DEFAULT_CURVE
+    return {
+        'version': 4,
+        'mode': 'custom' if data['mode'] == 'curve' else data['mode'],
+        'manualSpeed': validate_manual_speed(data.get('manualSpeed') if version >= 3 else DEFAULT_MANUAL_SPEED),
+        'curve': validate_curve(curve),
+        'revision': data['revision'],
+        'error': data.get('error', ''),
+    }
 
 
 def default_settings():
     return normalize_settings({
-        'version': 3, 'mode': 'auto', 'manualSpeed': DEFAULT_MANUAL_SPEED,
-        'revision': 0, 'error': '', 'defaultCurveInitialized': True,
-        'selectedProfileId': 'default',
-        'profiles': [{'id': 'default', 'name': 'Default', 'curve': DEFAULT_CURVE}],
+        'version': 4, 'mode': 'auto', 'manualSpeed': DEFAULT_MANUAL_SPEED,
+        'revision': 0, 'error': '', 'curve': DEFAULT_CURVE,
     })
 
 
@@ -118,10 +66,10 @@ def validate_manual_speed(value):
 
 
 def requested_speed(config, temperature):
-    if config['mode'] == 'curve':
+    if config['mode'] == 'custom':
         return curve_speed(config['curve'], temperature)
     if config['mode'] != 'manual':
-        raise ValueError('Select Manual or Curve before setting fan speed')
+        raise ValueError('Select Manual or Custom before setting fan speed')
     speed = validate_manual_speed(config['manualSpeed'])
     if not math.isfinite(temperature) or not 0 < temperature <= 115:
         raise ValueError('Temperature is unavailable or invalid')
@@ -208,8 +156,21 @@ class FanSettings:
 
     def write(self, data):
         data = normalize_settings(data)
-        stored = {k: v for k, v in data.items() if k not in ('curve', 'source')}
-        atomic_json(self.path, stored)
+        if self.path.exists():
+            try:
+                original = read_json(self.path)
+            except ValueError:
+                # fail() must still be able to repair malformed JSON to System Auto.
+                original = {}
+            if original.get('version') in (1, 2, 3):
+                # Keep every old curve in an exact backup before the one-way upgrade.
+                backup = self.path.with_name(f"fan-control.v{original['version']}.json")
+                if not backup.exists():
+                    with backup.open('xb') as output:
+                        output.write(self.path.read_bytes())
+                        output.flush()
+                        os.fsync(output.fileno())
+        atomic_json(self.path, data)
         return data
 
     def migrate(self):
@@ -217,31 +178,16 @@ class FanSettings:
             if not self.path.exists():
                 return
             original = read_json(self.path)
-            data = self.read()
-            if not data.get('defaultCurveInitialized', False):
-                # Add once without changing existing curves or the active mode.
-                # A full library stays intact; Add still uses DEFAULT_CURVE.
-                if len(data['profiles']) < MAX_PROFILES:
-                    self.add_profile(data, 'Default', DEFAULT_CURVE)
-                data['defaultCurveInitialized'] = True
+            data = normalize_settings(original)
+            if data != original:
                 data['revision'] += 1
-            if original.get('version') in (1, 2):
-                # Keep the exact original bytes before the one-way schema upgrade.
-                backup = self.path.with_name(f"fan-control.v{original['version']}.json")
-                if not backup.exists():
-                    with backup.open('xb') as output:
-                        output.write(self.path.read_bytes())
-                        output.flush()
-                        os.fsync(output.fileno())
-            stored = {k: v for k, v in data.items() if k not in ('curve', 'source')}
-            if stored != original:
                 self.write(data)
 
     def edit(self, revision, mutation):
         with self.locked():
             data = self.read()
             if type(revision) is not int or data['revision'] != revision:
-                raise ValueError('Fan settings changed; reopen the curve before saving')
+                raise ValueError('Fan settings changed; try again')
             mutation(data)
             data['revision'] += 1
             return self.write(data)
@@ -253,45 +199,9 @@ class FanSettings:
             data['revision'] += 1
             return self.write(data)
 
-    def save_profile(self, identity, name, curve, revision):
-        points, name = validate_curve(curve), profile_name(name)
-        def save(data):
-            if identity is None:
-                if len(data['profiles']) >= MAX_PROFILES:
-                    raise ValueError(f'Use at most {MAX_PROFILES} saved fan curves')
-                data['profiles'].append({'id': uuid.uuid4().hex, 'name': name, 'curve': points})
-            else:
-                profile = next((p for p in data['profiles'] if p['id'] == identity), None)
-                if profile is None:
-                    raise ValueError('That saved curve no longer exists')
-                profile.update(name=name, curve=points)
-        return self.edit(revision, save)
-
-    def copy_profile(self, identity, revision):
-        def copy(data):
-            profile = next((p for p in data['profiles'] if p['id'] == identity), None)
-            if profile is None:
-                raise ValueError('That saved curve no longer exists')
-            self.add_profile(data, profile['name'] + ' copy', profile['curve'])
-        return self.edit(revision, copy)
-
-    @staticmethod
-    def add_profile(data, name, curve):
-        if len(data['profiles']) >= MAX_PROFILES:
-            raise ValueError(f'Use at most {MAX_PROFILES} saved fan curves')
-        data['profiles'].append({'id': uuid.uuid4().hex, 'name': available_name(data['profiles'], name),
-                                 'curve': validate_curve(curve)})
-
-    def delete_profile(self, identity, revision):
-        def delete(data):
-            if not any(p['id'] == identity for p in data['profiles']):
-                raise ValueError('That saved curve no longer exists')
-            if data['mode'] == 'curve' and data['selectedProfileId'] == identity:
-                data.update(mode='auto', error='')
-            data['profiles'] = [p for p in data['profiles'] if p['id'] != identity]
-            if data['selectedProfileId'] == identity:
-                data['selectedProfileId'] = None
-        return self.edit(revision, delete)
+    def save_curve(self, curve, revision):
+        points = validate_curve(curve)
+        return self.edit(revision, lambda data: data.update(curve=points))
 
     def fail(self, reason):
         # Also repair malformed settings after handing control back to firmware.

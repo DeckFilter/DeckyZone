@@ -4816,26 +4816,8 @@ class Plugin:
     async def save_fan_curve(self, curve, revision):
         return await self._fan_control_result(lambda: self.fan_control.save_curve(curve, revision))
 
-    async def select_fan_profile(self, profile_id, revision):
-        return await self._fan_control_result(lambda: self.fan_control.select_profile(profile_id, revision))
-
-    async def save_fan_profile(self, profile_id, name, curve, revision):
-        return await self._fan_control_result(lambda: self.fan_control.save_profile(profile_id, name, curve, revision))
-
-    async def duplicate_fan_profile(self, profile_id, revision):
-        return await self._fan_control_result(lambda: self.fan_control.duplicate_profile(profile_id, revision))
-
-    async def delete_fan_profile(self, profile_id, revision):
-        return await self._fan_control_result(lambda: self.fan_control.delete_profile(profile_id, revision))
-
     async def get_powercontrol_fan_profiles(self):
         return await self.fan_control.imports()
-
-    async def import_powercontrol_fan_curve(self, name, revision):
-        return await self._fan_control_result(lambda: self.fan_control.import_curve(name, revision))
-
-    async def import_powercontrol_fan_curves(self, profiles, revision):
-        return await self._fan_control_result(lambda: self.fan_control.import_curves(profiles, revision))
 
     async def get_native_performance_status(self):
         return await asyncio.to_thread(native_performance.get_status)

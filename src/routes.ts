@@ -8,7 +8,6 @@ export const DECKYZONE_CUSTOMIZATION_ROUTE = `${DECKYZONE_ROUTE}/customization`
 export const DECKYZONE_DISPLAY_ROUTE = `${DECKYZONE_ROUTE}/display`
 export const DECKYZONE_PERFORMANCE_ROUTE = `${DECKYZONE_ROUTE}/performance`
 export const DECKYZONE_FAN_CONTROL_ROUTE = `${DECKYZONE_ROUTE}/fan-control`
-export const DECKYZONE_FAN_CURVES_ROUTE = `${DECKYZONE_FAN_CONTROL_ROUTE}/curves`
 export const DECKYZONE_SPECIFICATIONS_ROUTE = `${DECKYZONE_ROUTE}/specifications`
 
 export function openDeckyZoneSettings() {
