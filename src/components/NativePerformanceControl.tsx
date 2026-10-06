@@ -5,7 +5,7 @@ import type { NativePerformanceResult, NativePerformanceState } from '../types/p
 import { nativePerformanceControlsVisible } from '../nativePerformanceRuntime'
 import { showSteamRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
-import { SettingsRow } from './SettingsSurface'
+import { SettingsRow, useSettingsSurface } from './SettingsSurface'
 import NativePerformanceProgressDialog from './NativePerformanceProgressDialog'
 
 const getStatus = callable<[], NativePerformanceState>('get_native_performance_status')
@@ -14,6 +14,7 @@ const EXPLAINER =
   "Enables performance profiles and the TDP slider in Steam's Performance menu. The slider is available in Custom. Disable PowerControl and SimpleDeckyTDP in Decky settings first; their own TDP switches are not enough. Enabling either plugin later automatically turns native controls off, including startup at boot. After disabling those plugins, turn native controls back on here. Turning native controls off keeps the last applied power limits. Fan settings and CPU boost are unchanged."
 
 const NativePerformanceControl = () => {
+  const surface = useSettingsSurface()
   const [state, setState] = useState<NativePerformanceState | null>(null)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -131,7 +132,7 @@ const NativePerformanceControl = () => {
           explainerTitle="Native Performance Controls"
           explainer={EXPLAINER}
           checked={state?.enabled ?? false}
-          settingsDescription={description}
+          description={surface === 'settings' ? description : undefined}
           onChange={(value: boolean) => void change(value)}
           disabled={saving || !state || (!state.enabled && (!state.available || conflicts.length > 0))}
         />
