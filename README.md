@@ -100,6 +100,8 @@ VRAM Size reserves 4 to 8 GB of system memory for the integrated GPU, matching t
 
 ## Compatibility notes
 
+If controller settings stop responding, use **Troubleshooting > Reapply Controller Profile** to reload dials, trackpads and Home, including active game overrides. This keeps saved settings and also works with untouched defaults. Controller input may pause briefly while the profile is reapplied.
+
 Controller features require InputPlumber and drivers for the ZONE's input devices. Compatibility on other distributions depends on the InputPlumber version and drivers they include. Unloading the plugin restores the previous controller emulation.
 
 ## Related plugins

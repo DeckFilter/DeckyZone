@@ -2667,7 +2667,62 @@ class DeckyZoneService:
             self._restore_runtime_input_profile()
             raise
 
-    async def sync_per_game_target(self, app_id, *, settings_app_id=None):
+    async def reapply_controller_profile(self):
+        async with self._mapping_save_lock:
+            try:
+                applied = await self.sync_per_game_target(
+                    None,
+                    settings_app_id=DEFAULT_APP_ID,
+                    force=True,
+                )
+                if not applied:
+                    raise RuntimeError("Controller profile did not apply.")
+            except Exception as error:
+                detail = str(error).strip() or type(error).__name__
+                self.logger.warning(f"Failed to reapply controller profile: {detail}")
+                self._set_status("failed", f"Failed to reapply controller profile: {detail}")
+                applied = False
+            else:
+                self._set_status("applied", "Controller profile reapplied.")
+
+            return {
+                "ok": applied,
+                "status": self.get_status(),
+                "settings": self.get_settings(),
+            }
+
+    async def _prepare_controller_profile_reapply(self):
+        for stop, description in (
+            (self.stop_brightness_dial_fixer, "brightness dial listener"),
+            (self.stop_home_button_listener, "Home button listener"),
+            (self.stop_rumble_fixer, "rumble service"),
+        ):
+            if not await stop():
+                raise RuntimeError(f"Could not stop the {description}.")
+        if not self._release_zotac_mouse_device():
+            raise RuntimeError("Could not release the trackpad input device.")
+        if not self._restore_home_button_profile():
+            raise RuntimeError("Could not restore the base Home button profile.")
+        if not self._restore_runtime_input_profile():
+            raise RuntimeError("Could not restore the base controller profile.")
+
+        profile_path = self._get_inputplumber_profile_path() or ""
+        managed_paths = {
+            str(self._get_runtime_inputplumber_profile_path()),
+            str(self._get_home_button_override_profile_path()),
+        }
+        if profile_path in managed_paths:
+            self._load_inputplumber_profile_path(DEFAULT_INPUTPLUMBER_PROFILE_PATH)
+        elif profile_path and self._path_exists(profile_path):
+            self._load_inputplumber_profile_path(profile_path)
+        else:
+            self._load_inputplumber_profile_from_yaml(self._get_inputplumber_profile_yaml())
+
+        self._reset_inputplumber_profile_state()
+        self._startup_target_active = False
+        self._temporary_target_mode = None
+
+    async def sync_per_game_target(self, app_id, *, settings_app_id=None, force=False):
         async with self._mapping_sync_lock:
             if settings_app_id is not None:
                 app_id = str(self._active_per_game_app_id or DEFAULT_APP_ID)
@@ -2676,15 +2731,32 @@ class DeckyZoneService:
             else:
                 app_id = str(app_id or DEFAULT_APP_ID)
                 self._active_per_game_app_id = app_id
+            if force:
+                if not self.is_supported_device():
+                    raise RuntimeError("Controller profiles require a Zotac Zone.")
+                if not self._is_controller_mode_snapshot_safe(self._get_controller_mode_snapshot()):
+                    raise RuntimeError("Switch the controller to Gamepad mode first.")
+                if not await self.wait_for_inputplumber_dbus_silently():
+                    raise RuntimeError("InputPlumber is unavailable.")
             try:
                 profile = self.settings_store.get_effective_controller_mapping(app_id)
                 await self._mapping_runtime.stop()
+                if force:
+                    await self._prepare_controller_profile_reapply()
                 if profile is not None and self._has_directional_trackpad_backup():
                     if not self._restore_directional_trackpad_button_mappings():
                         raise RuntimeError("Could not restore the previous trackpad mode.")
                 result = await self._sync_per_game_target(app_id)
                 if result:
                     await self._sync_controller_mapping_runtime(profile)
+                    if force:
+                        target_mode = self._get_current_controller_target_mode()
+                        if not await self._wait_for_resolved_input_device_path(
+                            lambda: self._resolve_controller_target_gamepad_device_path(target_mode)
+                        ) or not self._is_current_controller_runtime_healthy():
+                            raise RuntimeError("Controller targets or profile did not become ready.")
+                        if not await self._sync_rumble_state(app_id):
+                            raise RuntimeError("Rumble settings did not apply.")
             except Exception:
                 self._mapping_runtime.defer_recovery()
                 raise
@@ -4606,18 +4678,27 @@ class Plugin:
     async def set_per_game_m2_remap_target(self, app_id, target):
         return self.service.set_per_game_m2_remap_target(app_id, target)
 
+    async def _wait_for_startup_task(self):
+        startup_task = self.startup_task
+        if startup_task is None:
+            return
+        try:
+            await startup_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if self.startup_task is startup_task and startup_task.done():
+                self.startup_task = None
+
     async def sync_per_game_target(self, app_id):
-        if self.startup_task is not None:
-            try:
-                await self.startup_task
-            except asyncio.CancelledError:
-                pass
-            finally:
-                if self.startup_task.done():
-                    self.startup_task = None
+        await self._wait_for_startup_task()
         if hasattr(self.service, "sync_per_game_target"):
             return await self.service.sync_per_game_target(app_id)
         return await self.service.sync_missing_glyph_fix_target(app_id)
+
+    async def reapply_controller_profile(self):
+        await self._wait_for_startup_task()
+        return await self.service.reapply_controller_profile()
 
     async def set_missing_glyph_fix_enabled(self, app_id, enabled):
         return await self.set_button_prompt_fix_enabled(app_id, enabled)

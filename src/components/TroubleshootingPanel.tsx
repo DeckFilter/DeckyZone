@@ -2,17 +2,19 @@ import { callable } from '@decky/api'
 import { ButtonItem, ConfirmModal, Navigation, Spinner, showModal } from '@decky/ui'
 import { useEffect, useRef, useState } from 'react'
 import { openDeckyZoneSettings } from '../routes'
-import type { PluginResetResult } from '../types/plugin'
+import type { PluginReapplyResult, PluginResetResult } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
 import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
+import { SteamExplainerButtonItem } from './SteamExplainer'
 
 type Props = {
   onResetPlugin: () => Promise<ResetPluginOutcome>
+  onReapplyControllerProfile: () => Promise<PluginReapplyResult>
   showOpenSettings?: boolean
   showReinstallPlugin?: boolean
 }
 
-type ResetPluginConfirmModalProps = Props & {
+type ResetPluginConfirmModalProps = Pick<Props, 'onResetPlugin'> & {
   closeModal?: () => void
 }
 
@@ -24,6 +26,8 @@ export type ResetPluginOutcome = {
 const RESET_FAILED_NOTICE = 'Reset failed.'
 const RESET_COMPLETE_NOTICE = 'Plugin reset complete.'
 const REINSTALL_FAILED_NOTICE = 'Reinstall failed.'
+const REAPPLY_FAILED_NOTICE = 'Could not reapply the controller profile.'
+const REAPPLY_PROFILE_EXPLAINER = 'Reloads your dial, trackpad and Home button settings. Uses global settings when no game is running, and includes enabled game overrides when a game is running. Saved settings are kept.'
 const otaUpdate = callable<[], boolean>('ota_update')
 
 const titleStyle = {
@@ -114,12 +118,15 @@ const ResetPluginConfirmModal = ({
 
 const TroubleshootingPanel = ({
   onResetPlugin,
+  onReapplyControllerProfile,
   showOpenSettings = true,
   showReinstallPlugin = false,
 }: Props) => {
   const itemLayout = useSettingsItemLayout()
   const [isReinstalling, setIsReinstalling] = useState(false)
+  const [isReapplying, setIsReapplying] = useState(false)
   const reinstallingRef = useRef(false)
+  const reapplyingRef = useRef(false)
   const isMountedRef = useRef(true)
 
   useEffect(() => {
@@ -130,7 +137,7 @@ const TroubleshootingPanel = ({
   }, [])
 
   const handleReinstall = async () => {
-    if (reinstallingRef.current) {
+    if (reinstallingRef.current || reapplyingRef.current) {
       return
     }
 
@@ -159,6 +166,36 @@ const TroubleshootingPanel = ({
     }
   }
 
+  const handleReapply = async () => {
+    if (reapplyingRef.current || reinstallingRef.current) {
+      return
+    }
+
+    reapplyingRef.current = true
+    setIsReapplying(true)
+    try {
+      const result = await onReapplyControllerProfile()
+      showDeckyToast({
+        title: 'Troubleshooting',
+        body: result.ok
+          ? 'Controller profile reapplied.'
+          : result.status.message || REAPPLY_FAILED_NOTICE,
+        severity: result.ok ? 'success' : 'error',
+      })
+    } catch {
+      showDeckyToast({
+        title: 'Troubleshooting',
+        body: REAPPLY_FAILED_NOTICE,
+        severity: 'error',
+      })
+    } finally {
+      reapplyingRef.current = false
+      if (isMountedRef.current) {
+        setIsReapplying(false)
+      }
+    }
+  }
+
   return (
     <SettingsSection title="Troubleshooting">
       {showOpenSettings && (
@@ -171,12 +208,24 @@ const TroubleshootingPanel = ({
           </ButtonItem>
         </SettingsRow>
       )}
+      <SettingsRow>
+        <SteamExplainerButtonItem
+          layout={itemLayout}
+          label="Reapply Controller Profile"
+          explainerTitle="Reapply Controller Profile"
+          explainer={REAPPLY_PROFILE_EXPLAINER}
+          disabled={isReapplying || isReinstalling}
+          onClick={() => void handleReapply()}
+        >
+          {isReapplying ? 'Reapplying...' : 'Reapply Controller Profile'}
+        </SteamExplainerButtonItem>
+      </SettingsRow>
       {showReinstallPlugin && (
         <SettingsRow>
           <ButtonItem
             layout={itemLayout}
             label="Reinstall Plugin"
-            disabled={isReinstalling}
+            disabled={isReinstalling || isReapplying}
             onClick={() => void handleReinstall()}
           >
             {isReinstalling ? 'Reinstalling...' : 'Reinstall Plugin'}
@@ -187,7 +236,11 @@ const TroubleshootingPanel = ({
         <ButtonItem
           layout={itemLayout}
           label="Reset Plugin"
+          disabled={isReapplying || isReinstalling}
           onClick={() => {
+            if (reapplyingRef.current || reinstallingRef.current) {
+              return
+            }
             showModal(
               <ResetPluginConfirmModal
                 onResetPlugin={onResetPlugin}

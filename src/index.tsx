@@ -34,7 +34,7 @@ import {
   type PluginSettingsUpdate,
   useDeckyZoneState,
 } from './state/DeckyZoneState'
-import type { ActiveGame, PluginResetResult, PluginSettings, PluginStatus } from "./types/plugin"
+import type { ActiveGame, PluginReapplyResult, PluginResetResult, PluginSettings, PluginStatus } from "./types/plugin"
 import { checkLatestVersion, compareVersions, resetStartupCheck } from './utils/pluginUpdates'
 import { showDeckyToast } from './utils/toasts'
 
@@ -44,6 +44,7 @@ type UnregisterFn = () => void
 const getStatus = callable<[], PluginStatus>('get_status')
 const getSettings = callable<[], PluginSettings>('get_settings')
 const resetPlugin = callable<[], PluginResetResult>('reset_plugin')
+const reapplyControllerProfile = callable<[], PluginReapplyResult>('reapply_controller_profile')
 const syncPerGameTarget = callable<[string], boolean>('sync_per_game_target')
 
 const DEFAULT_APP_ID = '0'
@@ -342,6 +343,16 @@ async function syncActiveGameTarget(appId: string) {
   return null
 }
 
+async function handleReapplyControllerProfile() {
+  const settingsRevision = deckyZoneState.getSnapshot().settingsRevision
+  const result = await reapplyControllerProfile()
+  cacheBootstrapStatus(result.status)
+  if (deckyZoneState.getSnapshot().settingsRevision === settingsRevision) {
+    cacheBootstrapSettings(result.settings)
+  }
+  return result
+}
+
 async function handleResetPlugin() {
   let glyphCleanupFailed = false
 
@@ -490,6 +501,7 @@ function Content() {
     <ErrorBoundary title="Troubleshooting">
       <TroubleshootingPanel
         onResetPlugin={handleResetPlugin}
+        onReapplyControllerProfile={handleReapplyControllerProfile}
         showReinstallPlugin={showReinstallPlugin}
       />
     </ErrorBoundary>
@@ -597,6 +609,7 @@ export default definePlugin(() => {
       <SettingsSurfaceProvider surface="settings">
         <SystemInformationPage
           onResetPlugin={handleResetPlugin}
+          onReapplyControllerProfile={handleReapplyControllerProfile}
           onRetryBootstrap={handleRetryBootstrap}
         />
       </SettingsSurfaceProvider>

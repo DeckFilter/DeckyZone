@@ -179,3 +179,9 @@ export type PluginResetResult = {
   status: PluginStatus
   steps: CleanupStepResult[]
 }
+
+export type PluginReapplyResult = {
+  ok: boolean
+  settings: PluginSettings
+  status: PluginStatus
+}
