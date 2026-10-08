@@ -47,7 +47,7 @@ import {
   DECKYZONE_SPECIFICATIONS_ROUTE,
 } from '../routes'
 import { useDeckyZoneState } from '../state/DeckyZoneState'
-import type { DebugInfoSnapshot, SystemReport } from '../types/plugin'
+import type { DebugInfoSnapshot, InputPlumberUpdateResult, PluginReapplyResult, SystemReport } from '../types/plugin'
 import { compareVersions } from '../utils/pluginUpdates'
 import { showDeckyToast } from '../utils/toasts'
 
@@ -78,6 +78,8 @@ type SnapshotPageProps = {
 
 type Props = {
   onResetPlugin: () => Promise<ResetPluginOutcome>
+  onReapplyControllerProfile: () => Promise<PluginReapplyResult>
+  onUpdateInputPlumber: (restore: boolean, expectedVersion: string | null) => Promise<InputPlumberUpdateResult>
   onRetryBootstrap: () => void
 }
 
@@ -442,25 +444,13 @@ const GeneralInformationSection = ({
     <>
       {isSnapshotLoading && !snapshot && (
         <DialogControlsSection>
-          <SettingsDialogSubHeader>Firmware</SettingsDialogSubHeader>
+          <SettingsDialogSubHeader>Software</SettingsDialogSubHeader>
           <SteamSpinner />
         </DialogControlsSection>
       )}
       {snapshotError && <ErrorField message={snapshotError} />}
       {snapshot && (
         <>
-          <DialogControlsSection>
-            <SettingsDialogSubHeader>Firmware</SettingsDialogSubHeader>
-            <SnapshotRow
-              label="EC Firmware"
-              value={formatValue(snapshot.firmware.ecVersion)}
-            />
-            <SnapshotRow
-              label="Display Firmware"
-              value={formatValue(snapshot.firmware.displayVersion)}
-              bottomSeparator="none"
-            />
-          </DialogControlsSection>
           <DialogControlsSection>
             <SettingsDialogSubHeader>Software</SettingsDialogSubHeader>
             <SnapshotRow label="DeckyZone" value={formatValue(pluginVersion)} />
@@ -471,6 +461,18 @@ const GeneralInformationSection = ({
             <SnapshotRow
               label="Gamescope"
               value={formatValue(snapshot.gamescope.version)}
+              bottomSeparator="none"
+            />
+          </DialogControlsSection>
+          <DialogControlsSection>
+            <SettingsDialogSubHeader>Firmware</SettingsDialogSubHeader>
+            <SnapshotRow
+              label="EC Firmware"
+              value={formatValue(snapshot.firmware.ecVersion)}
+            />
+            <SnapshotRow
+              label="Display Firmware"
+              value={formatValue(snapshot.firmware.displayVersion)}
               bottomSeparator="none"
             />
           </DialogControlsSection>
@@ -521,7 +523,7 @@ const ControllerInformationSection = (props: Omit<SnapshotPageProps, 'children'>
   )
 }
 
-const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
+const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUpdateInputPlumber, onRetryBootstrap }: Props) => {
   const { activeGame, bootstrap, settingsRevision, store, uiRevision } = useDeckyZoneState()
   const [snapshot, setSnapshot] = useState<DebugInfoSnapshot | null>(null)
   const [latestVersionNum, setLatestVersionNum] = useState('')
@@ -625,6 +627,8 @@ const SystemInformationPage = ({ onResetPlugin, onRetryBootstrap }: Props) => {
               <ErrorBoundary title="Troubleshooting">
                 <TroubleshootingPanel
                   onResetPlugin={onResetPlugin}
+                  onReapplyControllerProfile={onReapplyControllerProfile}
+                  onUpdateInputPlumber={onUpdateInputPlumber}
                   showOpenSettings={false}
                   showReinstallPlugin={showReinstallPlugin}
                 />

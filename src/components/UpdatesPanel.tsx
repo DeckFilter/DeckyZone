@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   checkLatestVersion,
   compareVersions,
+  getLastCheckText,
   readVersionCache,
   recheckLatestVersion,
   type VersionCache,
@@ -18,27 +19,6 @@ const CHECK_VERSION_EXPLAINER = 'Checks GitHub for the latest plugin release.'
 type Props = {
   installedVersionNum: string
   onLatestVersionChange: (latestVersionNum: string) => void
-}
-
-const getLastCheckText = (lastCheckTime: number): string => {
-  const diff = Date.now() - lastCheckTime
-
-  if (diff < 60 * 1000) {
-    return 'just now'
-  }
-
-  if (diff < 60 * 60 * 1000) {
-    const minutes = Math.floor(diff / 60000)
-    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
-  }
-
-  if (diff < 24 * 60 * 60 * 1000) {
-    const hours = Math.floor(diff / 3600000)
-    return `${hours} hour${hours === 1 ? '' : 's'} ago`
-  }
-
-  const days = Math.floor(diff / 86400000)
-  return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
 const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => {

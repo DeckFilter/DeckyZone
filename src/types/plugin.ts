@@ -179,3 +179,28 @@ export type PluginResetResult = {
   status: PluginStatus
   steps: CleanupStepResult[]
 }
+
+export type PluginReapplyResult = {
+  ok: boolean
+  settings: PluginSettings
+  status: PluginStatus
+}
+
+export type InputPlumberUpdateStatus = {
+  supported: boolean
+  available: boolean
+  managed: boolean
+  activeVersion: string | null
+  systemVersion: string | null
+  latestVersion: string | null
+  updateAvailable: boolean
+  canRestore: boolean
+  busy: boolean
+  message: string | null
+  checkedAt: number | null
+  checkError: string | null
+}
+
+export type InputPlumberUpdateResult = PluginReapplyResult & {
+  update: InputPlumberUpdateStatus
+}
