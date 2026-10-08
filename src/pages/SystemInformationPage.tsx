@@ -443,25 +443,13 @@ const GeneralInformationSection = ({
     <>
       {isSnapshotLoading && !snapshot && (
         <DialogControlsSection>
-          <SettingsDialogSubHeader>Firmware</SettingsDialogSubHeader>
+          <SettingsDialogSubHeader>Software</SettingsDialogSubHeader>
           <SteamSpinner />
         </DialogControlsSection>
       )}
       {snapshotError && <ErrorField message={snapshotError} />}
       {snapshot && (
         <>
-          <DialogControlsSection>
-            <SettingsDialogSubHeader>Firmware</SettingsDialogSubHeader>
-            <SnapshotRow
-              label="EC Firmware"
-              value={formatValue(snapshot.firmware.ecVersion)}
-            />
-            <SnapshotRow
-              label="Display Firmware"
-              value={formatValue(snapshot.firmware.displayVersion)}
-              bottomSeparator="none"
-            />
-          </DialogControlsSection>
           <DialogControlsSection>
             <SettingsDialogSubHeader>Software</SettingsDialogSubHeader>
             <SnapshotRow label="DeckyZone" value={formatValue(pluginVersion)} />
@@ -472,6 +460,18 @@ const GeneralInformationSection = ({
             <SnapshotRow
               label="Gamescope"
               value={formatValue(snapshot.gamescope.version)}
+              bottomSeparator="none"
+            />
+          </DialogControlsSection>
+          <DialogControlsSection>
+            <SettingsDialogSubHeader>Firmware</SettingsDialogSubHeader>
+            <SnapshotRow
+              label="EC Firmware"
+              value={formatValue(snapshot.firmware.ecVersion)}
+            />
+            <SnapshotRow
+              label="Display Firmware"
+              value={formatValue(snapshot.firmware.displayVersion)}
               bottomSeparator="none"
             />
           </DialogControlsSection>
