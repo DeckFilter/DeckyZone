@@ -1,21 +1,27 @@
 import { callable } from '@decky/api'
 import { ButtonItem, ConfirmModal, Navigation, Spinner, showModal } from '@decky/ui'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { openDeckyZoneSettings } from '../routes'
-import type { PluginReapplyResult, PluginResetResult } from '../types/plugin'
+import type { InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
 import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
 import { SteamExplainerButtonItem } from './SteamExplainer'
+import InputPlumberUpdateControls from './InputPlumberUpdateControls'
+
+type TroubleshootingOperation = 'reapply' | 'reinstall' | 'reset' | 'inputplumber'
 
 type Props = {
   onResetPlugin: () => Promise<ResetPluginOutcome>
   onReapplyControllerProfile: () => Promise<PluginReapplyResult>
+  onUpdateInputPlumber: (restore: boolean, expectedVersion: string | null) => Promise<InputPlumberUpdateResult>
   showOpenSettings?: boolean
   showReinstallPlugin?: boolean
 }
 
 type ResetPluginConfirmModalProps = Pick<Props, 'onResetPlugin'> & {
   closeModal?: () => void
+  onBeginOperation: () => boolean
+  onEndOperation: () => void
 }
 
 export type ResetPluginOutcome = {
@@ -57,10 +63,25 @@ function getPartialResetNotice(result: PluginResetResult, glyphCleanupFailed: bo
 const ResetPluginConfirmModal = ({
   closeModal,
   onResetPlugin,
+  onBeginOperation,
+  onEndOperation,
 }: ResetPluginConfirmModalProps) => {
   const [resetting, setResetting] = useState(false)
+  const resettingRef = useRef(false)
 
   const handleReset = async () => {
+    if (resettingRef.current) {
+      return
+    }
+    if (!onBeginOperation()) {
+      showDeckyToast({
+        title: 'DeckyZone',
+        body: 'Another troubleshooting action is running. Wait for it to finish.',
+        severity: 'error',
+      })
+      return
+    }
+    resettingRef.current = true
     setResetting(true)
     let shouldClose = false
 
@@ -69,13 +90,13 @@ const ResetPluginConfirmModal = ({
 
       if (result.ok && !glyphCleanupFailed) {
         showDeckyToast({
-          title: 'Troubleshooting',
+          title: 'DeckyZone',
           body: RESET_COMPLETE_NOTICE,
           severity: 'success',
         })
       } else {
         showDeckyToast({
-          title: 'Troubleshooting',
+          title: 'DeckyZone',
           body: getPartialResetNotice(result, glyphCleanupFailed),
           severity: 'warning',
         })
@@ -84,11 +105,13 @@ const ResetPluginConfirmModal = ({
       shouldClose = true
     } catch {
       showDeckyToast({
-        title: 'Troubleshooting',
+        title: 'DeckyZone',
         body: RESET_FAILED_NOTICE,
         severity: 'error',
       })
     } finally {
+      resettingRef.current = false
+      onEndOperation()
       setResetting(false)
       if (shouldClose) {
         closeModal?.()
@@ -119,14 +142,15 @@ const ResetPluginConfirmModal = ({
 const TroubleshootingPanel = ({
   onResetPlugin,
   onReapplyControllerProfile,
+  onUpdateInputPlumber,
   showOpenSettings = true,
   showReinstallPlugin = false,
 }: Props) => {
   const itemLayout = useSettingsItemLayout()
-  const [isReinstalling, setIsReinstalling] = useState(false)
-  const [isReapplying, setIsReapplying] = useState(false)
-  const reinstallingRef = useRef(false)
-  const reapplyingRef = useRef(false)
+  const [operation, setOperation] = useState<TroubleshootingOperation | null>(null)
+  const [inputPlumberBusy, setInputPlumberBusy] = useState(false)
+  const operationRef = useRef<TroubleshootingOperation | null>(null)
+  const inputPlumberBusyRef = useRef(false)
   const isMountedRef = useRef(true)
 
   useEffect(() => {
@@ -136,47 +160,68 @@ const TroubleshootingPanel = ({
     }
   }, [])
 
+  const beginOperation = useCallback((nextOperation: TroubleshootingOperation) => {
+    if (!isMountedRef.current || operationRef.current !== null || inputPlumberBusyRef.current) {
+      return false
+    }
+    operationRef.current = nextOperation
+    if (isMountedRef.current) {
+      setOperation(nextOperation)
+    }
+    return true
+  }, [])
+
+  const endOperation = useCallback((completedOperation: TroubleshootingOperation) => {
+    if (operationRef.current === completedOperation) {
+      operationRef.current = null
+      if (isMountedRef.current) {
+        setOperation(null)
+      }
+    }
+  }, [])
+
+  const handleInputPlumberBusyChange = useCallback((busy: boolean) => {
+    inputPlumberBusyRef.current = busy
+    if (isMountedRef.current) {
+      setInputPlumberBusy(busy)
+    }
+  }, [])
+
+  const busy = operation !== null || inputPlumberBusy
+
   const handleReinstall = async () => {
-    if (reinstallingRef.current || reapplyingRef.current) {
+    if (!beginOperation('reinstall')) {
       return
     }
-
-    reinstallingRef.current = true
-    setIsReinstalling(true)
     try {
       const success = await otaUpdate()
       if (!success) {
         showDeckyToast({
-          title: 'Troubleshooting',
+          title: 'DeckyZone',
           body: REINSTALL_FAILED_NOTICE,
           severity: 'error',
         })
       }
     } catch {
       showDeckyToast({
-        title: 'Troubleshooting',
+        title: 'DeckyZone',
         body: REINSTALL_FAILED_NOTICE,
         severity: 'error',
       })
     } finally {
-      reinstallingRef.current = false
-      if (isMountedRef.current) {
-        setIsReinstalling(false)
-      }
+      endOperation('reinstall')
     }
   }
 
   const handleReapply = async () => {
-    if (reapplyingRef.current || reinstallingRef.current) {
+    if (!beginOperation('reapply')) {
       return
     }
 
-    reapplyingRef.current = true
-    setIsReapplying(true)
     try {
       const result = await onReapplyControllerProfile()
       showDeckyToast({
-        title: 'Troubleshooting',
+        title: 'DeckyZone',
         body: result.ok
           ? 'Controller profile reapplied.'
           : result.status.message || REAPPLY_FAILED_NOTICE,
@@ -184,15 +229,12 @@ const TroubleshootingPanel = ({
       })
     } catch {
       showDeckyToast({
-        title: 'Troubleshooting',
+        title: 'DeckyZone',
         body: REAPPLY_FAILED_NOTICE,
         severity: 'error',
       })
     } finally {
-      reapplyingRef.current = false
-      if (isMountedRef.current) {
-        setIsReapplying(false)
-      }
+      endOperation('reapply')
     }
   }
 
@@ -214,21 +256,28 @@ const TroubleshootingPanel = ({
           label="Reapply Controller Profile"
           explainerTitle="Reapply Controller Profile"
           explainer={REAPPLY_PROFILE_EXPLAINER}
-          disabled={isReapplying || isReinstalling}
+          disabled={busy}
           onClick={() => void handleReapply()}
         >
-          {isReapplying ? 'Reapplying...' : 'Reapply Controller Profile'}
+          {operation === 'reapply' ? 'Reapplying...' : 'Reapply Controller Profile'}
         </SteamExplainerButtonItem>
       </SettingsRow>
+      <InputPlumberUpdateControls
+        disabled={busy}
+        onUpdateInputPlumber={onUpdateInputPlumber}
+        onBeginOperation={() => beginOperation('inputplumber')}
+        onEndOperation={() => endOperation('inputplumber')}
+        onStatusBusyChange={handleInputPlumberBusyChange}
+      />
       {showReinstallPlugin && (
         <SettingsRow>
           <ButtonItem
             layout={itemLayout}
             label="Reinstall Plugin"
-            disabled={isReinstalling || isReapplying}
+            disabled={busy}
             onClick={() => void handleReinstall()}
           >
-            {isReinstalling ? 'Reinstalling...' : 'Reinstall Plugin'}
+            {operation === 'reinstall' ? 'Reinstalling...' : 'Reinstall Plugin'}
           </ButtonItem>
         </SettingsRow>
       )}
@@ -236,14 +285,16 @@ const TroubleshootingPanel = ({
         <ButtonItem
           layout={itemLayout}
           label="Reset Plugin"
-          disabled={isReapplying || isReinstalling}
+          disabled={busy}
           onClick={() => {
-            if (reapplyingRef.current || reinstallingRef.current) {
+            if (operationRef.current !== null || inputPlumberBusyRef.current) {
               return
             }
             showModal(
               <ResetPluginConfirmModal
                 onResetPlugin={onResetPlugin}
+                onBeginOperation={() => beginOperation('reset')}
+                onEndOperation={() => endOperation('reset')}
               />,
             )
           }}

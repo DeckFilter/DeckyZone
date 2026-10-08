@@ -47,7 +47,7 @@ import {
   DECKYZONE_SPECIFICATIONS_ROUTE,
 } from '../routes'
 import { useDeckyZoneState } from '../state/DeckyZoneState'
-import type { DebugInfoSnapshot, PluginReapplyResult, SystemReport } from '../types/plugin'
+import type { DebugInfoSnapshot, InputPlumberUpdateResult, PluginReapplyResult, SystemReport } from '../types/plugin'
 import { compareVersions } from '../utils/pluginUpdates'
 import { showDeckyToast } from '../utils/toasts'
 
@@ -79,6 +79,7 @@ type SnapshotPageProps = {
 type Props = {
   onResetPlugin: () => Promise<ResetPluginOutcome>
   onReapplyControllerProfile: () => Promise<PluginReapplyResult>
+  onUpdateInputPlumber: (restore: boolean, expectedVersion: string | null) => Promise<InputPlumberUpdateResult>
   onRetryBootstrap: () => void
 }
 
@@ -522,7 +523,7 @@ const ControllerInformationSection = (props: Omit<SnapshotPageProps, 'children'>
   )
 }
 
-const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onRetryBootstrap }: Props) => {
+const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUpdateInputPlumber, onRetryBootstrap }: Props) => {
   const { activeGame, bootstrap, settingsRevision, store, uiRevision } = useDeckyZoneState()
   const [snapshot, setSnapshot] = useState<DebugInfoSnapshot | null>(null)
   const [latestVersionNum, setLatestVersionNum] = useState('')
@@ -627,6 +628,7 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onRe
                 <TroubleshootingPanel
                   onResetPlugin={onResetPlugin}
                   onReapplyControllerProfile={onReapplyControllerProfile}
+                  onUpdateInputPlumber={onUpdateInputPlumber}
                   showOpenSettings={false}
                   showReinstallPlugin={showReinstallPlugin}
                 />

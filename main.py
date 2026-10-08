@@ -17,6 +17,7 @@ from controller_mapping_runtime import MappingRuntime
 import firmware_info
 import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_device_profile
+import inputplumber_update
 import inputplumber_target_sync
 import os_release
 import plugin_update
@@ -319,6 +320,11 @@ class DeckyZoneService:
         self._mapping_runtime = MappingRuntime(decky.DECKY_PLUGIN_RUNTIME_DIR, self.logger, lambda direction: decky.emit("controller_mapping_brightness", direction))
         self._mapping_sync_lock = asyncio.Lock()
         self._mapping_save_lock = asyncio.Lock()
+        self.inputplumber_updater = inputplumber_update.InputPlumberUpdater(
+            command_runner=command_runner,
+            read_text=self.read_text,
+            command_env=self.get_env(),
+        )
         self._zotac_raw_command_seq = 0
         self._libc = ctypes.CDLL(ctypes.util.find_library("c") or None, use_errno=True)
 
@@ -650,8 +656,13 @@ class DeckyZoneService:
 
     def _get_binary_version(self, binary_name):
         try:
+            executable = (
+                str(self.inputplumber_updater.active_binary_path())
+                if binary_name == "inputplumber"
+                else binary_name
+            )
             result = self.command_runner(
-                [binary_name, "--version"],
+                [executable, "--version"],
                 check=True,
                 text=True,
                 stdout=subprocess.PIPE,
@@ -1112,8 +1123,11 @@ class DeckyZoneService:
         except (FileNotFoundError, PermissionError, OSError, UnicodeDecodeError):
             return None
 
+    def _get_default_inputplumber_profile_path(self):
+        return self.inputplumber_updater.data_path("profiles/default.yaml")
+
     def _get_gyro_mount_matrix_fix_state(self):
-        system_path = SYSTEM_ZOTAC_INPUTPLUMBER_DEVICE_PROFILE_PATH
+        system_path = self.inputplumber_updater.data_path("devices/50-zotac-zone.yaml")
         managed_path = self._get_managed_gyro_mount_matrix_profile_path()
         system_profile_yaml = self._read_optional_file_text(system_path)
         managed_profile_yaml = self._read_optional_file_text(managed_path)
@@ -1183,7 +1197,7 @@ class DeckyZoneService:
             raise RuntimeError(GYRO_MOUNT_MATRIX_EXTERNAL_OVERRIDE_MESSAGE)
 
         system_profile_yaml = self._read_optional_file_text(
-            SYSTEM_ZOTAC_INPUTPLUMBER_DEVICE_PROFILE_PATH
+            self.inputplumber_updater.data_path("devices/50-zotac-zone.yaml")
         )
         if system_profile_yaml is None:
             raise RuntimeError(GYRO_MOUNT_MATRIX_UNAVAILABLE_MESSAGE)
@@ -1294,7 +1308,7 @@ class DeckyZoneService:
         changed = self._disable_directional_trackpad_source_files(keep_mapping_source=True)
         mapping_changed = controller_mappings.sync_source_file(
             MANAGED_INPUTPLUMBER_DEVICES_DIR,
-            "/usr/share/inputplumber/devices/50-zotac-zone.yaml",
+            self.inputplumber_updater.data_path("devices/50-zotac-zone.yaml"),
             self.settings_store.has_custom_controller_mappings(),
         )
         return mapping_changed or changed
@@ -1304,7 +1318,7 @@ class DeckyZoneService:
         capability_map_changed = self._remove_directional_trackpad_capability_map()
         mapping_source_changed = False if keep_mapping_source else controller_mappings.sync_source_file(
             MANAGED_INPUTPLUMBER_DEVICES_DIR,
-            "/usr/share/inputplumber/devices/50-zotac-zone.yaml",
+            self.inputplumber_updater.data_path("devices/50-zotac-zone.yaml"),
             False,
         )
         return mapping_source_changed or capability_map_changed or device_override_changed
@@ -1499,7 +1513,7 @@ class DeckyZoneService:
 
         profile_path = self._get_inputplumber_profile_path() or None
         if profile_path == str(self._get_home_button_override_profile_path()):
-            profile_path = DEFAULT_INPUTPLUMBER_PROFILE_PATH
+            profile_path = str(self._get_default_inputplumber_profile_path())
             profile_yaml = self.read_text(profile_path)
         else:
             profile_yaml = self._get_inputplumber_profile_yaml()
@@ -1542,7 +1556,7 @@ class DeckyZoneService:
             )
             self._load_inputplumber_profile_path(original_profile_path)
         else:
-            self._load_inputplumber_profile_path(DEFAULT_INPUTPLUMBER_PROFILE_PATH)
+            self._load_inputplumber_profile_path(str(self._get_default_inputplumber_profile_path()))
 
         self._reset_home_button_override_state()
         return True
@@ -1784,7 +1798,7 @@ class DeckyZoneService:
             str(self._get_runtime_inputplumber_profile_path()),
             str(self._get_home_button_override_profile_path()),
         }:
-            profile_path = DEFAULT_INPUTPLUMBER_PROFILE_PATH
+            profile_path = str(self._get_default_inputplumber_profile_path())
             profile_yaml = self.read_text(profile_path)
         else:
             profile_yaml = self._get_inputplumber_profile_yaml()
@@ -1821,7 +1835,7 @@ class DeckyZoneService:
             )
             self._load_inputplumber_profile_path(original_profile_path)
         else:
-            self._load_inputplumber_profile_path(DEFAULT_INPUTPLUMBER_PROFILE_PATH)
+            self._load_inputplumber_profile_path(str(self._get_default_inputplumber_profile_path()))
 
         self._reset_runtime_input_profile_state()
         return True
@@ -1876,7 +1890,7 @@ class DeckyZoneService:
         }
 
         if current_profile_path in managed_profile_paths:
-            self._load_inputplumber_profile_path(DEFAULT_INPUTPLUMBER_PROFILE_PATH)
+            self._load_inputplumber_profile_path(str(self._get_default_inputplumber_profile_path()))
             changed = True
         else:
             current_profile_yaml = self._get_inputplumber_profile_yaml()
@@ -2667,6 +2681,115 @@ class DeckyZoneService:
             self._restore_runtime_input_profile()
             raise
 
+    async def get_inputplumber_update_status(self, check_latest=False):
+        if not isinstance(check_latest, bool):
+            raise ValueError("The update check flag must be a boolean.")
+        return await asyncio.to_thread(
+            self.inputplumber_updater.get_status,
+            check_latest=check_latest,
+        )
+
+    async def _pause_inputplumber_update_runtime(self, restore_profile=True):
+        await self._mapping_runtime.stop()
+        if restore_profile and self.probe_inputplumber_available():
+            await self._prepare_controller_profile_reapply()
+            return
+        for stop in (
+            self.stop_brightness_dial_fixer,
+            self.stop_home_button_listener,
+            self.stop_rumble_fixer,
+        ):
+            if not await stop():
+                raise RuntimeError("Could not pause the controller listeners.")
+        if not self._release_zotac_mouse_device():
+            raise RuntimeError("Could not release the trackpad input device.")
+        self._reset_inputplumber_profile_state()
+        self._startup_target_active = False
+        self._temporary_target_mode = None
+
+    async def _recover_inputplumber_update_runtime(self):
+        if not await self.wait_for_inputplumber_dbus_silently():
+            raise RuntimeError("InputPlumber did not become available after restart.")
+        snapshot = self._get_controller_mode_snapshot()
+        if snapshot.get("mode") == ZOTAC_CONTROLLER_MODE_DESKTOP:
+            await self._reconcile_controller_mode_runtime(snapshot)
+            return
+        if not await self.sync_per_game_target(
+            None, settings_app_id=DEFAULT_APP_ID, force=True
+        ):
+            raise RuntimeError("Controller settings did not recover after restart.")
+
+    async def update_inputplumber(self, restore=False, expected_version=None):
+        if not isinstance(restore, bool):
+            raise ValueError("The restore flag must be a boolean.")
+        if not self.is_supported_device():
+            raise RuntimeError("InputPlumber updates require a Zotac Zone.")
+        before = await self.get_inputplumber_update_status()
+        if not before["supported"]:
+            raise RuntimeError("This updater is available only on SteamOS.")
+        if restore:
+            if not before["canRestore"]:
+                raise RuntimeError("There is no DeckyZone InputPlumber update to restore.")
+            version = None
+        else:
+            if not before["available"]:
+                raise RuntimeError(before["message"] or "InputPlumber cannot be updated.")
+            if not isinstance(expected_version, str) or not expected_version:
+                raise ValueError("Check for an update before installing it.")
+            # Download, validate and execute only --version before input is paused.
+            version = await asyncio.to_thread(
+                self.inputplumber_updater.prepare_latest, expected_version
+            )
+
+        monitor_was_running = self._controller_mode_monitor_running
+        await self.stop_controller_mode_monitor()
+        change = None
+        operation_error = None
+        try:
+            async with self._mapping_save_lock:
+                try:
+                    async with self._mapping_sync_lock:
+                        await self._pause_inputplumber_update_runtime()
+                        change = await asyncio.to_thread(
+                            self.inputplumber_updater.switch, version
+                        )
+                    await self._recover_inputplumber_update_runtime()
+                except Exception as error:
+                    operation_error = str(error).strip() or type(error).__name__
+                    if change is not None:
+                        try:
+                            async with self._mapping_sync_lock:
+                                await self._pause_inputplumber_update_runtime(
+                                    restore_profile=False
+                                )
+                                await asyncio.to_thread(
+                                    self.inputplumber_updater.rollback, change
+                                )
+                        except Exception as rollback_error:
+                            operation_error += f" Rollback failed: {rollback_error}"
+                    try:
+                        await self._recover_inputplumber_update_runtime()
+                    except Exception as recovery_error:
+                        operation_error += f" Controller recovery failed: {recovery_error}"
+        finally:
+            if monitor_was_running:
+                await self.start_controller_mode_monitor()
+
+        if operation_error:
+            self.logger.warning(f"InputPlumber update failed: {operation_error}")
+            self._set_status("failed", f"InputPlumber update failed: {operation_error}")
+        else:
+            self._set_status(
+                "applied",
+                "SteamOS InputPlumber restored." if restore else "InputPlumber updated.",
+            )
+        return {
+            "ok": operation_error is None,
+            "status": self.get_status(),
+            "settings": self.get_settings(),
+            "update": await self.get_inputplumber_update_status(),
+        }
+
     async def reapply_controller_profile(self):
         async with self._mapping_save_lock:
             try:
@@ -2712,7 +2835,7 @@ class DeckyZoneService:
             str(self._get_home_button_override_profile_path()),
         }
         if profile_path in managed_paths:
-            self._load_inputplumber_profile_path(DEFAULT_INPUTPLUMBER_PROFILE_PATH)
+            self._load_inputplumber_profile_path(str(self._get_default_inputplumber_profile_path()))
         elif profile_path and self._path_exists(profile_path):
             self._load_inputplumber_profile_path(profile_path)
         else:
@@ -4401,6 +4524,75 @@ class Plugin:
         self.loop = None
         self.startup_task = None
         self.service = service or DeckyZoneService()
+        self._controller_operation_lock = asyncio.Lock()
+        self._inputplumber_update_requested = False
+        self._inputplumber_update_task = None
+        self._closing = False
+        self._controller_startup_deferred = False
+
+    async def _controller_operation(self, action, *args, wait_for_update=False):
+        if self._closing:
+            raise RuntimeError("DeckyZone is stopping.")
+        if self._inputplumber_update_requested and not wait_for_update:
+            raise RuntimeError("Wait for the InputPlumber update to finish.")
+        async with self._controller_operation_lock:
+            if self._closing:
+                raise RuntimeError("DeckyZone is stopping.")
+            if self._inputplumber_update_requested and not wait_for_update:
+                raise RuntimeError("Wait for the InputPlumber update to finish.")
+            result = action(*args)
+            return await result if asyncio.iscoroutine(result) else result
+
+    async def get_inputplumber_update_status(self, check_latest=False):
+        result = await self.service.get_inputplumber_update_status(check_latest)
+        result["busy"] = self._inputplumber_update_requested
+        return result
+
+    async def update_inputplumber(self, restore=False, expected_version=None):
+        if self._closing:
+            raise RuntimeError("DeckyZone is stopping.")
+        if self._inputplumber_update_requested:
+            raise RuntimeError("An InputPlumber update is already running.")
+        self._inputplumber_update_requested = True
+
+        async def run_update():
+            try:
+                async with self._controller_operation_lock:
+                    await self._wait_for_startup_task()
+                    try:
+                        result = await self.service.update_inputplumber(
+                            restore, expected_version
+                        )
+                        if result["ok"] and self._controller_startup_deferred:
+                            await self.service.start_controller_mode_monitor()
+                            self._controller_startup_deferred = False
+                        return result
+                    except Exception as error:
+                        message = f"InputPlumber update failed: {error}"
+                        self.service.logger.warning(message)
+                        self.service._set_status("failed", message)
+                        return {
+                            "ok": False,
+                            "status": self.service.get_status(),
+                            "settings": self.service.get_settings(),
+                            "update": await self.service.get_inputplumber_update_status(),
+                        }
+            finally:
+                self._inputplumber_update_requested = False
+
+        task = asyncio.create_task(run_update())
+        self._inputplumber_update_task = task
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # A cancelled RPC must not release the gate while a switch thread runs.
+            try:
+                await asyncio.shield(task)
+            finally:
+                raise
+        finally:
+            if self._inputplumber_update_task is task and task.done():
+                self._inputplumber_update_task = None
 
     async def _cancel_startup_task(self, timeout=None):
         step = {
@@ -4593,36 +4785,36 @@ class Plugin:
         )
 
     async def reset_plugin(self):
-        result = await self._reset_plugin_cleanup()
+        result = await self._controller_operation(self._reset_plugin_cleanup)
         self._log_cleanup_result("reset", result)
         return result
 
     async def set_home_button_enabled(self, enabled):
-        return await self.service.set_home_button_enabled(enabled)
+        return await self._controller_operation(self.service.set_home_button_enabled, enabled)
 
     async def set_legacy_layout_enabled(self, enabled):
         return self.service.set_legacy_layout_enabled(enabled)
 
     async def set_controller_mode(self, mode):
-        return await self.service.set_controller_mode(mode)
+        return await self._controller_operation(self.service.set_controller_mode, mode)
 
     async def set_rumble_enabled(self, enabled):
-        return await self.service.set_rumble_enabled(enabled)
+        return await self._controller_operation(self.service.set_rumble_enabled, enabled)
 
     async def set_rumble_intensity(self, intensity):
-        return await self.service.set_rumble_intensity(intensity)
+        return await self._controller_operation(self.service.set_rumble_intensity, intensity)
 
     async def set_brightness_dial_fix_enabled(self, enabled):
-        return await self.service.set_brightness_dial_fix_enabled(enabled)
+        return await self._controller_operation(self.service.set_brightness_dial_fix_enabled, enabled)
 
     async def set_gyro_mount_matrix_fix_enabled(self, enabled):
-        return await self.service.set_gyro_mount_matrix_fix_enabled(enabled)
+        return await self._controller_operation(self.service.set_gyro_mount_matrix_fix_enabled, enabled)
 
     async def set_trackpad_mode(self, mode):
-        return self.service.set_trackpad_mode(mode)
+        return await self._controller_operation(self.service.set_trackpad_mode, mode)
 
     async def set_trackpads_disabled(self, disabled):
-        return self.service.set_trackpads_disabled(disabled)
+        return await self._controller_operation(self.service.set_trackpads_disabled, disabled)
 
     async def set_zotac_glyphs_enabled(self, enabled):
         return await self.service.set_zotac_glyphs_enabled(enabled)
@@ -4646,37 +4838,37 @@ class Plugin:
         return self.service.get_controller_mapping(app_id)
 
     async def set_controller_mapping(self, app_id, profile, enabled=True):
-        return await self.service.set_controller_mapping(app_id, profile, enabled)
+        return await self._controller_operation(self.service.set_controller_mapping, app_id, profile, enabled)
 
     async def update_game_controller_settings(self, app_id, patch):
-        return await self.service.update_game_controller_settings(app_id, patch)
+        return await self._controller_operation(self.service.update_game_controller_settings, app_id, patch)
 
     async def remove_game_settings(self, app_id):
-        return await self.service.remove_game_settings(app_id)
+        return await self._controller_operation(self.service.remove_game_settings, app_id)
 
     async def set_per_game_settings_enabled(self, app_id, enabled):
-        return self.service.set_per_game_settings_enabled(app_id, enabled)
+        return await self._controller_operation(self.service.set_per_game_settings_enabled, app_id, enabled)
 
     async def set_button_prompt_fix_enabled(self, app_id, enabled):
-        return self.service.set_button_prompt_fix_enabled(app_id, enabled)
+        return await self._controller_operation(self.service.set_button_prompt_fix_enabled, app_id, enabled)
 
     async def set_per_game_trackpad_mode(self, app_id, mode):
-        return self.service.set_per_game_trackpad_mode(app_id, mode)
+        return await self._controller_operation(self.service.set_per_game_trackpad_mode, app_id, mode)
 
     async def set_per_game_trackpads_disabled(self, app_id, disabled):
-        return self.service.set_per_game_trackpads_disabled(app_id, disabled)
+        return await self._controller_operation(self.service.set_per_game_trackpads_disabled, app_id, disabled)
 
     async def set_per_game_rumble_enabled(self, app_id, enabled):
-        return await self.service.set_per_game_rumble_enabled(app_id, enabled)
+        return await self._controller_operation(self.service.set_per_game_rumble_enabled, app_id, enabled)
 
     async def set_per_game_rumble_intensity(self, app_id, intensity):
-        return await self.service.set_per_game_rumble_intensity(app_id, intensity)
+        return await self._controller_operation(self.service.set_per_game_rumble_intensity, app_id, intensity)
 
     async def set_per_game_m1_remap_target(self, app_id, target):
-        return self.service.set_per_game_m1_remap_target(app_id, target)
+        return await self._controller_operation(self.service.set_per_game_m1_remap_target, app_id, target)
 
     async def set_per_game_m2_remap_target(self, app_id, target):
-        return self.service.set_per_game_m2_remap_target(app_id, target)
+        return await self._controller_operation(self.service.set_per_game_m2_remap_target, app_id, target)
 
     async def _wait_for_startup_task(self):
         startup_task = self.startup_task
@@ -4693,12 +4885,16 @@ class Plugin:
     async def sync_per_game_target(self, app_id):
         await self._wait_for_startup_task()
         if hasattr(self.service, "sync_per_game_target"):
-            return await self.service.sync_per_game_target(app_id)
-        return await self.service.sync_missing_glyph_fix_target(app_id)
+            return await self._controller_operation(
+                self.service.sync_per_game_target, app_id, wait_for_update=True
+            )
+        return await self._controller_operation(
+            self.service.sync_missing_glyph_fix_target, app_id, wait_for_update=True
+        )
 
     async def reapply_controller_profile(self):
         await self._wait_for_startup_task()
-        return await self.service.reapply_controller_profile()
+        return await self._controller_operation(self.service.reapply_controller_profile)
 
     async def set_missing_glyph_fix_enabled(self, app_id, enabled):
         return await self.set_button_prompt_fix_enabled(app_id, enabled)
@@ -4710,21 +4906,36 @@ class Plugin:
         return await self.sync_per_game_target(app_id)
 
     async def test_rumble(self, app_id=None):
-        return await self.service.test_rumble(app_id)
+        return await self._controller_operation(self.service.test_rumble, app_id)
 
     async def get_latest_version_num(self):
         return await self.service.get_latest_version_num()
 
     async def ota_update(self):
-        return await self.service.ota_update()
+        return await self._controller_operation(self.service.ota_update)
 
     async def _main(self):
         self.loop = asyncio.get_event_loop()
         decky.logger.info("DeckyZone starting")
+        if hasattr(self.service, "inputplumber_updater"):
+            update_status = await self.service.get_inputplumber_update_status()
+            if update_status["supported"]:
+                try:
+                    recovered = await asyncio.to_thread(
+                        self.service.inputplumber_updater.recover_pending
+                    )
+                    if recovered:
+                        decky.logger.info("Recovered an interrupted InputPlumber change")
+                except Exception as error:
+                    message = f"InputPlumber recovery failed: {error}"
+                    decky.logger.warning(message)
+                    self.service._set_status("failed", message)
+                    self._controller_startup_deferred = True
         settings = self.service.get_settings()
-        await self.service.start_controller_mode_monitor()
-        if settings["rumbleEnabled"]:
-            await self.service.start_rumble_fixer()
+        if not self._controller_startup_deferred:
+            await self.service.start_controller_mode_monitor()
+            if settings["rumbleEnabled"]:
+                await self.service.start_rumble_fixer()
         if (
             settings.get("remainingBatteryTimeFixEnabled", False)
             and hasattr(self.service, "start_remaining_battery_time_bridge")
@@ -4741,42 +4952,56 @@ class Plugin:
                 )
         elif hasattr(self.service, "stop_remaining_battery_time_bridge"):
             await self.service.stop_remaining_battery_time_bridge()
-        if self.service._is_startup_controller_runtime_required():
+        if (
+            not self._controller_startup_deferred
+            and self.service._is_startup_controller_runtime_required()
+        ):
             self.startup_task = self.loop.create_task(self.service.apply_startup_mode())
+
+    async def _begin_controller_cleanup(self):
+        # Reject queued game switches before waiting for an in-flight update.
+        self._closing = True
+        update_task = self._inputplumber_update_task
+        if update_task is not None and not update_task.done():
+            await asyncio.shield(update_task)
 
     async def _unload(self):
         decky.logger.info("DeckyZone stopping")
-        steps = []
-        startup_step = await self._run_cleanup_step(
-            steps,
-            "cancelStartupTask",
-            self._request_startup_task_cancel_for_unload,
-        )
+        await self._begin_controller_cleanup()
+        async with self._controller_operation_lock:
+            steps = []
+            startup_step = await self._run_cleanup_step(
+                steps,
+                "cancelStartupTask",
+                self._request_startup_task_cancel_for_unload,
+            )
 
-        if hasattr(self.service, "cleanup_for_unload"):
-            result = await self.service.cleanup_for_unload()
-        elif hasattr(self.service, "cleanup"):
-            result = await self.service.cleanup()
-        else:
-            await self.service.stop_controller_mode_monitor()
-            if hasattr(self.service, "stop_brightness_dial_fixer"):
-                await self.service.stop_brightness_dial_fixer()
-            if hasattr(self.service, "stop_remaining_battery_time_bridge"):
-                await self.service.stop_remaining_battery_time_bridge()
-            await self.service.stop_rumble_fixer()
-            result = {
-                "ok": True,
-                "steps": [],
-            }
+            if hasattr(self.service, "cleanup_for_unload"):
+                result = await self.service.cleanup_for_unload()
+            elif hasattr(self.service, "cleanup"):
+                result = await self.service.cleanup()
+            else:
+                await self.service.stop_controller_mode_monitor()
+                if hasattr(self.service, "stop_brightness_dial_fixer"):
+                    await self.service.stop_brightness_dial_fixer()
+                if hasattr(self.service, "stop_remaining_battery_time_bridge"):
+                    await self.service.stop_remaining_battery_time_bridge()
+                await self.service.stop_rumble_fixer()
+                result = {
+                    "ok": True,
+                    "steps": [],
+                }
 
-        result["steps"] = [startup_step, *result.get("steps", [])]
-        result["ok"] = bool(startup_step["ok"] and result.get("ok", True))
-        self._log_cleanup_result("unload", result)
+            result["steps"] = [startup_step, *result.get("steps", [])]
+            result["ok"] = bool(startup_step["ok"] and result.get("ok", True))
+            self._log_cleanup_result("unload", result)
 
     async def _uninstall(self):
         decky.logger.info("DeckyZone uninstall")
-        result = await self._reset_plugin_cleanup()
-        self._log_cleanup_result("uninstall", result)
+        await self._begin_controller_cleanup()
+        async with self._controller_operation_lock:
+            result = await self._reset_plugin_cleanup()
+            self._log_cleanup_result("uninstall", result)
 
     async def _migration(self):
         decky.logger.info("Migrating DeckyZone")

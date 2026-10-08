@@ -102,6 +102,8 @@ VRAM Size reserves 4 to 8 GB of system memory for the integrated GPU, matching t
 
 If controller settings stop responding, use **Troubleshooting > Reapply Controller Profile** to reload dials, trackpads and Home, including active game overrides. This keeps saved settings and also works with untouched defaults. Controller input may pause briefly while the profile is reapplied.
 
+On SteamOS, **Troubleshooting > InputPlumber Update** lets you manually check for and install the latest stable upstream release. It installs the binary and matching controller configurations beside the SteamOS package. **Restore SteamOS InputPlumber** switches back to the version currently included with your OS. Controls pause during either action; saved DeckyZone settings are kept. SteamOS updates may reset this override, so check the active version after a system update. Bazzite and CachyOS use their distribution's packages and do not show this updater. The optional installation stays in place when DeckyZone is reset or removed; restore the SteamOS InputPlumber version first if you want to undo it.
+
 Controller features require InputPlumber and drivers for the ZONE's input devices. Compatibility on other distributions depends on the InputPlumber version and drivers they include. Unloading the plugin restores the previous controller emulation.
 
 ## Related plugins
