@@ -8,6 +8,7 @@ type DeckyToast = {
   title: string
   body: string
   severity: ToastSeverity
+  onClick?: () => void
 }
 
 type DeckyToastNotice = DeckyToast & {
@@ -23,11 +24,12 @@ const TOAST_LOGO_FRAME_STYLE = {
   flexShrink: 0,
 } as const
 
-export function showDeckyToast({ title, body, severity }: DeckyToast) {
+export function showDeckyToast({ title, body, severity, onClick }: DeckyToast) {
   toaster.toast({
     title,
     body,
     critical: severity === 'error',
+    onClick,
     logo: createElement(
       'div',
       {

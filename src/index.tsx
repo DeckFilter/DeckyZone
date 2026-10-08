@@ -26,7 +26,7 @@ import {
   syncStoredHideUnsupportedButtonsRuntimeEnabled,
   syncStoredZotacGlyphsRuntimeEnabled,
 } from "./glyphs/zotacGlyphRuntime"
-import { DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE } from './routes'
+import { DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE, openDeckyZoneSettings } from './routes'
 import ControllerMappingPage from './controllerMapping/ControllerMappingPage'
 import {
   DeckyZoneState,
@@ -240,8 +240,9 @@ function startUpdateNoticeAfterBootstrap(bootstrap: Promise<void>, generation: n
       notifiedUpdateVersion = latestVersionNum
       showDeckyToast({
         title: 'DeckyZone',
-        body: 'Update available',
+        body: `Update ${latestVersionNum} available!`,
         severity: 'warning',
+        onClick: openDeckyZoneSettings,
       })
     } catch {
       // A failed release check should not interrupt plugin startup.
