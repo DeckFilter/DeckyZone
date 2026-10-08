@@ -2719,7 +2719,7 @@ class DeckyZoneService:
         ):
             raise RuntimeError("Controller settings did not recover after restart.")
 
-    async def update_inputplumber(self, restore=False, expected_version=None):
+    async def prepare_inputplumber_update(self, restore=False, expected_version=None):
         if not isinstance(restore, bool):
             raise ValueError("The restore flag must be a boolean.")
         if not self.is_supported_device():
@@ -2741,6 +2741,9 @@ class DeckyZoneService:
                 self.inputplumber_updater.prepare_latest, expected_version
             )
 
+        return version
+
+    async def apply_inputplumber_update(self, version, restore=False):
         monitor_was_running = self._controller_mode_monitor_running
         await self.stop_controller_mode_monitor()
         change = None
@@ -4525,19 +4528,28 @@ class Plugin:
         self.startup_task = None
         self.service = service or DeckyZoneService()
         self._controller_operation_lock = asyncio.Lock()
+        self._controller_initialized = asyncio.Event()
+        self._controller_initializing = False
         self._inputplumber_update_requested = False
         self._inputplumber_update_task = None
+        self._inputplumber_update_preparing = False
         self._closing = False
         self._controller_startup_deferred = False
 
     async def _controller_operation(self, action, *args, wait_for_update=False):
         if self._closing:
             raise RuntimeError("DeckyZone is stopping.")
+        await self._controller_initialized.wait()
+        if self._controller_startup_deferred:
+            raise RuntimeError("InputPlumber recovery failed. Restore the SteamOS InputPlumber version first.")
         if self._inputplumber_update_requested and not wait_for_update:
             raise RuntimeError("Wait for the InputPlumber update to finish.")
+        await self._wait_for_startup_task()
         async with self._controller_operation_lock:
             if self._closing:
                 raise RuntimeError("DeckyZone is stopping.")
+            if self._controller_startup_deferred:
+                raise RuntimeError("InputPlumber recovery failed. Restore the SteamOS InputPlumber version first.")
             if self._inputplumber_update_requested and not wait_for_update:
                 raise RuntimeError("Wait for the InputPlumber update to finish.")
             result = action(*args)
@@ -4554,14 +4566,22 @@ class Plugin:
         if self._inputplumber_update_requested:
             raise RuntimeError("An InputPlumber update is already running.")
         self._inputplumber_update_requested = True
+        self._inputplumber_update_preparing = True
 
         async def run_update():
             try:
                 async with self._controller_operation_lock:
+                    await self._controller_initialized.wait()
                     await self._wait_for_startup_task()
                     try:
-                        result = await self.service.update_inputplumber(
+                        version = await self.service.prepare_inputplumber_update(
                             restore, expected_version
+                        )
+                        # Preparation only stages release files. Once listeners or
+                        # the service can change, shutdown must await the transaction.
+                        self._inputplumber_update_preparing = False
+                        result = await self.service.apply_inputplumber_update(
+                            version, restore=restore
                         )
                         if result["ok"] and self._controller_startup_deferred:
                             await self.service.start_controller_mode_monitor()
@@ -4579,6 +4599,7 @@ class Plugin:
                         }
             finally:
                 self._inputplumber_update_requested = False
+                self._inputplumber_update_preparing = False
 
         task = asyncio.create_task(run_update())
         self._inputplumber_update_task = task
@@ -4593,6 +4614,8 @@ class Plugin:
         finally:
             if self._inputplumber_update_task is task and task.done():
                 self._inputplumber_update_task = None
+                self._inputplumber_update_requested = False
+                self._inputplumber_update_preparing = False
 
     async def _cancel_startup_task(self, timeout=None):
         step = {
@@ -4875,15 +4898,15 @@ class Plugin:
         if startup_task is None:
             return
         try:
-            await startup_task
+            await asyncio.shield(startup_task)
         except asyncio.CancelledError:
-            pass
+            if asyncio.current_task().cancelling():
+                raise
         finally:
             if self.startup_task is startup_task and startup_task.done():
                 self.startup_task = None
 
     async def sync_per_game_target(self, app_id):
-        await self._wait_for_startup_task()
         if hasattr(self.service, "sync_per_game_target"):
             return await self._controller_operation(
                 self.service.sync_per_game_target, app_id, wait_for_update=True
@@ -4893,7 +4916,6 @@ class Plugin:
         )
 
     async def reapply_controller_profile(self):
-        await self._wait_for_startup_task()
         return await self._controller_operation(self.service.reapply_controller_profile)
 
     async def set_missing_glyph_fix_enabled(self, app_id, enabled):
@@ -4915,10 +4937,25 @@ class Plugin:
         return await self._controller_operation(self.service.ota_update)
 
     async def _main(self):
+        self._controller_initializing = True
+        try:
+            if self._closing:
+                return
+            await self._initialize_controller_runtime()
+        except (Exception, asyncio.CancelledError):
+            self._controller_startup_deferred = True
+            raise
+        finally:
+            self._controller_initializing = False
+            self._controller_initialized.set()
+
+    async def _initialize_controller_runtime(self):
         self.loop = asyncio.get_event_loop()
         decky.logger.info("DeckyZone starting")
         if hasattr(self.service, "inputplumber_updater"):
             update_status = await self.service.get_inputplumber_update_status()
+            if self._closing:
+                return
             if update_status["supported"]:
                 try:
                     recovered = await asyncio.to_thread(
@@ -4931,6 +4968,8 @@ class Plugin:
                     decky.logger.warning(message)
                     self.service._set_status("failed", message)
                     self._controller_startup_deferred = True
+        if self._closing:
+            return
         settings = self.service.get_settings()
         if not self._controller_startup_deferred:
             await self.service.start_controller_mode_monitor()
@@ -4953,7 +4992,8 @@ class Plugin:
         elif hasattr(self.service, "stop_remaining_battery_time_bridge"):
             await self.service.stop_remaining_battery_time_bridge()
         if (
-            not self._controller_startup_deferred
+            not self._closing
+            and not self._controller_startup_deferred
             and self.service._is_startup_controller_runtime_required()
         ):
             self.startup_task = self.loop.create_task(self.service.apply_startup_mode())
@@ -4963,7 +5003,15 @@ class Plugin:
         self._closing = True
         update_task = self._inputplumber_update_task
         if update_task is not None and not update_task.done():
-            await asyncio.shield(update_task)
+            if self._inputplumber_update_preparing:
+                update_task.cancel()
+            try:
+                await asyncio.shield(update_task)
+            except asyncio.CancelledError:
+                if not update_task.cancelled():
+                    raise
+        if self._controller_initializing:
+            await self._controller_initialized.wait()
 
     async def _unload(self):
         decky.logger.info("DeckyZone stopping")

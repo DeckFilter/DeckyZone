@@ -309,7 +309,7 @@ class InputPlumberUpdater:
             raise InputPlumberUpdateError("The OS InputPlumber service is unavailable.")
         return dict(line.split("=", 1) for line in (result.stdout or "").splitlines() if "=" in line)
 
-    def _guard_service(self, require_active=False, extra_binaries=()):
+    def _guard_service(self, require_active=False, extra_binaries=(), expected_binary=None):
         info = self._service_info()
         fragment = Path(info.get("FragmentPath", ""))
         if fragment not in self.unit_paths:
@@ -324,16 +324,22 @@ class InputPlumberUpdater:
             raise InputPlumberUpdateError("InputPlumber drop-in discovery was ambiguous.") from error
         if any(path != str(self.dropin) for path in dropins):
             raise InputPlumberUpdateError("Another InputPlumber service drop-in prevents a managed update.")
-        self._read_dropin()
+        _, managed_version = self._read_dropin()
         self._secure_path(self.system_binary, "file")
         executable = re.findall(r"(?:^|[\s{])path=([^ ;}]+)", info.get("ExecStart", ""))
-        _, managed_version = self._read_dropin()
         allowed = {str(self.system_binary)}
         allowed.update(str(path) for path in extra_binaries)
         if managed_version:
             allowed.add(str(self.releases / managed_version / "usr/bin/inputplumber"))
         if len(executable) != 1 or executable[0] not in allowed:
             raise InputPlumberUpdateError("The InputPlumber service uses a foreign executable.")
+        if expected_binary is not None:
+            configured_binary = (self.releases / managed_version / "usr/bin/inputplumber"
+                                 if managed_version else self.system_binary)
+            expected_dropins = [str(self.dropin)] if managed_version else []
+            if (configured_binary != expected_binary or executable != [str(expected_binary)]
+                    or dropins != expected_dropins):
+                raise InputPlumberUpdateError("The loaded InputPlumber service does not match the selected update configuration.")
         if require_active and info.get("ActiveState") != "active":
             raise InputPlumberUpdateError("Start the system InputPlumber service before updating it.")
         return info
@@ -636,10 +642,13 @@ class InputPlumberUpdater:
 
     def _activate(self, expected_binary):
         self._run([_SYSTEMCTL, "daemon-reload"], checked=True)
+        # A reload can reveal previously unloaded foreign overrides. Validate the
+        # selected configuration before allowing systemd to execute any of it.
+        self._guard_service(expected_binary=expected_binary)
         self._run([_SYSTEMCTL, "restart", _SERVICE], timeout=30, checked=True)
         deadline = time.monotonic() + ACTIVATION_TIMEOUT_SECONDS
         while True:
-            info = self._guard_service()
+            info = self._guard_service(expected_binary=expected_binary)
             if info.get("ActiveState") == "active" and self._process_binary(info) == expected_binary:
                 result = self._run([_BUSCTL, "--system", "status", "org.shadowblip.InputPlumber"], timeout=3)
                 if result.returncode == 0:
