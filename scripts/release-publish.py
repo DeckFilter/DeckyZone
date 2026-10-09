@@ -10,14 +10,24 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+
+
+RELEASE_READ_ATTEMPTS = 5
+RELEASE_READ_DELAY = 2
 
 
 class ReleaseError(Exception):
     pass
 
 
-def command(*args, binary=False, allow_failure=False):
-    result = subprocess.run(args, capture_output=True, text=not binary, check=False)
+class ReleasePending(ReleaseError):
+    pass
+
+
+def command(*args, binary=False, allow_failure=False, input_data=None):
+    result = subprocess.run(args, input=input_data, capture_output=True,
+                            text=not binary, check=False)
     if result.returncode and not allow_failure:
         detail = result.stderr.decode(errors="replace") if binary else result.stderr
         raise ReleaseError(f"{args[0]} {args[1]} failed: {detail.strip()}")
@@ -78,6 +88,22 @@ def prepare_tag(source_sha, tag, release_dir):
     return release_sha, False
 
 
+def validate_release(release, tag, release_id=None):
+    if not isinstance(release, dict):
+        raise ReleaseError("GitHub returned invalid release metadata")
+    if type(release.get("id")) is not int or release["id"] <= 0:
+        raise ReleaseError("GitHub returned an invalid release identity")
+    if release.get("tag_name") != tag or (release_id is not None and release["id"] != release_id):
+        raise ReleaseError("GitHub release identity conflicts with the planned release")
+    if release.get("prerelease") is not False:
+        raise ReleaseError("GitHub release stable-release status conflicts")
+    if (not isinstance(release.get("draft"), bool)
+            or not isinstance(release.get("assets"), list)
+            or not all(isinstance(asset, dict) for asset in release["assets"])):
+        raise ReleaseError("GitHub returned incomplete release metadata")
+    return release
+
+
 def read_release(repo, tag):
     # Listing includes drafts for the authenticated maintainer; the tag endpoint
     # only documents published releases and cannot reliably resume a draft.
@@ -92,12 +118,47 @@ def read_release(repo, tag):
         return None
     if len(matches) != 1:
         raise ReleaseError("Multiple GitHub releases conflict with the planned tag")
-    release = matches[0]
-    if release.get("prerelease") is not False:
-        raise ReleaseError("GitHub release stable-release status conflicts")
-    if not isinstance(release.get("draft"), bool) or not isinstance(release.get("assets"), list):
-        raise ReleaseError("GitHub returned incomplete release metadata")
+    return validate_release(matches[0], tag)
+
+
+def read_release_by_id(repo, tag, release_id):
+    result = command("gh", "api", "--hostname", "github.com",
+                     f"repos/{repo}/releases/{release_id}", allow_failure=True)
+    if result.returncode:
+        if re.search(r"\bHTTP (?:404|5\d\d)\b", result.stderr):
+            raise ReleasePending("GitHub release metadata is not available yet")
+        raise ReleaseError(f"Cannot read release {release_id}: {result.stderr.strip()}")
+    try:
+        release = json.loads(result.stdout)
+    except ValueError as exc:
+        raise ReleaseError("GitHub returned invalid release metadata") from exc
+    return validate_release(release, tag, release_id)
+
+
+def create_release(repo, tag, release_dir):
+    payload = {"tag_name": tag, "name": tag,
+               "body": (release_dir / "CHANGES.md").read_text(encoding="utf-8"),
+               "draft": True, "prerelease": False}
+    # prepare_tag has already verified and pushed the tag. Keep the POST response
+    # rather than rediscovering a new draft through a potentially stale list.
+    result = command("gh", "api", "--hostname", "github.com", "--method", "POST",
+                     f"repos/{repo}/releases", "--input", "-",
+                     input_data=json.dumps(payload))
+    try:
+        release = validate_release(json.loads(result.stdout), tag)
+    except ValueError as exc:
+        raise ReleaseError("GitHub returned invalid release metadata") from exc
+    if not release["draft"]:
+        raise ReleaseError("GitHub did not create a draft release")
     return release
+
+
+def verify_draft_notes(release, tag, release_dir):
+    # A published matching release may have manually edited notes; leave them intact.
+    if release["draft"]:
+        notes = (release_dir / "CHANGES.md").read_text(encoding="utf-8").rstrip()
+        if release.get("name") != tag or (release.get("body") or "").rstrip() != notes:
+            raise ReleaseError("Existing draft title or notes conflict with the prepared release")
 
 
 def verify_assets(repo, release, manifest):
@@ -126,37 +187,47 @@ def verify_assets(repo, release, manifest):
     return missing
 
 
+def wait_for_release(repo, tag, release_id, release_dir, manifest, published=False):
+    for attempt in range(RELEASE_READ_ATTEMPTS):
+        try:
+            release = read_release_by_id(repo, tag, release_id)
+            verify_draft_notes(release, tag, release_dir)
+            missing = verify_assets(repo, release, manifest)
+            if not missing and (not published or not release["draft"]):
+                return release
+        except ReleasePending:
+            pass
+        if attempt + 1 < RELEASE_READ_ATTEMPTS:
+            time.sleep(RELEASE_READ_DELAY)
+    if published:
+        raise ReleaseError("Published stable release could not be verified after bounded retries")
+    raise ReleaseError("Both release assets must be verified before publication after bounded retries")
+
+
 def publish(repo, tag, release_dir, manifest):
     release = read_release(repo, tag)
     if release is None:
-        command("gh", "release", "create", tag, "--repo", f"github.com/{repo}",
-                "--verify-tag", "--draft", "--title", tag,
-                "--notes-file", str(release_dir / "CHANGES.md"))
-        release = read_release(repo, tag)
-    if release is None:
-        raise ReleaseError("Draft release was not created")
-
-    # A published matching release may have manually edited notes; leave them intact.
-    if release["draft"]:
-        notes = (release_dir / "CHANGES.md").read_text(encoding="utf-8").rstrip()
-        if release.get("name") != tag or (release.get("body") or "").rstrip() != notes:
-            raise ReleaseError("Existing draft title or notes conflict with the prepared release")
+        release = create_release(repo, tag, release_dir)
+    release_id = release["id"]
+    verify_draft_notes(release, tag, release_dir)
 
     missing = verify_assets(repo, release, manifest)
     if missing and not release["draft"]:
         raise ReleaseError("Published release is missing prepared assets")
+    if not release["draft"]:
+        return
     for name in missing:
-        command("gh", "release", "upload", tag, str(release_dir / name),
-                "--repo", f"github.com/{repo}")
-    release = read_release(repo, tag)
-    if release is None or verify_assets(repo, release, manifest):
-        raise ReleaseError("Both release assets must be verified before publication")
+        content_type = "application/zip" if name.endswith(".zip") else "application/gzip"
+        command("gh", "api", "--hostname", "github.com", "--method", "POST",
+                "--header", f"Content-Type: {content_type}",
+                "--input", str(release_dir / name),
+                f"https://uploads.github.com/repos/{repo}/releases/{release_id}/assets?name={name}")
+    release = wait_for_release(repo, tag, release_id, release_dir, manifest)
     if release["draft"]:
-        command("gh", "release", "edit", tag, "--repo", f"github.com/{repo}",
-                "--draft=false", "--latest")
-        release = read_release(repo, tag)
-        if release is None or release["draft"] or verify_assets(repo, release, manifest):
-            raise ReleaseError("Published stable release could not be verified")
+        command("gh", "api", "--hostname", "github.com", "--method", "PATCH",
+                f"repos/{repo}/releases/{release_id}", "--input", "-",
+                input_data=json.dumps({"draft": False, "make_latest": "true"}))
+        wait_for_release(repo, tag, release_id, release_dir, manifest, published=True)
 
 
 def main():
