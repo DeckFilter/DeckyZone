@@ -1,0 +1,38 @@
+{
+  "name": "dbus-next",
+  "version": "0.2.3",
+  "upstream": "https://github.com/altdesktop/python-dbus-next",
+  "wheel": {
+    "filename": "dbus_next-0.2.3-py3-none-any.whl",
+    "url": "https://files.pythonhosted.org/packages/d2/fc/c0a3f4c4eaa5a22fbef91713474666e13d0ea2a69c84532579490a9f2cc8/dbus_next-0.2.3-py3-none-any.whl",
+    "sha256": "58948f9aff9db08316734c0be2a120f6dc502124d9642f55e90ac82ffb16a18b"
+  },
+  "files": {
+    "LICENSE": "c454ab6b8e0653a8eab828a8cbaaa368a1bbfba982178bb18b6177e311eae4cc",
+    "__init__.py": "935d86a6685cede70fdd8057aa6081dbfb5df5f295c2efd26807bb621d61d772",
+    "__version__.py": "2c3f0e90a06ad88008de0742cea6635252f596d5a7ded221b34ee198ac6dc785",
+    "_private/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "_private/address.py": "deb80cb99ddd9e3278260224a29a2b2c62d36e014111677d3203d463f41347c2",
+    "_private/constants.py": "b1d59581af5cf407bb056ac0dcd26bd9c8a88591fe25dd6e7a907812708fdd90",
+    "_private/marshaller.py": "876d57883e5f9c990cdd9bd19efb617840f2746301986b3232db6fc33a4a97db",
+    "_private/unmarshaller.py": "df30bc3a5fa947d756aaf436d23286bd0c02539180208c1c5f1d15614e01b4e9",
+    "_private/util.py": "672bb7be12263a0e435494e102b4085a9628e900b1938d482c095a766cb9d658",
+    "aio/__init__.py": "43c853affa38c3714a23d3978618dd8b59938a09fe7dde2f2b67322d429f9007",
+    "aio/message_bus.py": "8b3b9b5099eb5cff1e4f8eaf85a5e0cf014765c5c1d61f03723c1f420e62ad7f",
+    "aio/proxy_object.py": "a2530181d3e69ec9b6eb6e6b8028c02c7ae604e2518d51206b22831a0d190ec6",
+    "auth.py": "8fe819cfcc8be3fda3ef3973eaa2f224fde0c7bc4fb47944b91ba1547eb24c46",
+    "constants.py": "0c449d59f7f2555739feed3028d4131207a966ff4263ca04a0b1fb7bd100adbc",
+    "errors.py": "1967c187a37a7603a1723d8d1ac19f3f40ab46cd58121808fb84fe40faaf58a9",
+    "glib/__init__.py": "43c853affa38c3714a23d3978618dd8b59938a09fe7dde2f2b67322d429f9007",
+    "glib/message_bus.py": "1c5b2aa8144a447ce07d751e0163701445c5e38570ad396dc3a32a3c6674ac1f",
+    "glib/proxy_object.py": "e9b53eb43390b70b4776561f07306ce57b71548fd1b1cad9483d0a31446137ba",
+    "introspection.py": "56476617e607459b8f3ae478e0668bc33468b5bea3585251f5760db166080d51",
+    "message.py": "697fbd59fee5d6fa54064681b925d7e2bf7961a964c826d718b1835f95fa2f40",
+    "message_bus.py": "879d1abeb090f8693f80819694142bea38ec818880a210f8bccd0ae776b0b7f4",
+    "proxy_object.py": "065f30046e1c747d60691396446b7cc0c7a20a868b673ae0ac690926a9178a0a",
+    "py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "service.py": "080285e4789ee0c9c197faed8bfb66c3495980bab996c11334feb1c81de70eeb",
+    "signature.py": "b75ba1b83f1a2fa3e4489e438470847793a6fe33f5603ecc1f6cfa01d472177a",
+    "validators.py": "1a153eb9a4777ffcd297e81874f7285a110bce2803f79738f5fd1b78af8c5741"
+  }
+}

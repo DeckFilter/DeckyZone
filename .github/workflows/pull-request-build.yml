@@ -49,21 +49,10 @@ jobs:
       - name: Verify installable package
         run: |
           package="out/DeckyZone.zip"
-          required_files=(
-            "DeckyZone/dist/index.js"
-            "DeckyZone/main.py"
-            "DeckyZone/package.json"
-            "DeckyZone/plugin.json"
-            "DeckyZone/assets/gamescope/zotac.zone.oled.lua"
-            "DeckyZone/assets/gamescope/zotac.zone.green-tint.lua"
-          )
-
           test -f "${package}"
-          for required_file in "${required_files[@]}"; do
-            unzip -Z1 "${package}" | grep -Fx "${required_file}"
-          done
-
-          test "$(unzip -Z1 "${package}" | cut -d/ -f1 | sort -u)" = "DeckyZone"
+          # Decky CLI includes these development files; keep the installable archive clean.
+          zip -d "${package}" 'DeckyZone/dist/*.map' 'DeckyZone/py_modules/.keep' || test "$?" -eq 12
+          python3 scripts/release-package.py --verify-zip "${package}"
 
       - name: Name pull request package
         id: package

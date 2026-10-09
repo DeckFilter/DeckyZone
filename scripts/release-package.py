@@ -13,6 +13,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -76,6 +77,22 @@ EXCLUDED_SUFFIXES = (
 VERSION_RE = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
 HASH_RE = re.compile(r"[0-9a-f]{64}\Z")
+DBUS_NEXT_PREFIX = "py_modules/dbus_next/"
+DBUS_NEXT_WHEEL_SHA256 = "58948f9aff9db08316734c0be2a120f6dc502124d9642f55e90ac82ffb16a18b"
+DBUS_NEXT_WHEEL_URL = (
+    "https://files.pythonhosted.org/packages/d2/fc/"
+    "c0a3f4c4eaa5a22fbef91713474666e13d0ea2a69c84532579490a9f2cc8/"
+    "dbus_next-0.2.3-py3-none-any.whl"
+)
+DBUS_NEXT_PAYLOAD_FILES = frozenset({
+    "__init__.py", "__version__.py", "auth.py", "constants.py", "errors.py",
+    "introspection.py", "message.py", "message_bus.py", "proxy_object.py",
+    "py.typed", "service.py", "signature.py", "validators.py",
+    "_private/__init__.py", "_private/address.py", "_private/constants.py",
+    "_private/marshaller.py", "_private/unmarshaller.py", "_private/util.py",
+    "aio/__init__.py", "aio/message_bus.py", "aio/proxy_object.py",
+    "glib/__init__.py", "glib/message_bus.py", "glib/proxy_object.py", "LICENSE",
+})
 
 
 class PackageError(ValueError):
@@ -211,6 +228,40 @@ def validate_native(files: dict[str, RuntimeFile], required: bool = False) -> No
         raise PackageError("The packaged RyzenAdj binary must be executable")
 
 
+def validate_dbus_next(files: dict[str, RuntimeFile]) -> None:
+    vendor = {name[len(DBUS_NEXT_PREFIX):]: item for name, item in files.items()
+              if name.startswith(DBUS_NEXT_PREFIX)}
+    required = DBUS_NEXT_PAYLOAD_FILES | {"VENDOR.json"}
+    if set(vendor) != required:
+        missing = ", ".join(sorted(required - set(vendor)))
+        unexpected = ", ".join(sorted(set(vendor) - required))
+        raise PackageError(
+            f"Bundled dbus_next must contain its complete runtime, license and manifest "
+            f"(missing: {missing or 'none'}; unexpected: {unexpected or 'none'})"
+        )
+    manifest = read_json(vendor["VENDOR.json"].data)
+    if not isinstance(manifest, dict) or set(manifest) != {"name", "version", "upstream", "wheel", "files"}:
+        raise PackageError("Bundled dbus_next VENDOR.json has an invalid schema")
+    if (manifest["name"] != "dbus-next" or manifest["version"] != "0.2.3"
+            or manifest["upstream"] != "https://github.com/altdesktop/python-dbus-next"):
+        raise PackageError("Bundled dbus_next must be the pinned upstream version 0.2.3")
+    if manifest["wheel"] != {
+        "filename": "dbus_next-0.2.3-py3-none-any.whl",
+        "url": DBUS_NEXT_WHEEL_URL,
+        "sha256": DBUS_NEXT_WHEEL_SHA256,
+    }:
+        raise PackageError("Bundled dbus_next wheel provenance does not match the pinned release")
+    hashes = manifest["files"]
+    if not isinstance(hashes, dict) or set(hashes) != DBUS_NEXT_PAYLOAD_FILES:
+        raise PackageError("Bundled dbus_next manifest must cover every runtime file and license exactly")
+    for name, digest in hashes.items():
+        validate_path(name)
+        if not isinstance(digest, str) or not HASH_RE.fullmatch(digest):
+            raise PackageError(f"Invalid bundled dbus_next hash: {name}")
+        if vendor[name].sha256 != digest:
+            raise PackageError(f"Bundled dbus_next checksum mismatch: {name}")
+
+
 def validate_runtime(files: dict[str, RuntimeFile], version: str, native_required: bool = False) -> None:
     for name, item in files.items():
         path = validate_path(name)
@@ -231,6 +282,7 @@ def validate_runtime(files: dict[str, RuntimeFile], version: str, native_require
         raise PackageError("Packaged package.json name must be deckyzone")
     if not isinstance(plugin, dict) or plugin.get("name") != PLUGIN:
         raise PackageError("Packaged plugin.json name must be DeckyZone")
+    validate_dbus_next(files)
     validate_native(files, native_required)
 
 
@@ -275,18 +327,68 @@ def archive_path(name: str) -> str:
     return PurePosixPath(*path.parts[1:]).as_posix()
 
 
-def read_zip(path: Path) -> dict[str, RuntimeFile]:
+def read_zip(path: Path, allow_directories: bool = False) -> dict[str, RuntimeFile]:
     files = {}
+    seen = set()
     with zipfile.ZipFile(path) as archive:
         for info in archive.infolist():
-            name = archive_path(info.filename)
             mode = info.external_attr >> 16
+            entry_name = info.filename[:-1] if info.is_dir() else info.filename
+            if entry_name in seen:
+                raise PackageError(f"Duplicate ZIP entry: {info.filename}")
+            seen.add(entry_name)
+            if allow_directories and info.is_dir():
+                directory = validate_path(entry_name)
+                if (directory.parts[0] != PLUGIN
+                        or (len(directory.parts) > 1 and directory.parts[1] not in {"dist", "py_modules", "assets"})
+                        or not stat.S_ISDIR(mode) or stat.S_IMODE(mode) & ~0o777
+                        or info.flag_bits & 1 or info.file_size != 0):
+                    raise PackageError(f"Invalid runtime ZIP directory: {info.filename}")
+                continue
+            name = archive_path(info.filename)
             if info.is_dir() or not stat.S_ISREG(mode) or info.flag_bits & 1:
                 raise PackageError(f"ZIP entry must be an unencrypted regular file: {info.filename}")
             if stat.S_IMODE(mode) & ~0o777 or name in files:
                 raise PackageError(f"Invalid permissions or duplicate ZIP entry: {info.filename}")
             files[name] = RuntimeFile(archive.read(info), stat.S_IMODE(mode))
     return files
+
+
+def verify_zip(path: Path) -> str:
+    normal_file(path)
+    files = read_zip(path, allow_directories=True)
+    if "package.json" not in files:
+        raise PackageError("Installable ZIP is missing package.json")
+    package = read_json(files["package.json"].data)
+    if not isinstance(package, dict):
+        raise PackageError("Installable ZIP package.json must be an object")
+    version = require_version(package.get("version"))
+    validate_runtime(files, version)
+    # Import only the validated vendor tree, with no host site-packages or PYTHONPATH.
+    with tempfile.TemporaryDirectory(prefix="deckyzone-vendor-check-") as temporary:
+        modules = Path(temporary) / "py_modules"
+        for name, item in files.items():
+            if name.startswith(DBUS_NEXT_PREFIX):
+                destination = Path(temporary) / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(item.data)
+        smoke = (
+            "import pathlib, sys; root = pathlib.Path(sys.argv[1]).resolve(); "
+            "sys.path.insert(0, str(root)); "
+            "import dbus_next; from dbus_next import BusType, Message, MessageType; "
+            "from dbus_next.aio import MessageBus; "
+            "assert pathlib.Path(dbus_next.__file__).resolve() == root / 'dbus_next/__init__.py'; "
+            "assert MessageBus.__module__ == 'dbus_next.aio.message_bus'; "
+            "assert Message(path='/example', member='Ping').message_type == MessageType.METHOD_CALL; "
+            "assert BusType.SYSTEM.value == 2"
+        )
+        result = subprocess.run(
+            [sys.executable, "-I", "-S", "-B", "-c", smoke, str(modules)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode:
+            raise PackageError(f"Bundled dbus_next isolated import failed: {result.stderr.strip()}")
+    return version
 
 
 def read_tar(path: Path) -> dict[str, RuntimeFile]:
@@ -392,13 +494,20 @@ def main() -> int:
     parser.add_argument("--source-sha")
     parser.add_argument("--version")
     parser.add_argument("--verify", type=Path, metavar="DIR")
+    parser.add_argument("--verify-zip", type=Path, metavar="ZIP")
     args = parser.parse_args()
-    if args.verify is not None:
+    if args.verify is not None or args.verify_zip is not None:
         if any(value is not None for value in (args.output_dir, args.source_sha, args.version)):
-            parser.error("--verify cannot be combined with packaging arguments")
+            parser.error("verification cannot be combined with packaging arguments")
+        if args.verify is not None and args.verify_zip is not None:
+            parser.error("--verify and --verify-zip cannot be combined")
     elif any(value is None for value in (args.output_dir, args.source_sha, args.version)):
         parser.error("packaging requires --output-dir, --source-sha and --version")
     try:
+        if args.verify_zip is not None:
+            version = verify_zip(args.verify_zip)
+            print(f"Verified v{version} installable ZIP and isolated dbus_next import in {args.verify_zip}")
+            return 0
         if args.verify is not None:
             manifest = verify(args.verify)
             output = args.verify
@@ -408,7 +517,7 @@ def main() -> int:
         print(f"Verified {manifest['tag']} from {manifest['source_sha']} in {output}")
         return 0
     except (PackageError, OSError, EOFError, UnicodeError, json.JSONDecodeError,
-            zipfile.BadZipFile, tarfile.TarError) as error:
+            zipfile.BadZipFile, tarfile.TarError, subprocess.TimeoutExpired) as error:
         print(f"Release package error: {error}", file=sys.stderr)
         return 1
 

@@ -106,6 +106,8 @@ On SteamOS, **Troubleshooting > InputPlumber Update** lets you manually check fo
 
 Controller features require InputPlumber and drivers for the ZONE's input devices. Compatibility on other distributions depends on the InputPlumber version and drivers they include. Unloading the plugin restores the previous controller emulation.
 
+DeckyZone bundles `dbus-next` 0.2.3 for the controller mapping worker. Its unmodified Python source, MIT license and upstream checksums are included in [`py_modules/dbus_next`](./py_modules/dbus_next). Both release and pull request builds verify the bundled files and import them without system Python packages.
+
 ## Related plugins
 
 - [PowerControl](https://github.com/mengmeet/PowerControl) for TDP and fan control.
