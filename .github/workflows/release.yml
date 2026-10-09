@@ -112,6 +112,7 @@ jobs:
         run: |
           python3 scripts/release-package.py --output-dir "$RUNNER_TEMP/release" --source-sha "$GITHUB_SHA" --version "$RELEASE_VERSION"
           python3 scripts/release-package.py --verify "$RUNNER_TEMP/release"
+          python3 scripts/release-package.py --verify-zip "$RUNNER_TEMP/release/DeckyZone.zip"
 
       - name: Transfer prepared release
         id: artifact
