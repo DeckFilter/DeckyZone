@@ -1,113 +1,150 @@
 name: Release
 
-permissions:
-  contents: write
-
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - 'main'
-    tags:
-      - 'v*.*.*'
+    inputs:
+      bump:
+        description: Version bump
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deckyzone-release-main
+  cancel-in-progress: false
 
 jobs:
-  build_plugin:
+  prepare:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Verify package version matches release tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Require a manual release from main
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_BUMP: ${{ inputs.bump }}
         run: |
-          package_version="$(node -p "require('./package.json').version")"
-          if [ "$RELEASE_TAG" != "v${package_version}" ]; then
-            echo "::error::Release tag ${RELEASE_TAG} does not match package.json version v${package_version}. Run 'pnpm run release:prepare ${RELEASE_TAG#v}' before tagging."
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo '::error::Dispatch releases from main only.'
             exit 1
           fi
+          case "$RELEASE_BUMP" in
+            patch|minor|major) ;;
+            *) echo '::error::Unsupported version bump.'; exit 1 ;;
+          esac
 
-      - name: Install dependencies
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build plugin
+      - name: Prepare version locally
+        id: version
+        env:
+          RELEASE_BUMP: ${{ inputs.bump }}
+        run: |
+          pnpm run release:prepare "$RELEASE_BUMP"
+          version="$(node -p "require('./package.json').version")"
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo '::error::Expected a stable semantic version.'
+            exit 1
+          fi
+          if git show-ref --verify --quiet "refs/tags/v${version}"; then
+            echo '::error::This version is already tagged. Re-run failed jobs to reuse the original artifacts.'
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
+        with:
+          version: v2.14.2
+          config: cliff.toml
+          args: --strip all --unreleased --tag v${{ steps.version.outputs.version }}
+          github_token: ${{ github.token }}
+        env:
+          OUTPUT: CHANGES.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Generate full changelog
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
+        with:
+          version: v2.14.2
+          config: cliff.toml
+          args: --tag v${{ steps.version.outputs.version }}
+          github_token: ${{ github.token }}
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit --skipLibCheck
+
+      - name: Build complete plugin
         run: pnpm run build
 
-      - name: Package release artifacts
+      - name: Package and validate both release archives
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          rm -f DeckyZone.tar.gz DeckyZone.zip
-          stage_dir="$(mktemp -d)"
-          mkdir -p "${stage_dir}/DeckyZone"
+          python3 scripts/release-package.py --output-dir "$RUNNER_TEMP/release" --source-sha "$GITHUB_SHA" --version "$RELEASE_VERSION"
+          python3 scripts/release-package.py --verify "$RUNNER_TEMP/release"
 
-          cp -R dist py_modules "${stage_dir}/DeckyZone/"
-          mkdir -p "${stage_dir}/DeckyZone/assets"
-          cp -R defaults/assets/gamescope "${stage_dir}/DeckyZone/assets/"
-          cp main.py package.json plugin.json README.md LICENSE "${stage_dir}/DeckyZone/"
-
-          tar -czf DeckyZone.tar.gz -C "${stage_dir}" DeckyZone
-          (
-            cd "${stage_dir}"
-            zip -rq "${OLDPWD}/DeckyZone.zip" DeckyZone
-          )
-
-      - name: Show packaged files
-        run: |
-          echo "=== tar.gz contents ==="
-          tar -tzf DeckyZone.tar.gz
-          echo ""
-          echo "=== zip contents ==="
-          unzip -l DeckyZone.zip
-
-      - name: Verify packaged files
-        run: |
-          required_files=(
-            "DeckyZone/assets/gamescope/zotac.zone.oled.lua"
-            "DeckyZone/assets/gamescope/zotac.zone.green-tint.lua"
-          )
-
-          for required_file in "${required_files[@]}"; do
-            tar -tzf DeckyZone.tar.gz | grep -Fx "$required_file"
-            unzip -Z1 DeckyZone.zip | grep -Fx "$required_file"
-          done
-
-      - name: Publish Artifacts
-        uses: actions/upload-artifact@v4
+      - name: Transfer prepared release
+        id: artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: DeckyZone-release
-          path: |
-            DeckyZone.tar.gz
-            DeckyZone.zip
+          name: release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 30
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: prepare
     runs-on: ubuntu-latest
-    needs: build_plugin
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: DeckyZone-release
-          path: /tmp/DeckyZone-release
+          ref: ${{ github.sha }}
+          fetch-depth: 0
 
-      - name: Publish to GitHub release
-        uses: softprops/action-gh-release@v2
+      - name: Download original prepared release
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
-          files: |
-            /tmp/DeckyZone-release/DeckyZone.tar.gz
-            /tmp/DeckyZone-release/DeckyZone.zip
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          draft: false
-          prerelease: ${{ contains(github.ref_name, 'pre') || contains(github.ref_name, '.rc') }}
+          artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
+          path: ${{ runner.temp }}/release
+          merge-multiple: true
+          digest-mismatch: error
+
+      - name: Publish or resume verified release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python3 scripts/release-publish.py --release-dir "$RUNNER_TEMP/release" --source-sha "$GITHUB_SHA" --version "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY"

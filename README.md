@@ -132,6 +132,16 @@ These are ideas, not promised features.
 - Camera detected status
 - Battery warning to help prevent BIOS reset
 
+## Releases
+
+Start **Actions > Release > Run workflow** on `main`. Choose `patch` (the default), `minor` or `major`. The workflow calculates the next version; the first patch release after `0.6.0` is `0.6.1`. Leave the local package version unchanged and let the workflow create the version commit and tag.
+
+The workflow uses the pinned pnpm version and a frozen lockfile. It builds the plugin and validates `DeckyZone.zip` and `DeckyZone.tar.gz` before committing the version change to `main` and pushing the matching stable `vX.Y.Z` tag. It then creates a draft release, uploads both archives and validates the uploaded assets before publishing.
+
+Release notes come from Conventional Commits through [cliff.toml](./cliff.toml). They contain dated headings, scopes and contributor credits when GitHub metadata is available, grouped into Features, Fixes, Documentation, Performance and Maintenance. Release commits, version bumps, dependency updates and non-conventional messages are omitted. CI and build changes appear under Maintenance, including `feat(ci)`, `fix(ci)`, `feat(build)` and `fix(build)`.
+
+If publishing fails, use **Re-run failed jobs** on the original run. The publish job reuses its saved version, notes and archives. A fresh **Run workflow** calculates another version; **Re-run all jobs** can collide with a version commit or tag that the original run already created. When a matching release is already published, its existing release notes are preserved.
+
 ## Credits
 
 Inspired by:
