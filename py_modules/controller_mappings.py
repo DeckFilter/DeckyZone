@@ -325,7 +325,7 @@ def _allow_translated_keyboard_events(profile):
     )
 
 
-def sync_source_file(directory, system_profile, enabled):
+def sync_source_file(directory, system_profile, enabled, *, allow_default_filter_fix=False):
     directory = Path(directory)
     destination = directory / SOURCE_FILENAME
     capabilities = directory.parent / "capability_maps.d" / SOURCE_FILENAME
@@ -338,18 +338,45 @@ def sync_source_file(directory, system_profile, enabled):
                 "The DeckyZone mapping source file is owned by another configuration."
             )
         existing[path] = content
-    if not enabled:
-        for path in existing:
-            path.unlink(missing_ok=True)
-        return any(content is not None for content in existing.values())
+    def update_files(contents):
+        changed = False
+        for path in (capabilities, output_map, destination):
+            content = contents.get(path)
+            updated = SOURCE_MARKER + "\n" + content if content is not None else None
+            if updated == existing[path]:
+                continue
+            if updated is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = path.with_suffix(".tmp")
+                temporary.write_text(updated)
+                temporary.replace(path)
+            changed = True
+        return changed
+
+    if not enabled and not allow_default_filter_fix:
+        return update_files({})
     base = directory / Path(system_profile).name
-    profile = (base if base.exists() else Path(system_profile)).read_text()
+    try:
+        profile = (base if base.exists() else Path(system_profile)).read_text()
+    except FileNotFoundError:
+        if enabled:
+            raise
+        return update_files({})
     if (
         profile.count("\nsource_devices:\n") != 1
         or "capability_map_id: zone1" not in profile
     ):
-        raise RuntimeError("Could not locate the ZONE input sources.")
-    profile = _allow_translated_keyboard_events(profile)
+        if enabled:
+            raise RuntimeError("Could not locate the ZONE input sources.")
+        return update_files({})
+    corrected_profile = _allow_translated_keyboard_events(profile)
+    if not enabled:
+        return update_files(
+            {destination: corrected_profile} if corrected_profile != profile else {}
+        )
+    profile = corrected_profile
     source = (
         "source_devices:\n"
         "  - group: deckyzone-mappings\n"
@@ -429,18 +456,10 @@ def sync_source_file(directory, system_profile, enabled):
                 "        wheel: {}",
             ]
         )
-    changed = False
-    for path, content in (
-        (capabilities, capability_map),
-        (output_map, "\n".join(output_lines) + "\n"),
-        (destination, profile),
-    ):
-        updated = SOURCE_MARKER + "\n" + content
-        if updated == existing[path]:
-            continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".tmp")
-        temporary.write_text(updated)
-        temporary.replace(path)
-        changed = True
-    return changed
+    return update_files(
+        {
+            capabilities: capability_map,
+            output_map: "\n".join(output_lines) + "\n",
+            destination: profile,
+        }
+    )

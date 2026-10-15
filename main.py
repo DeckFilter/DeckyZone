@@ -1310,6 +1310,7 @@ class DeckyZoneService:
             MANAGED_INPUTPLUMBER_DEVICES_DIR,
             self.inputplumber_updater.data_path("devices/50-zotac-zone.yaml"),
             self.settings_store.has_custom_controller_mappings(),
+            allow_default_filter_fix=True,
         )
         return mapping_changed or changed
 
