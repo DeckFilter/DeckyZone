@@ -8,10 +8,11 @@ import {
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener, routerHook } from '@decky/api'
 import { Fragment, type ReactNode, useState } from 'react'
-import { FaDesktop, FaEllipsisH, FaGamepad, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
+import { FaDesktop, FaEllipsisH, FaGamepad, FaHeart, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
 import ControllerPanel from "./components/ControllerPanel"
 import SystemInformationPage from "./pages/SystemInformationPage"
 import DisplayPanel from "./components/DisplayPanel"
+import DonationsPanel from './components/DonationsPanel'
 import ErrorBoundary from "./components/ErrorBoundary"
 import CustomizationPanel from "./components/CustomizationPanel"
 import LayoutPanel from './components/LayoutPanel'
@@ -526,6 +527,11 @@ function Content() {
       />
     </ErrorBoundary>
   )
+  const donationsPanel = (
+    <ErrorBoundary title="Donations">
+      <DonationsPanel />
+    </ErrorBoundary>
+  )
 
   if (settings.legacyLayoutEnabled) {
     return (
@@ -537,6 +543,7 @@ function Content() {
         {updatesPanel}
         {troubleshootingPanel}
         {layoutPanel}
+        {donationsPanel}
       </Fragment>
     )
   }
@@ -596,6 +603,15 @@ function Content() {
                   {updatesPanel}
                   {troubleshootingPanel}
                   {layoutPanel}
+                </div>
+              ),
+            },
+            {
+              id: 'donations',
+              title: <TabIcon label="Donations"><FaHeart size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {donationsPanel}
                 </div>
               ),
             },

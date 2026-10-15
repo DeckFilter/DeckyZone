@@ -25,11 +25,13 @@ import {
   FaCog,
   FaDesktop,
   FaGamepad,
+  FaHeart,
   FaSlidersH,
   FaTachometerAlt,
 } from 'react-icons/fa'
 import ControllerPanel from '../components/ControllerPanel'
 import DisplayPanel from '../components/DisplayPanel'
+import DonationsPanel from '../components/DonationsPanel'
 import ErrorBoundary from '../components/ErrorBoundary'
 import CustomizationPanel from '../components/CustomizationPanel'
 import LayoutPanel from '../components/LayoutPanel'
@@ -41,6 +43,7 @@ import UpdatesPanel from '../components/UpdatesPanel'
 import {
   DECKYZONE_CONTROLLER_ROUTE,
   DECKYZONE_DISPLAY_ROUTE,
+  DECKYZONE_DONATIONS_ROUTE,
   DECKYZONE_GENERAL_ROUTE,
   DECKYZONE_CUSTOMIZATION_ROUTE,
   DECKYZONE_PERFORMANCE_ROUTE,
@@ -721,6 +724,18 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
           icon: <FaClipboardList />,
           content: <ProductSpecificationsPage />,
           route: DECKYZONE_SPECIFICATIONS_ROUTE,
+        },
+        {
+          title: 'Donations',
+          icon: <FaHeart />,
+          content: (
+            <DialogBody>
+              <ErrorBoundary title="Donations">
+                <DonationsPanel />
+              </ErrorBoundary>
+            </DialogBody>
+          ),
+          route: DECKYZONE_DONATIONS_ROUTE,
         },
       ]}
     />

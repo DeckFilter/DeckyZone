@@ -113,6 +113,10 @@ DeckyZone bundles `dbus-next` 0.2.3 for the controller mapping worker. Its unmod
 - [PowerControl](https://github.com/mengmeet/PowerControl) for TDP and fan control.
 - [HueSync](https://github.com/honjow/HueSync) for RGB lighting.
 
+## Donations
+
+DeckyZone is free. Optional donations support continued development through GitHub Sponsors, Patreon, Ko-fi or Buy Me a Coffee. Open the **Donations** tab in the Quick Access Menu or **Donations** in the settings sidebar. Each provider has a website button and a QR code for opening the same page on your phone.
+
 ## Feedback
 
 Open an issue to report a bug, request a feature or share feedback.

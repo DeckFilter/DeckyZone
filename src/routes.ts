@@ -8,6 +8,7 @@ export const DECKYZONE_CUSTOMIZATION_ROUTE = `${DECKYZONE_ROUTE}/customization`
 export const DECKYZONE_DISPLAY_ROUTE = `${DECKYZONE_ROUTE}/display`
 export const DECKYZONE_PERFORMANCE_ROUTE = `${DECKYZONE_ROUTE}/performance`
 export const DECKYZONE_SPECIFICATIONS_ROUTE = `${DECKYZONE_ROUTE}/specifications`
+export const DECKYZONE_DONATIONS_ROUTE = `${DECKYZONE_ROUTE}/donations`
 
 export function openDeckyZoneSettings() {
   Navigation.Navigate(DECKYZONE_GENERAL_ROUTE)
