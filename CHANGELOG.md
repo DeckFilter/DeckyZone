@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.2] - 2026-10-15
+
+
+### 🐛 Fixes
+
+- Preserve translated ZOTAC button events by @felixhirschfeld
+- Apply button filter correction to default mappings by @felixhirschfeld
+- Load gyro module for InputPlumber updates by @felixhirschfeld
+- Retire obsolete gyro orientation overrides by @felixhirschfeld
+
+
+
+### 🛠️ Maintenance
+
+- *(ci)* Handle delayed release metadata by @felixhirschfeld
+
+
 ## [0.6.1] - 2026-10-09
 
 
