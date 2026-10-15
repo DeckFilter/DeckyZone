@@ -271,6 +271,60 @@ OUTPUT_MAP_FILENAME = "49-deckyzone-mapping-output.yaml"
 SOURCE_MARKER = "# Managed by DeckyZone: custom controller mapping source"
 
 
+def _allow_translated_keyboard_events(profile):
+    def update_source(match):
+        block, indent = match.group(), match.group("indent")
+        if not re.search(
+            r"(?m)^" + indent
+            + r"    name: [\"']?ZOTAC Gaming Zone Keyboard[\"']?[ \t]*(?:#.*)?$",
+            block,
+        ):
+            return block
+        events = re.search(
+            r"(?m)^" + indent + r"  events:[ \t]*(?:#.*)?\n"
+            r"(?:(?:^" + indent + r"    [^\n]*|^[ \t]*)(?:\n|$))*",
+            block,
+        )
+        if events is None:
+            return block
+        include = re.search(
+            r"(?m)^" + indent + r"    include:[ \t]*(?:#.*)?\n"
+            r"(?P<items>(?:^" + indent + r"      - [^\n]*(?:\n|$))+)",
+            events.group(),
+        )
+        if include is None:
+            return block
+        existing = {
+            line.strip()[2:].split(" #", 1)[0].strip().strip("\"'")
+            for line in include.group("items").splitlines()
+        }
+        # InputPlumber filters these events after the keyboard capability map.
+        missing = [
+            "Gamepad:Button:" + button
+            for button in (
+                "Guide",
+                "QuickAccess",
+                "QuickAccess2",
+                "Keyboard",
+                "LeftPaddle1",
+                "RightPaddle1",
+            )
+            if "Gamepad:Button:" + button not in existing
+        ]
+        position = events.start() + include.end()
+        if block[position - 1:position] == "\n":
+            position -= 1
+        additions = "".join("\n" + indent + "      - " + cap for cap in missing)
+        return block[:position] + additions + block[position:]
+
+    return re.sub(
+        r"(?ms)^(?P<indent> +)- group: keyboard[ \t]*(?:#[^\n]*)?\n"
+        r".*?(?=^(?P=indent)- |^\S|\Z)",
+        update_source,
+        profile,
+    )
+
+
 def sync_source_file(directory, system_profile, enabled):
     directory = Path(directory)
     destination = directory / SOURCE_FILENAME
@@ -295,6 +349,7 @@ def sync_source_file(directory, system_profile, enabled):
         or "capability_map_id: zone1" not in profile
     ):
         raise RuntimeError("Could not locate the ZONE input sources.")
+    profile = _allow_translated_keyboard_events(profile)
     source = (
         "source_devices:\n"
         "  - group: deckyzone-mappings\n"
