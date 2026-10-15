@@ -8,6 +8,12 @@ ZOTAC_IMU_MOUNT_MATRIX = {
     "y": [-1, 0, 0],
     "z": [0, 0, -1],
 }
+ZOTAC_IMU_MOUNT_MATRIX_082 = {
+    "x": [0, -1, 0],
+    "y": [0, 0, 1],
+    "z": [-1, 0, 0],
+}
+_KNOWN_MOUNT_MATRICES = (ZOTAC_IMU_MOUNT_MATRIX, ZOTAC_IMU_MOUNT_MATRIX_082)
 
 _MATRIX_KEYS = ("x", "y", "z")
 _GROUP_RE = re.compile(r"^(?P<indent>\s*)-\s+group:\s*(?P<group>[^\s#]+)")
@@ -29,7 +35,7 @@ def has_desired_mount_matrix(profile_yaml):
     if matrix is None:
         return False
 
-    return matrix["rows"] == ZOTAC_IMU_MOUNT_MATRIX
+    return matrix["rows"] in _KNOWN_MOUNT_MATRICES
 
 
 def build_managed_mount_matrix_profile(profile_yaml):
@@ -40,6 +46,8 @@ def build_managed_mount_matrix_profile(profile_yaml):
         raise ValueError("Zotac Zone bmi260 IMU source device was not found.")
 
     matrix = _find_mount_matrix(lines, imu_block["start"], imu_block["end"])
+    if matrix is not None and matrix["rows"] in _KNOWN_MOUNT_MATRICES:
+        raise ValueError("InputPlumber already includes the Zotac Zone IMU orientation fix.")
     if matrix is None:
         matrix_indent = _line_indent(lines[imu_block["name_index"]])
         insert_index = imu_block["name_index"] + 1
@@ -107,7 +115,12 @@ def _find_zotac_imu_block(lines):
 
         group_indent = len(match.group("indent"))
         block_end = _find_group_block_end(lines, index, group_indent)
-        name_index = _find_zotac_imu_name_index(lines, index + 1, block_end)
+        iio = _find_child_mapping(lines, index + 1, block_end, "iio", group_indent + 2)
+        if iio is None:
+            continue
+        name_index = _find_zotac_imu_name_index(
+            lines, iio["start"] + 1, iio["end"], iio["indent"] + 2
+        )
         if name_index is None:
             continue
 
@@ -136,8 +149,10 @@ def _find_group_block_end(lines, start_index, group_indent):
     return len(lines)
 
 
-def _find_zotac_imu_name_index(lines, start_index, end_index):
+def _find_zotac_imu_name_index(lines, start_index, end_index, indent):
     for index in range(start_index, end_index):
+        if _line_indent(lines[index]) != indent:
+            continue
         match = _NAME_RE.match(lines[index])
         if match is None:
             continue
@@ -149,14 +164,23 @@ def _find_zotac_imu_name_index(lines, start_index, end_index):
 
 
 def _find_mount_matrix(lines, start_index, end_index):
-    for index in range(start_index, end_index):
-        if not lines[index].strip().startswith("mount_matrix:"):
+    source_indent = _line_indent(lines[start_index]) + 2
+    # InputPlumber uses config.imu first and falls back to deprecated iio config.
+    for path in (("config", "imu", "mount_matrix"), ("iio", "mount_matrix")):
+        start, end, indent = start_index + 1, end_index, source_indent
+        mapping = None
+        for key in path:
+            mapping = _find_child_mapping(lines, start, end, key, indent)
+            if mapping is None:
+                break
+            start, end, indent = mapping["start"] + 1, mapping["end"], indent + 2
+        if mapping is None:
             continue
 
-        matrix_indent = _line_indent(lines[index])
-        matrix_end = _find_mapping_block_end(lines, index, end_index, matrix_indent)
         rows = {}
-        for row_index in range(index + 1, matrix_end):
+        for row_index in range(mapping["start"] + 1, mapping["end"]):
+            if _line_indent(lines[row_index]) != mapping["indent"] + 2:
+                continue
             match = _ROW_RE.match(lines[row_index])
             if match is None:
                 continue
@@ -164,12 +188,24 @@ def _find_mount_matrix(lines, start_index, end_index):
 
         rows = {key: rows[key] for key in _MATRIX_KEYS if key in rows}
         return {
-            "start": index,
-            "end": matrix_end,
-            "indent": matrix_indent,
+            **mapping,
             "rows": rows,
         }
 
+    return None
+
+
+def _find_child_mapping(lines, start_index, end_index, key, indent):
+    for index in range(start_index, end_index):
+        if _line_indent(lines[index]) != indent:
+            continue
+        if lines[index].split("#", 1)[0].strip() != f"{key}:":
+            continue
+        return {
+            "start": index,
+            "end": _find_mapping_block_end(lines, index, end_index, indent),
+            "indent": indent,
+        }
     return None
 
 

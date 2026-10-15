@@ -125,6 +125,7 @@ MANAGED_GYRO_MOUNT_MATRIX_DEVICE_PROFILE_FILENAME = "50-zotac-zone.yaml"
 DIRECTIONAL_TRACKPAD_BACKUP_FILENAME = "directional-trackpad-backup.json"
 GYRO_MOUNT_MATRIX_EXTERNAL_OVERRIDE_MESSAGE = "Custom InputPlumber override present."
 GYRO_MOUNT_MATRIX_UNAVAILABLE_MESSAGE = "Zotac InputPlumber profile is unavailable."
+GYRO_MOUNT_MATRIX_LEGACY_ONLY_MESSAGE = "Requires InputPlumber older than 0.77."
 ZOTAC_MOUSE_DEVICE_NAME = "ZOTAC Gaming Zone Mouse"
 ZOTAC_KEYBOARD_DEVICE_NAME = "ZOTAC Gaming Zone Keyboard"
 ZOTAC_DIALS_DEVICE_NAME = "ZOTAC Gaming Zone Dials"
@@ -1139,9 +1140,15 @@ class DeckyZoneService:
                 system_profile_yaml
             )
         )
-        managed_override_exists = managed_profile_yaml is not None
+        legacy_fix_supported = False
+        if system_profile_available and not built_in:
+            version_parts = (self._get_binary_version("inputplumber") or "").split(".")
+            if len(version_parts) == 3 and all(part.isascii() and part.isdigit() for part in version_parts):
+                legacy_fix_supported = tuple(int(part) for part in version_parts) < (0, 77, 0)
+        managed_override_exists = managed_profile_yaml is not None or managed_path.is_symlink()
         managed_override_owned = bool(
             managed_profile_yaml
+            and not managed_path.is_symlink()
             and inputplumber_device_profile.is_deckyzone_managed_profile(
                 managed_profile_yaml
             )
@@ -1162,14 +1169,16 @@ class DeckyZoneService:
             blocked_reason = GYRO_MOUNT_MATRIX_EXTERNAL_OVERRIDE_MESSAGE
         elif not system_profile_available and not enabled:
             blocked_reason = GYRO_MOUNT_MATRIX_UNAVAILABLE_MESSAGE
+        elif not built_in and not legacy_fix_supported:
+            blocked_reason = GYRO_MOUNT_MATRIX_LEGACY_ONLY_MESSAGE
 
         visible = bool(
-            external_override
+            (external_override and not built_in)
             or enabled
-            or (system_profile_available and not built_in)
+            or (system_profile_available and not built_in and legacy_fix_supported)
         )
         available = bool(
-            system_profile_available and not built_in and not external_override
+            system_profile_available and not built_in and legacy_fix_supported and not external_override
         )
 
         return {
@@ -1187,6 +1196,8 @@ class DeckyZoneService:
 
     def _write_gyro_mount_matrix_override(self):
         managed_path = self._get_managed_gyro_mount_matrix_profile_path()
+        if managed_path.is_symlink():
+            raise RuntimeError(GYRO_MOUNT_MATRIX_EXTERNAL_OVERRIDE_MESSAGE)
         managed_profile_yaml = self._read_optional_file_text(managed_path)
         if (
             managed_profile_yaml is not None
@@ -1213,6 +1224,10 @@ class DeckyZoneService:
 
     def _remove_gyro_mount_matrix_override(self, skip_external=False):
         managed_path = self._get_managed_gyro_mount_matrix_profile_path()
+        if managed_path.is_symlink():
+            if skip_external:
+                return False
+            raise RuntimeError(GYRO_MOUNT_MATRIX_EXTERNAL_OVERRIDE_MESSAGE)
         managed_profile_yaml = self._read_optional_file_text(managed_path)
         if managed_profile_yaml is None:
             return False
@@ -1226,6 +1241,11 @@ class DeckyZoneService:
 
         managed_path.unlink()
         return True
+
+    def _remove_obsolete_gyro_mount_matrix_override(self):
+        if not self._get_gyro_mount_matrix_fix_state()["builtIn"]:
+            return False
+        return self._remove_gyro_mount_matrix_override(skip_external=True)
 
     def _get_effective_trackpad_mode(self, app_id=None):
         app_id = str(app_id or self._active_per_game_app_id or DEFAULT_APP_ID)
@@ -1305,6 +1325,7 @@ class DeckyZoneService:
 
     def _sync_directional_trackpad_source_files(self, app_id=None):
         del app_id
+        gyro_changed = self._remove_obsolete_gyro_mount_matrix_override()
         changed = self._disable_directional_trackpad_source_files(keep_mapping_source=True)
         mapping_changed = controller_mappings.sync_source_file(
             MANAGED_INPUTPLUMBER_DEVICES_DIR,
@@ -1312,7 +1333,7 @@ class DeckyZoneService:
             self.settings_store.has_custom_controller_mappings(),
             allow_default_filter_fix=True,
         )
-        return mapping_changed or changed
+        return mapping_changed or changed or gyro_changed
 
     def _disable_directional_trackpad_source_files(self, keep_mapping_source=False):
         device_override_changed = self._remove_directional_trackpad_device_override()
@@ -3751,24 +3772,24 @@ class DeckyZoneService:
         state = self._get_gyro_mount_matrix_fix_state()
         if enabled:
             if state["builtIn"]:
-                return self._current_settings()
-
-            if not state["available"]:
+                changed = self._remove_gyro_mount_matrix_override(skip_external=True)
+            elif not state["available"]:
                 if state["blockedReason"]:
                     raise RuntimeError(state["blockedReason"])
                 return self._current_settings()
-
-            if not self.probe_inputplumber_available():
+            elif not self.probe_inputplumber_available():
                 return self._current_settings()
-
-            changed = self._write_gyro_mount_matrix_override()
+            else:
+                changed = self._write_gyro_mount_matrix_override()
         else:
             changed = self._remove_gyro_mount_matrix_override()
 
-        if changed and not await self._restart_inputplumber_after_gyro_mount_matrix_update():
-            raise RuntimeError(
-                "Failed to restart InputPlumber after updating gyro orientation fix."
-            )
+        if changed:
+            self._sync_directional_trackpad_source_files()
+            if not await self._restart_inputplumber_after_gyro_mount_matrix_update():
+                raise RuntimeError(
+                    "Failed to restart InputPlumber after updating gyro orientation fix."
+                )
 
         return self._current_settings()
 
