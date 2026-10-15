@@ -213,11 +213,18 @@ class InputPlumberUpdater:
             self._version_cache[key] = match.group(1)
         return self._version_cache[key]
 
-    def _dropin_bytes(self, version):
-        self._version_tuple(version)
+    def _dropin_bytes(self, version, *, legacy=False):
+        parsed = self._version_tuple(version)
         release = self.releases / version
+        # The buffered BMI driver introduced in 0.82 needs this trigger even
+        # when only the binary and controller data are installed beside the OS.
+        prepare_imu = (
+            "ExecStartPre=/usr/bin/modprobe iio_trig_hrtimer\n"
+            if parsed >= (0, 82, 0) and not legacy else ""
+        )
         return (_MARKER + "[Service]\nExecStart=\nExecStart=" + str(release / "usr/bin/inputplumber") +
-                "\nWorkingDirectory=/\nEnvironment=\"XDG_DATA_DIRS=" + str(release / "usr/share") + "\"\n").encode()
+                "\nWorkingDirectory=/\nEnvironment=\"XDG_DATA_DIRS=" + str(release / "usr/share") + "\"\n" +
+                prepare_imu).encode()
 
     def _read_dropin(self):
         self._secure_path(self.dropin, "file", missing=True)
@@ -232,7 +239,10 @@ class InputPlumberUpdater:
         if content is None:
             return None
         match = re.search(re.escape(str(self.releases)) + r"/(" + _VERSION + r")/usr/bin/inputplumber\n", content.decode("utf-8", "replace"))
-        if match is None or content != self._dropin_bytes(match.group(1)):
+        if match is None or content not in (
+            self._dropin_bytes(match.group(1)),
+            self._dropin_bytes(match.group(1), legacy=True),
+        ):
             raise InputPlumberUpdateError("The InputPlumber updater drop-in contains foreign configuration; it was left unchanged.")
         return match.group(1)
 
@@ -702,7 +712,15 @@ class InputPlumberUpdater:
             self._recover_change(pending)
             return True
 
-    def switch(self, version):
+    def ensure_runtime_dependencies(self):
+        """Upgrade an existing owned override without replacing its release."""
+        before, version = self._read_dropin()
+        if version is None or before == self._dropin_bytes(version):
+            return False
+        self.switch(version, expected_dropin=before)
+        return True
+
+    def switch(self, version, *, expected_dropin=None):
         with self._operation():
             pending = self._read_pending()
             if pending is not None:
@@ -722,6 +740,8 @@ class InputPlumberUpdater:
             else:
                 self._guard_service(require_active=version is not None)
             before, _ = self._read_dropin()
+            if expected_dropin is not None and before != expected_dropin:
+                raise InputPlumberUpdateError("InputPlumber configuration changed before repairing its startup dependencies; it was preserved.")
             if version is None:
                 if before is None:
                     raise InputPlumberUpdateError("No DeckyZone-managed InputPlumber update is installed.")

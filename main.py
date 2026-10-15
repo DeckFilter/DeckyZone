@@ -4964,6 +4964,13 @@ class Plugin:
                     )
                     if recovered:
                         decky.logger.info("Recovered an interrupted InputPlumber change")
+                    if self._closing:
+                        return
+                    repaired = await asyncio.to_thread(
+                        self.service.inputplumber_updater.ensure_runtime_dependencies
+                    )
+                    if repaired:
+                        decky.logger.info("Updated InputPlumber startup dependencies")
                 except Exception as error:
                     message = f"InputPlumber recovery failed: {error}"
                     decky.logger.warning(message)
