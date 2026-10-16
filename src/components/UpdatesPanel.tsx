@@ -10,11 +10,10 @@ import {
   type VersionCache,
 } from '../utils/pluginUpdates'
 import { useDeckyToastNotice } from '../utils/toasts'
-import { SteamExplainerButtonItem } from './SteamExplainer'
+import { showReleaseNotesModal } from './ReleaseNotesModal'
 import { SettingsRow, SettingsSection, useSettingsItemLayout, useSettingsSurface } from './SettingsSurface'
 
 const otaUpdate = callable<[], boolean>('ota_update')
-const CHECK_VERSION_EXPLAINER = 'Checks GitHub for the latest plugin release.'
 
 type Props = {
   installedVersionNum: string
@@ -204,29 +203,18 @@ const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => 
   return (
     <SettingsSection title="Updates">
       <SettingsRow>
-        {surface === 'settings' ? (
-          <Field
-            label="Software Updates"
-            description={updateStatusText}
-            childrenContainerWidth="fixed"
-          >
-            <DialogButton disabled={actionDisabled} onClick={handleAction}>
-              {actionText}
-            </DialogButton>
-          </Field>
-        ) : (
-          <SteamExplainerButtonItem
-            layout={itemLayout}
-            label="Software Updates"
-            onClick={handleAction}
-            disabled={actionDisabled}
-            explainerTitle="Software Updates"
-            explainer={CHECK_VERSION_EXPLAINER}
-            description={updateStatusText}
-          >
+        <Field
+          label="Software Updates"
+          description={updateStatusText}
+          childrenLayout={itemLayout}
+          childrenContainerWidth={surface === 'settings' ? 'fixed' : 'max'}
+          onOptionsButton={() => showReleaseNotesModal(installedVersionNum)}
+          onOptionsActionDescription="View Changelog"
+        >
+          <DialogButton disabled={actionDisabled} onClick={handleAction}>
             {actionText}
-          </SteamExplainerButtonItem>
-        )}
+          </DialogButton>
+        </Field>
       </SettingsRow>
     </SettingsSection>
   )

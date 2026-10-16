@@ -604,6 +604,13 @@ class DeckyZoneService:
             self.logger.error(f"Failed to fetch latest DeckyZone version: {error}")
             raise RuntimeError("Failed to fetch latest DeckyZone version.")
 
+    async def get_release_notes(self):
+        try:
+            return await asyncio.to_thread(plugin_update.get_release_notes)
+        except Exception as error:
+            self.logger.error(f"Failed to fetch DeckyZone release notes: {error}")
+            raise RuntimeError("Failed to fetch DeckyZone release notes.")
+
     async def ota_update(self):
         try:
             return bool(plugin_update.ota_update())
@@ -4954,6 +4961,9 @@ class Plugin:
 
     async def get_latest_version_num(self):
         return await self.service.get_latest_version_num()
+
+    async def get_release_notes(self):
+        return await self.service.get_release_notes()
 
     async def ota_update(self):
         return await self._controller_operation(self.service.ota_update)
