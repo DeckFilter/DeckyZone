@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.3] - 2026-10-16
+
+
+### 🚀 Features
+
+- Add donation buttons (#47) by @felixhirschfeld
+- Add changelog viewer (#48) by @felixhirschfeld
+
+
+
+### 🐛 Fixes
+
+- Support upcoming InputPlumber button maps by @felixhirschfeld
+
+
 ## [0.6.2] - 2026-10-15
 
 
