@@ -108,6 +108,10 @@ Controller features require InputPlumber and drivers for the ZONE's input device
 
 DeckyZone bundles `dbus-next` 0.2.3 for the controller mapping worker. Its unmodified Python source, MIT license and upstream checksums are included in [`py_modules/dbus_next`](./py_modules/dbus_next). Both release and pull request builds verify the bundled files and import them without system Python packages.
 
+## Changelog
+
+Focus **Software Updates** in the Quick Access Menu or **General** settings and press **Y** to view the latest ten stable GitHub releases. The viewer shows one dated card per version with formatted notes and links. Use the bumpers to switch releases and scroll within each card.
+
 ## Related plugins
 
 - [PowerControl](https://github.com/mengmeet/PowerControl) for TDP and fan control.

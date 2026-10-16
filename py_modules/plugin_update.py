@@ -12,7 +12,9 @@ import decky
 
 PACKAGE_NAME = "DeckyZone"
 RELEASE_API_URL = "https://api.github.com/repos/DeckFilter/DeckyZone/releases/latest"
+RELEASE_NOTES_API_URL = "https://api.github.com/repos/DeckFilter/DeckyZone/releases?per_page=30"
 RELEASE_CHECK_TIMEOUT_SECONDS = 5
+RELEASE_NOTES_LIMIT = 10
 TARBALL_ASSET_NAME = f"{PACKAGE_NAME}.tar.gz"
 
 
@@ -54,6 +56,77 @@ def get_latest_version():
         raise RuntimeError("Latest DeckyZone release tag was not found.")
 
     return tag_name[1:] if tag_name.startswith("v") else tag_name
+
+
+def _release_notes_ssl_context():
+    context = ssl.create_default_context()
+    # Decky's bundled Python may not use the distribution's CA bundle by default.
+    for ca_bundle in (
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+    ):
+        if os.path.isfile(ca_bundle):
+            context.load_verify_locations(cafile=ca_bundle)
+            break
+    return context
+
+
+def get_release_notes():
+    request = urllib.request.Request(
+        RELEASE_NOTES_API_URL,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "DeckyZone",
+        },
+    )
+    with urllib.request.urlopen(
+        request,
+        context=_release_notes_ssl_context(),
+        timeout=RELEASE_CHECK_TIMEOUT_SECONDS,
+    ) as response:
+        releases = json.load(response)
+
+    if not isinstance(releases, list):
+        raise RuntimeError("DeckyZone release history was not returned as a list.")
+
+    notes = []
+    for release in releases:
+        if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
+            continue
+
+        release_id = release.get("id")
+        tag_name = release.get("tag_name")
+        published_at = release.get("published_at")
+        url = release.get("html_url")
+        if (
+            not isinstance(release_id, int)
+            or isinstance(release_id, bool)
+            or not isinstance(tag_name, str)
+            or not tag_name.strip()
+            or not isinstance(published_at, str)
+            or not published_at
+            or not isinstance(url, str)
+            or not url
+        ):
+            continue
+
+        tag_name = tag_name.strip()
+        version = tag_name[1:] if tag_name.startswith("v") else tag_name
+        name = release.get("name")
+        body = release.get("body")
+        notes.append({
+            "id": release_id,
+            "version": version,
+            "name": name.strip() if isinstance(name, str) and name.strip() else version,
+            "body": body if isinstance(body, str) else "",
+            "publishedAt": published_at,
+            "url": url,
+        })
+        if len(notes) == RELEASE_NOTES_LIMIT:
+            break
+
+    return notes
 
 
 def _download_latest_build():
