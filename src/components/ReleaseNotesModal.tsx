@@ -212,7 +212,7 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
                 <article className="dz-release-notes-card">
                   <header className={`${releaseNotesClasses.header} dz-release-notes-header`}>
                     <div className="dz-release-notes-meta">
-                      <span className="dz-release-notes-category">DeckyZone patch notes</span>
+                      <span className="dz-release-notes-category">Patch notes</span>
                       {date && (
                         <span className="dz-release-notes-date">
                           <span className="dz-release-notes-posted">Posted</span>
