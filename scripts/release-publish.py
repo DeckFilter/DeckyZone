@@ -136,7 +136,7 @@ def read_release_by_id(repo, tag, release_id):
 
 
 def create_release(repo, tag, release_dir):
-    payload = {"tag_name": tag, "name": tag,
+    payload = {"tag_name": tag, "name": f"DeckyZone {tag}",
                "body": (release_dir / "CHANGES.md").read_text(encoding="utf-8"),
                "draft": True, "prerelease": False}
     # prepare_tag has already verified and pushed the tag. Keep the POST response
@@ -157,7 +157,8 @@ def verify_draft_notes(release, tag, release_dir):
     # A published matching release may have manually edited notes; leave them intact.
     if release["draft"]:
         notes = (release_dir / "CHANGES.md").read_text(encoding="utf-8").rstrip()
-        if release.get("name") != tag or (release.get("body") or "").rstrip() != notes:
+        if (release.get("name") != f"DeckyZone {tag}"
+                or (release.get("body") or "").rstrip() != notes):
             raise ReleaseError("Existing draft title or notes conflict with the prepared release")
 
 

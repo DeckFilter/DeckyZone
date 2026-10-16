@@ -19,6 +19,7 @@ SPEC.loader.exec_module(publisher)
 
 REPO = "DeckFilter/DeckyZone"
 TAG = "v0.6.1"
+TITLE = "DeckyZone v0.6.1"
 FILES = ("DeckyZone.zip", "DeckyZone.tar.gz")
 NOTES = "## Fixes\n\n- Bundle the controller mapping dependency.\n"
 
@@ -42,7 +43,7 @@ class FakeGitHub:
         self.corrupt_downloads = False
 
     def metadata(self, *, draft=True, assets=False):
-        return {"id": 101, "tag_name": TAG, "name": TAG, "body": NOTES,
+        return {"id": 101, "tag_name": TAG, "name": TITLE, "body": NOTES,
                 "draft": draft, "prerelease": False,
                 "assets": self.assets() if assets else []}
 
@@ -102,7 +103,7 @@ class FakeGitHub:
             return self._result(args, self.release["assets"][-1])
         if endpoint == f"repos/{REPO}/releases" and method == "POST":
             data = json.loads(input_data)
-            assert data == {"tag_name": TAG, "name": TAG, "body": NOTES,
+            assert data == {"tag_name": TAG, "name": TITLE, "body": NOTES,
                             "draft": True, "prerelease": False}, data
             self.release = self.metadata()
             created = deepcopy(self.release)
@@ -239,14 +240,17 @@ class PublicationTests(unittest.TestCase):
         fake.release["body"] = "Manually edited release notes."
         self.run_publication(fake)
         self.assertEqual(fake.mutations(), [])
+        self.assertEqual(fake.release["name"], "Manually edited title")
         self.assertEqual(fake.release["body"], "Manually edited release notes.")
 
-    def test_conflicting_existing_draft_notes_are_rejected_before_upload(self):
-        fake = self.fake(draft=True)
-        fake.release["body"] = "Different notes"
-        with self.assertRaises(publisher.ReleaseError):
-            self.run_publication(fake)
-        self.assertEqual(fake.mutations(), [])
+    def test_conflicting_existing_draft_title_or_notes_are_rejected_before_upload(self):
+        for metadata in ({"name": TAG}, {"body": "Different notes"}):
+            with self.subTest(metadata=metadata):
+                fake = self.fake(draft=True)
+                fake.release.update(metadata)
+                with self.assertRaises(publisher.ReleaseError):
+                    self.run_publication(fake)
+                self.assertEqual(fake.mutations(), [])
 
     def test_conflicting_asset_digest_and_download_are_rejected(self):
         for corruption in ("digest", "download"):

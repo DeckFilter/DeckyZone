@@ -222,7 +222,7 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
                       {installed && <span className="dz-release-notes-installed">Installed</span>}
                     </div>
                     <h1 className={`${releaseNotesClasses.title} dz-release-notes-title`}>
-                      {release.name || `DeckyZone ${release.version}`}
+                      {`DeckyZone v${release.version.replace(/^v/, '')}`}
                     </h1>
                   </header>
                   <ReleaseNotesMarkdown onDismiss={closeModal}>
