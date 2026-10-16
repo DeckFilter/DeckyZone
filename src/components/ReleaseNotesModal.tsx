@@ -80,7 +80,7 @@ const keepArticleInPlace = () => true
 
 const ReleaseNotesScrollPanel = (props: ScrollProps) => {
   const ref = useRef<HTMLDivElement>(null)
-  const onGamepadDirection = useNativeScrollDirection?.(ref, 'auto', undefined, articleScrollEvent)
+  const onGamepadDirection = useNativeScrollDirection?.(ref, 'smooth', undefined, articleScrollEvent)
   return (
     <NativeScrollPanel {...props} ref={ref} focusableIfEmpty
       onGamepadDirection={onGamepadDirection} scrollIntoViewType={nativeArticleScrollType} />
