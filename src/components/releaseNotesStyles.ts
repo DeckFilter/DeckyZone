@@ -12,38 +12,53 @@ export const releaseNotesClasses = {
 
 // Keep article styling local; Steam's semantic classes provide its current theme.
 export const releaseNotesStyles = `
-.dz-release-notes-viewer { width: 100vw; color: #d6d7d8; }
-.dz-release-notes-viewer .dz-release-notes-slide {
-  height: 100%; box-sizing: border-box; padding: 24px;
-  display: flex; justify-content: center;
+.dz-release-notes-viewer {
+  position: absolute; top: 40px; left: 0; width: 100vw;
+  height: calc(100vh - 40px); color: #dcdedf;
 }
 .dz-release-notes-viewer .dz-release-notes-scroll {
-  width: 100%; max-width: 640px; height: 100%; box-sizing: border-box;
+  width: 100%; height: 100%; box-sizing: border-box; padding: 24px;
+  overflow-x: hidden; overflow-y: auto;
+}
+.dz-release-notes-viewer .dz-release-notes-article-focus { width: 100%; }
+.dz-release-notes-viewer .dz-release-notes-card {
+  width: 100%; max-width: 640px; box-sizing: border-box; margin: 24px auto 40px;
   background: radial-gradient(at left top, #42454c, #25282e);
-  box-shadow: 0 8px 24px #0004; overflow-x: hidden; overflow-y: auto;
+  box-shadow: none; overflow: hidden;
+}
+.dz-release-notes-viewer .dz-release-notes-article-focus.gpfocus > .dz-release-notes-card,
+.dz-release-notes-viewer .dz-release-notes-article-focus.gpfocuswithin > .dz-release-notes-card {
+  outline: 2px solid rgba(255,255,255,.6); outline-offset: 2px;
 }
 .dz-release-notes-viewer .dz-release-notes-header {
   padding: 16px 24px 12px; margin: 0; box-sizing: border-box;
   background: radial-gradient(at center bottom, rgba(255,255,255,.1) 10%, transparent 80%);
 }
 .dz-release-notes-viewer .dz-release-notes-meta {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
-  color: #a0aab7; font-size: 12px; line-height: 18px; margin-bottom: 4px;
+  display: flex; flex-wrap: wrap; align-items: center; row-gap: 6px;
+  font-size: 12px; line-height: normal; font-weight: 300;
 }
 .dz-release-notes-viewer .dz-release-notes-category {
-  color: #67c1f5; text-transform: uppercase; letter-spacing: 1px;
+  color: #289cff; text-transform: uppercase; font-weight: 500;
+  letter-spacing: normal; margin-right: 6px;
+}
+.dz-release-notes-viewer .dz-release-notes-date {
+  display: inline-flex; color: #868f98; font-weight: 300;
+}
+.dz-release-notes-viewer .dz-release-notes-posted {
+  margin-right: 3px; text-transform: uppercase;
 }
 .dz-release-notes-viewer .dz-release-notes-installed {
-  color: #b8d6a4; font-size: 12px;
+  color: #b8d6a4; font-size: 10px; margin-left: auto; text-transform: uppercase;
 }
 .dz-release-notes-viewer .dz-release-notes-title {
-  margin: 0; padding: 0; color: #fff; font-size: 24px;
+  margin: 12px 0 0; padding: 0; color: #eaeaeb; font-size: 24px;
   font-weight: 500; line-height: 36px; overflow-wrap: anywhere;
 }
 .dz-release-notes-viewer .dz-release-notes-body {
   min-height: 0; box-sizing: border-box;
-  margin: 0; padding: 0 24px 24px; color: #c6d4df;
-  font-size: 14px; line-height: 1.5; overflow-wrap: anywhere;
+  margin: 0; padding: 24px; color: #cfd2d3;
+  font-size: 14px; font-weight: 300; line-height: 19px; overflow-wrap: anywhere;
 }
 .dz-release-notes-viewer .dz-release-notes-body h1,
 .dz-release-notes-viewer .dz-release-notes-body h2,
@@ -51,18 +66,12 @@ export const releaseNotesStyles = `
 .dz-release-notes-viewer .dz-release-notes-body h4,
 .dz-release-notes-viewer .dz-release-notes-body h5,
 .dz-release-notes-viewer .dz-release-notes-body h6 {
-  color: #fff; font-weight: 500; line-height: 1.4; margin: 20px 0 8px;
+  color: inherit; font-size: 14px; font-weight: 700; line-height: 19px; margin: 14px 0;
 }
-.dz-release-notes-viewer .dz-release-notes-body h1 { font-size: 22px; }
-.dz-release-notes-viewer .dz-release-notes-body h2 { font-size: 20px; }
-.dz-release-notes-viewer .dz-release-notes-body h3 { font-size: 18px; }
-.dz-release-notes-viewer .dz-release-notes-body h4,
-.dz-release-notes-viewer .dz-release-notes-body h5,
-.dz-release-notes-viewer .dz-release-notes-body h6 { font-size: 16px; }
-.dz-release-notes-viewer .dz-release-notes-paragraph { margin: 0 0 12px; }
+.dz-release-notes-viewer .dz-release-notes-paragraph { margin: 7px 0; }
 .dz-release-notes-viewer .dz-release-notes-body ul,
-.dz-release-notes-viewer .dz-release-notes-body ol { margin: 8px 0 16px; padding-left: 24px; }
-.dz-release-notes-viewer .dz-release-notes-body li { margin: 4px 0; }
+.dz-release-notes-viewer .dz-release-notes-body ol { margin: 14px 0; padding-left: 40px; }
+.dz-release-notes-viewer .dz-release-notes-body li { margin: 0 0 5px; }
 .dz-release-notes-viewer .dz-release-notes-link {
   display: inline; color: #67c1f5; cursor: pointer; text-decoration: underline;
 }
