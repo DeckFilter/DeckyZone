@@ -9,8 +9,9 @@ import {
   findModuleExport,
   findSP,
   showModal,
+  type GamepadEvent,
 } from '@decky/ui'
-import { useEffect, useState, type ComponentProps, type ComponentType, type HTMLAttributes, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ComponentProps, type ComponentType, type HTMLAttributes, type ReactNode, type RefAttributes, type RefObject } from 'react'
 import { getReleaseNotes, type PluginRelease } from '../utils/releaseNotes'
 import ReleaseNotesMarkdown from './ReleaseNotesMarkdown'
 import { releaseNotesClasses, releaseNotesStyles } from './releaseNotesStyles'
@@ -25,19 +26,34 @@ type LoadState =
   | { status: 'error' }
   | { status: 'ready'; releases: PluginRelease[] }
 
-// Steam's wrapper adds native directional scrolling for articles without focusable links.
-// The base ScrollPanel export only scrolls focused descendants into view.
-const nativeArticleScrollPanel = findModuleExport((value) => (
-  value?.render?.toString?.().includes('scrollStepPercent:')
-  && value.render.toString().includes('onGamepadDirection:')
-))
-
-// Both native layers forward these DOM/focus props; @decky/ui only declares children.
-const ReleaseNotesScrollPanel = (nativeArticleScrollPanel ?? ScrollPanel) as ComponentType<HTMLAttributes<HTMLDivElement> & {
+type ScrollProps = HTMLAttributes<HTMLDivElement> & {
   children?: ReactNode
   scrollDirection?: 'y'
-  focusable?: boolean
+}
+
+// Steam's article wrapper only scrolls events from descendants, so reuse its hook directly.
+const useNativeScrollDirection = findModuleExport((value) => (
+  typeof value === 'function' && value.toString().includes('ScrollOnGamepadDirection top:')
+)) as ((
+  ref: RefObject<HTMLDivElement | null>,
+  behavior?: ScrollBehavior,
+  stepPercent?: number,
+  shouldHandle?: (event: GamepadEvent) => boolean,
+) => (event: GamepadEvent) => boolean) | undefined
+
+const ownScrollEvent = (event: GamepadEvent) => event.currentTarget === event.target
+
+// The native component forwards these DOM/focus props; @decky/ui only declares children.
+const NativeScrollPanel = ScrollPanel as ComponentType<ScrollProps & RefAttributes<HTMLDivElement> & {
+  focusableIfEmpty?: boolean
+  onGamepadDirection?: (event: GamepadEvent) => boolean
 }>
+
+const ReleaseNotesScrollPanel = (props: ScrollProps) => {
+  const ref = useRef<HTMLDivElement>(null)
+  const onGamepadDirection = useNativeScrollDirection?.(ref, 'auto', undefined, ownScrollEvent)
+  return <NativeScrollPanel {...props} ref={ref} focusableIfEmpty onGamepadDirection={onGamepadDirection} />
+}
 
 // Steam otherwise closes GenericDialog after onOK resolves, including a Retry action.
 const ReleaseNotesConfirmModal = ConfirmModal as ComponentType<ComponentProps<typeof ConfirmModal> & {
@@ -117,7 +133,8 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
   }
 
   const carouselHeight = Math.max(160, viewport.height - 120)
-  const columnWidth = Math.round(viewport.width * .8)
+  // Steam computes bumper page size from visible columns; an adjacent pixel keeps it at one.
+  const columnWidth = Math.max(1, viewport.width - 1)
   return (
     <Focusable
       className="dz-release-notes-viewer"
@@ -148,7 +165,6 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
               <ReleaseNotesScrollPanel
                 className="dz-release-notes-scroll"
                 scrollDirection="y"
-                focusable
                 aria-label={`${release.version} release notes`}
               >
                 <article>

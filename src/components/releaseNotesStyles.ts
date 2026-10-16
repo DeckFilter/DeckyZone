@@ -41,6 +41,7 @@ export const releaseNotesStyles = `
   font-weight: 500; line-height: 36px; overflow-wrap: anywhere;
 }
 .dz-release-notes-viewer .dz-release-notes-body {
+  min-height: 0; box-sizing: border-box;
   margin: 0; padding: 0 24px 24px; color: #c6d4df;
   font-size: 14px; line-height: 1.5; overflow-wrap: anywhere;
 }

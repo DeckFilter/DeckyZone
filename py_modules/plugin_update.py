@@ -58,6 +58,20 @@ def get_latest_version():
     return tag_name[1:] if tag_name.startswith("v") else tag_name
 
 
+def _release_notes_ssl_context():
+    context = ssl.create_default_context()
+    # Decky's bundled Python may not use the distribution's CA bundle by default.
+    for ca_bundle in (
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+    ):
+        if os.path.isfile(ca_bundle):
+            context.load_verify_locations(cafile=ca_bundle)
+            break
+    return context
+
+
 def get_release_notes():
     request = urllib.request.Request(
         RELEASE_NOTES_API_URL,
@@ -68,7 +82,7 @@ def get_release_notes():
     )
     with urllib.request.urlopen(
         request,
-        context=ssl.create_default_context(),
+        context=_release_notes_ssl_context(),
         timeout=RELEASE_CHECK_TIMEOUT_SECONDS,
     ) as response:
         releases = json.load(response)
