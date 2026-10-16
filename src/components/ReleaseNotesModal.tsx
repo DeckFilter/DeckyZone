@@ -148,7 +148,12 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
     const loading = load.status === 'loading'
     return (
       <ReleaseNotesConfirmModal
-        strTitle="Changelog"
+        strTitle={
+          <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            Changelog
+            {loading && <Spinner width="24px" height="24px" style={{ marginLeft: 'auto' }} />}
+          </div>
+        }
         strOKButtonText={loading ? 'Close' : 'Retry'}
         strCancelButtonText="Close"
         bAlertDialog={loading}
@@ -159,7 +164,7 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
         onEscKeypress={closeModal}
       >
         {loading ? (
-          <DialogBodyText><Spinner width="24px" height="24px" /> Loading release notes…</DialogBodyText>
+          <DialogBodyText>Loading release notes…</DialogBodyText>
         ) : (
           <DialogBodyText>
             {load.status === 'error'
