@@ -2,7 +2,6 @@ import {
   Carousel,
   ConfirmModal,
   DialogBodyText,
-  DialogButton,
   Focusable,
   ScrollPanel,
   Spinner,
@@ -187,11 +186,6 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
           )
         }}
       />
-      <div className="dz-release-notes-footer">
-        <DialogButton onClick={closeModal} style={{ minWidth: '120px', width: 'auto', padding: '6px 24px' }}>
-          Close
-        </DialogButton>
-      </div>
     </Focusable>
   )
 }

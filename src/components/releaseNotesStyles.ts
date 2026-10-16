@@ -84,7 +84,4 @@ export const releaseNotesStyles = `
 .dz-release-notes-viewer .dz-release-notes-body table { border-collapse: collapse; }
 .dz-release-notes-viewer .dz-release-notes-body th,
 .dz-release-notes-viewer .dz-release-notes-body td { border: 1px solid #ffffff30; padding: 6px 10px; }
-.dz-release-notes-viewer .dz-release-notes-footer {
-  height: 40px; display: flex; align-items: center; justify-content: center;
-}
 `
