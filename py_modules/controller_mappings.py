@@ -269,14 +269,25 @@ DEVICE_NAME = "DeckyZone Mapping Output"
 SOURCE_FILENAME = "49-deckyzone-mappings.yaml"
 OUTPUT_MAP_FILENAME = "49-deckyzone-mapping-output.yaml"
 SOURCE_MARKER = "# Managed by DeckyZone: custom controller mapping source"
+_KEYBOARD_SOURCE_RE = re.compile(
+    r"(?ms)^(?P<indent> +)- group: keyboard[ \t]*(?:#[^\n]*)?\n"
+    r".*?(?=^(?P=indent)- |^\S|\Z)"
+)
+
+
+def _is_zotac_keyboard_source(match):
+    return re.search(
+        r"(?m)^" + match.group("indent")
+        + r"    name: [\"']?ZOTAC Gaming Zone Keyboard[\"']?[ \t]*(?:#.*)?$",
+        match.group(),
+    ) is not None
 
 
 def _allow_translated_keyboard_events(profile):
     def update_source(match):
         block, indent = match.group(), match.group("indent")
-        if not re.search(
-            r"(?m)^" + indent
-            + r"    name: [\"']?ZOTAC Gaming Zone Keyboard[\"']?[ \t]*(?:#.*)?$",
+        if not _is_zotac_keyboard_source(match) or not re.search(
+            r"(?m)^" + indent + r"  capability_map_id:[ \t]+[^# \t\r\n]",
             block,
         ):
             return block
@@ -317,12 +328,56 @@ def _allow_translated_keyboard_events(profile):
         additions = "".join("\n" + indent + "      - " + cap for cap in missing)
         return block[:position] + additions + block[position:]
 
-    return re.sub(
-        r"(?ms)^(?P<indent> +)- group: keyboard[ \t]*(?:#[^\n]*)?\n"
-        r".*?(?=^(?P=indent)- |^\S|\Z)",
-        update_source,
-        profile,
+    return _KEYBOARD_SOURCE_RE.sub(update_source, profile)
+
+
+def _inherit_native_button_map(profile, system_profile):
+    native_map = re.search(
+        r"(?m)^capability_map_id: [\"']?zone_buttons[\"']?[ \t]*(?:#.*)?$",
+        system_profile,
     )
+    if native_map is None or re.search(r"(?m)^capability_map_id:", profile):
+        return profile
+    keyboard_sources = [
+        [match for match in _KEYBOARD_SOURCE_RE.finditer(text) if _is_zotac_keyboard_source(match)]
+        for text in (profile, system_profile)
+    ]
+    if any(len(sources) != 1 for sources in keyboard_sources):
+        return profile
+    old, native = (sources[0] for sources in keyboard_sources)
+    source_map_pattern = r"(?m)^" + old.group("indent") + r"  capability_map_id:"
+    if not re.search(source_map_pattern + r" [\"']?zone1[\"']?[ \t]*(?:#.*)?$", old.group()):
+        return profile
+    if re.search(source_map_pattern, native.group()):
+        return profile
+    events = re.search(r"(?m)^" + native.group("indent") + r"  events:", native.group())
+    if events is None:
+        raise RuntimeError("Could not recognize the native ZOTAC keyboard filter.")
+    legacy = (
+        native.group()[:events.start()]
+        + native.group("indent") + "  capability_map_id: zone1\n"
+        + native.group()[events.start():]
+    )
+
+    def normalized_source(block):
+        # Compare the stock source while tolerating comments and scalar quotes.
+        return [
+            line.replace("\"", "").replace("'", "").rstrip()
+            for raw in block.splitlines()
+            if (line := raw.split("#", 1)[0]).strip()
+        ]
+
+    if normalized_source(old.group()) not in (
+        normalized_source(legacy),
+        normalized_source(_allow_translated_keyboard_events(legacy)),
+    ):
+        raise RuntimeError(
+            "The custom ZOTAC InputPlumber keyboard filter needs updating for the native button map."
+        )
+    # Adapt only our generated profile; leave the external source file unchanged.
+    return (
+        profile[:old.start()] + native.group() + profile[old.end():]
+    ).rstrip("\n") + "\n\n" + native_map.group() + "\n"
 
 
 def sync_source_file(directory, system_profile, enabled, *, allow_default_filter_fix=False):
@@ -371,7 +426,28 @@ def sync_source_file(directory, system_profile, enabled, *, allow_default_filter
         if enabled:
             raise RuntimeError("Could not locate the ZONE input sources.")
         return update_files({})
-    corrected_profile = _allow_translated_keyboard_events(profile)
+    corrected_profile = profile
+    if base.exists():
+        try:
+            native_profile = Path(system_profile).read_text()
+        except FileNotFoundError:
+            native_profile = ""
+        corrected_profile = _inherit_native_button_map(profile, native_profile)
+        if corrected_profile != profile:
+            if any(
+                re.search(
+                    r"(?m)^[\"']?id[\"']?:[ \t]+[\"']?(?:zone1|zone_buttons)[\"']?[ \t]*(?:#.*)?$",
+                    path.read_text(),
+                )
+                for path in capabilities.parent.glob("*.yaml")
+            ):
+                raise RuntimeError(
+                    "Custom ZOTAC capability maps need updating for the native button map."
+                )
+            native_map = Path(system_profile).parent.parent / "capability_maps" / "zone_buttons.yaml"
+            if not native_map.is_file():
+                raise RuntimeError("The native ZOTAC button capability map is unavailable.")
+    corrected_profile = _allow_translated_keyboard_events(corrected_profile)
     if not enabled:
         return update_files(
             {destination: corrected_profile} if corrected_profile != profile else {}
