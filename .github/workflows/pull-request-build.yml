@@ -76,12 +76,13 @@ jobs:
       - name: Add download link to run summary
         env:
           ARTIFACT_NAME: ${{ steps.package.outputs.filename }}
-          ARTIFACT_URL: ${{ steps.upload-package.outputs.artifact-url }}
+          ARTIFACT_ID: ${{ steps.upload-package.outputs.artifact-id }}
         run: |
+          artifact_url="https://nightly.link/${GITHUB_REPOSITORY}/actions/artifacts/${ARTIFACT_ID}.zip"
           {
             echo "### Installable pull request build"
             echo
-            echo "[Download ${ARTIFACT_NAME}](${ARTIFACT_URL})"
+            echo "[Download ${ARTIFACT_NAME}](${artifact_url})"
             echo
-            echo "GitHub sign-in and repository access are required. The download is retained for 30 days."
+            echo "No GitHub sign-in required. Downloads are provided via nightly.link and retained for 30 days."
           } >> "${GITHUB_STEP_SUMMARY}"

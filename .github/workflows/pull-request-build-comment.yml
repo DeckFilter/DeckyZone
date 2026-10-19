@@ -77,14 +77,14 @@ jobs:
 
               if (artifacts.length > 0) {
                 const artifact = artifacts[0];
-                const artifactUrl = `${context.serverUrl}/${repositoryName}/actions/runs/${run.id}/artifacts/${artifact.id}`;
+                const artifactUrl = `https://nightly.link/${repositoryName}/actions/artifacts/${artifact.id}.zip`;
                 const expiry = artifact.expires_at.slice(0, 10);
                 body = `${marker}
             ### Installable pull request build
 
             [Download \`${artifactName}\`](${artifactUrl})
 
-            Built from \`${shortSha}\` · Available until ${expiry} · GitHub sign-in required
+            Built from \`${shortSha}\` · Available until ${expiry} · No GitHub sign-in required
 
             This artifact contains code from this pull request. Review it before installing.`;
               } else {
