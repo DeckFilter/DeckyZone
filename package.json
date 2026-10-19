@@ -29,7 +29,7 @@
   "homepage": "https://github.com/DeckFilter/DeckyZone#readme",
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
-    "@decky/ui": "^4.12.1",
+    "@decky/ui": "^4.13.0",
     "@types/react": "19.1.1",
     "@types/react-dom": "19.1.1",
     "@types/webpack": "^5.28.5",
