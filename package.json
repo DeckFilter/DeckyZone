@@ -30,7 +30,7 @@
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
     "@decky/ui": "^4.15.1",
-    "@types/react": "19.1.1",
+    "@types/react": "19.3.0",
     "@types/react-dom": "19.1.11",
     "@types/webpack": "^5.28.5",
     "rollup": "^4.63.4",
