@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.7.0-pre.1] - 2026-10-19
+
+
+### Features
+
+- Install and repair native performance controls
+- Add fan modes and a separate curve manager
+
+
+
+### Fixes
+
+- Restore native TDP after performance profile changes
+- Disable native controls when power plugins are active
+- Allow compatible SteamOS Manager versions
+- Show temperature in a separate fan status row
+
+
+
+### Documentation
+
+- Simplify README
+- Clarify native performance platform support
+- Keep README concise
+
+
+
+### Maintenance
+
+- Fan controls
+
+
 ## [0.6.4] - 2026-10-19
 
 
