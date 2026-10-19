@@ -6,7 +6,6 @@ import type { InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult, 
 import { showDeckyToast } from '../utils/toasts'
 import { beginUpdateOperation, useUpdateOperationBusy } from '../utils/updateOperations'
 import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
-import { SteamExplainerButtonItem } from './SteamExplainer'
 import InputPlumberUpdateControls from './InputPlumberUpdateControls'
 
 type TroubleshootingOperation = 'reapply' | 'reinstall' | 'reset' | 'inputplumber'
@@ -275,7 +274,7 @@ const TroubleshootingPanel = ({
         </SettingsRow>
       )}
       <SettingsRow>
-        <SteamExplainerButtonItem
+        <ButtonItem
           layout={itemLayout}
           label="Reapply Controller Profile"
           explainerTitle="Reapply Controller Profile"
@@ -284,7 +283,7 @@ const TroubleshootingPanel = ({
           onClick={() => void handleReapply()}
         >
           {operation === 'reapply' ? 'Reapplying...' : 'Reapply Controller Profile'}
-        </SteamExplainerButtonItem>
+        </ButtonItem>
       </SettingsRow>
       <InputPlumberUpdateControls
         disabled={busy}

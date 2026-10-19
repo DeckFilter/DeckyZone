@@ -1,6 +1,6 @@
+import { ToggleField } from '@decky/ui'
 import type { ActiveGame } from '../../types/plugin'
 import { SettingsRow } from '../SettingsSurface'
-import { SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
   activeGame: ActiveGame | null
@@ -109,7 +109,7 @@ const PerGameSettingsPanel = ({
   return (
     <>
       <SettingsRow>
-        <SteamExplainerToggleField
+        <ToggleField
           label="Enable Per-Game Settings"
           explainerTitle="Per-Game Settings"
           explainer={getPerGameSettingsExplainer(activeGame, inputplumberAvailable)}
@@ -143,7 +143,7 @@ export const XboxControllerSetting = ({
   onChange: (enabled: boolean) => void
 }) => (
   <SettingsRow>
-    <SteamExplainerToggleField
+    <ToggleField
       label="Simulate Xbox Controller"
       explainerTitle="Simulate Xbox Controller"
       explainer={getButtonPromptFixExplainer(inputplumberAvailable)}
