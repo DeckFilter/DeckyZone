@@ -27,6 +27,7 @@ export const SteamExplainerDropdownItem = ({
 
   return (
     <DropdownItem
+      childrenContainerWidth="fixed"
       {...props}
       layout="inline"
       description={props.description ?? settingsDescription}

@@ -3,8 +3,16 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      channel:
+        description: Release channel
+        required: true
+        type: choice
+        default: stable
+        options:
+          - stable
+          - prerelease
       bump:
-        description: Version bump
+        description: Stable version bump
         required: true
         type: choice
         default: patch
@@ -12,12 +20,16 @@ on:
           - patch
           - minor
           - major
+      prerelease_version:
+        description: 'Pre-release version (for example: 0.7.0-pre.1)'
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: deckyzone-release-main
+  group: deckyzone-release
   cancel-in-progress: false
 
 jobs:
@@ -30,17 +42,29 @@ jobs:
       artifact_id: ${{ steps.artifact.outputs.artifact-id }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Require a manual release from main
+      - name: Validate release selection
         env:
+          RELEASE_CHANNEL: ${{ inputs.channel }}
           RELEASE_BUMP: ${{ inputs.bump }}
         run: |
-          if [ "$GITHUB_REF" != refs/heads/main ]; then
-            echo '::error::Dispatch releases from main only.'
-            exit 1
-          fi
-          case "$RELEASE_BUMP" in
-            patch|minor|major) ;;
-            *) echo '::error::Unsupported version bump.'; exit 1 ;;
+          case "$RELEASE_CHANNEL" in
+            stable)
+              if [ "$GITHUB_REF" != refs/heads/main ]; then
+                echo '::error::Dispatch stable releases from main only.'
+                exit 1
+              fi
+              case "$RELEASE_BUMP" in
+                patch|minor|major) ;;
+                *) echo '::error::Unsupported version bump.'; exit 1 ;;
+              esac
+              ;;
+            prerelease)
+              if [[ "$GITHUB_REF" != refs/heads/* ]]; then
+                echo '::error::Select a source branch for a pre-release.'
+                exit 1
+              fi
+              ;;
+            *) echo '::error::Unsupported release channel.'; exit 1 ;;
           esac
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,20 +85,58 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test release publication handling
-        run: python3 scripts/test-release-publish.py
+      - name: Test updater and release publication handling
+        run: |
+          python3 scripts/test-plugin-update.py
+          python3 scripts/test-release-publish.py
 
       - name: Prepare version locally
         id: version
         env:
+          RELEASE_CHANNEL: ${{ inputs.channel }}
           RELEASE_BUMP: ${{ inputs.bump }}
+          PRERELEASE_VERSION: ${{ inputs.prerelease_version }}
         run: |
-          pnpm run release:prepare "$RELEASE_BUMP"
-          version="$(node -p "require('./package.json').version")"
-          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo '::error::Expected a stable semantic version.'
-            exit 1
+          if [ "$RELEASE_CHANNEL" = prerelease ]; then
+            python3 - <<'PY'
+          import os, sys
+          sys.path.insert(0, "py_modules")
+          from release_versions import is_prerelease_version
+          if not is_prerelease_version(os.environ["PRERELEASE_VERSION"]):
+              raise SystemExit("Expected X.Y.Z-pre.N with a positive counter, such as 0.7.0-pre.1")
+          PY
+            pnpm run release:prepare "$PRERELEASE_VERSION"
+          else
+            pnpm run release:prepare "$RELEASE_BUMP"
           fi
+          version="$(node -p "require('./package.json').version")"
+          export RELEASE_VERSION="$version"
+          python3 - <<'PY'
+          import os, subprocess, sys
+          sys.path.insert(0, "py_modules")
+          from release_versions import is_prerelease_version, parse_version, require_version
+          version = os.environ["RELEASE_VERSION"]
+          require_version(version)
+          prerelease = os.environ["RELEASE_CHANNEL"] == "prerelease"
+          if is_prerelease_version(version) != prerelease:
+              raise SystemExit("Prepared version does not match the selected release channel")
+          if prerelease:
+              source = os.environ["GITHUB_SHA"]
+              tags = subprocess.check_output(["git", "tag", "--merged", source], text=True).splitlines()
+              stable_tags = [tag for tag in tags if tag.startswith("v")
+                             and parse_version(tag, allow_tag=True) is not None
+                             and not is_prerelease_version(tag, allow_tag=True)]
+              # Supplying only valid stable tags keeps earlier prereleases out of the range boundary.
+              if stable_tags:
+                  args = ["git", "describe", "--tags", "--abbrev=0"]
+                  args.extend("--match=" + tag for tag in stable_tags)
+                  base = subprocess.check_output([*args, source], text=True).strip()
+                  notes_range = f"{base}..{source}"
+              else:
+                  notes_range = source
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                  output.write(f"notes_range={notes_range}\n")
+          PY
           if git show-ref --verify --quiet "refs/tags/v${version}"; then
             echo '::error::This version is already tagged. Re-run failed jobs to reuse the original artifacts.'
             exit 1
@@ -86,7 +148,7 @@ jobs:
         with:
           version: v2.14.2
           config: cliff.toml
-          args: --strip all --unreleased --tag v${{ steps.version.outputs.version }}
+          args: --use-branch-tags --strip all --unreleased --tag v${{ steps.version.outputs.version }} ${{ steps.version.outputs.notes_range }}
           github_token: ${{ github.token }}
         env:
           OUTPUT: CHANGES.md
@@ -97,7 +159,7 @@ jobs:
         with:
           version: v2.14.2
           config: cliff.toml
-          args: --tag v${{ steps.version.outputs.version }}
+          args: --use-branch-tags --tag v${{ steps.version.outputs.version }}
           github_token: ${{ github.token }}
         env:
           OUTPUT: CHANGELOG.md

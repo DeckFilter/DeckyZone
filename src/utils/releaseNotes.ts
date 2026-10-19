@@ -1,4 +1,5 @@
 import { callable } from '@decky/api'
+import type { UpdateChannel } from '../types/plugin'
 
 export type PluginRelease = {
   id: number
@@ -9,12 +10,12 @@ export type PluginRelease = {
   url: string
 }
 
-const fetchReleaseNotes = callable<[], PluginRelease[]>('get_release_notes')
+const fetchReleaseNotes = callable<[UpdateChannel], PluginRelease[]>('get_release_notes')
 const CACHE_DURATION_MS = 5 * 60 * 1000
 
-let cachedReleases: PluginRelease[] | null = null
-let cacheTime = 0
-let pendingRequest: Promise<PluginRelease[]> | null = null
+const cachedReleases = new Map<UpdateChannel, { releases: PluginRelease[]; time: number }>()
+const pendingRequests = new Map<UpdateChannel, Promise<PluginRelease[]>>()
+let cacheGeneration = 0
 
 const releaseBody = (release: PluginRelease) => {
   const version = release.version.replace(/^v/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -24,27 +25,34 @@ const releaseBody = (release: PluginRelease) => {
     || 'No release notes were provided for this version.'
 }
 
-export const getReleaseNotes = ({ force = false }: { force?: boolean } = {}): Promise<PluginRelease[]> => {
-  if (pendingRequest) {
-    return pendingRequest
+export const getReleaseNotes = (channel: UpdateChannel, { force = false }: { force?: boolean } = {}): Promise<PluginRelease[]> => {
+  const pending = pendingRequests.get(channel)
+  if (pending) return pending
+  const cached = cachedReleases.get(channel)
+  if (!force && cached && Date.now() - cached.time < CACHE_DURATION_MS) {
+    return Promise.resolve(cached.releases)
   }
-
-  if (!force && cachedReleases && Date.now() - cacheTime < CACHE_DURATION_MS) {
-    return Promise.resolve(cachedReleases)
-  }
-
-  pendingRequest = fetchReleaseNotes().then(
+  const generation = cacheGeneration
+  const request = fetchReleaseNotes(channel).then(
     (releases) => {
-      cachedReleases = releases.map((release) => ({ ...release, body: releaseBody(release) }))
-      cacheTime = Date.now()
-      pendingRequest = null
-      return cachedReleases
+      const normalized = releases.map((release) => ({ ...release, body: releaseBody(release) }))
+      if (generation === cacheGeneration && pendingRequests.get(channel) === request) {
+        cachedReleases.set(channel, { releases: normalized, time: Date.now() })
+        pendingRequests.delete(channel)
+      }
+      return normalized
     },
     (error: unknown) => {
-      pendingRequest = null
+      if (pendingRequests.get(channel) === request) pendingRequests.delete(channel)
       throw error
     },
   )
+  pendingRequests.set(channel, request)
+  return request
+}
 
-  return pendingRequest
+export const resetReleaseNotesCache = () => {
+  cacheGeneration += 1
+  cachedReleases.clear()
+  pendingRequests.clear()
 }

@@ -6,6 +6,11 @@ import trackpad_modes
 import controller_mappings
 
 
+UPDATE_CHANNEL_KEY = "updateChannel"
+DEFAULT_UPDATE_CHANNEL = "stable"
+VALID_UPDATE_CHANNELS = ("stable", "prerelease")
+
+
 STARTUP_APPLY_KEY = "startupApplyEnabled"
 HOME_BUTTON_ENABLED_KEY = "homeButtonEnabled"
 TRACKPAD_MODE_KEY = "trackpadMode"
@@ -70,6 +75,29 @@ def _write_setting(name, value):
     setting_file.setSetting(name, value)
     setting_file.commit()
     return value
+
+
+def get_update_channel():
+    channel = _read_settings().get(UPDATE_CHANNEL_KEY)
+    return channel if channel in VALID_UPDATE_CHANNELS else DEFAULT_UPDATE_CHANNEL
+
+
+def set_update_channel(channel):
+    if channel not in VALID_UPDATE_CHANNELS:
+        raise ValueError("Select Stable or Pre-release as the update channel.")
+    settings = _read_settings()
+    had_channel = UPDATE_CHANNEL_KEY in settings
+    previous = settings.get(UPDATE_CHANNEL_KEY)
+    try:
+        # SettingsManager.setSetting commits; do not issue a second write.
+        setting_file.setSetting(UPDATE_CHANNEL_KEY, channel)
+    except Exception:
+        if had_channel:
+            setting_file.settings[UPDATE_CHANNEL_KEY] = previous
+        else:
+            setting_file.settings.pop(UPDATE_CHANNEL_KEY, None)
+        raise
+    return get_update_channel()
 
 
 def reset_settings():

@@ -1,154 +1,133 @@
 import { callable } from '@decky/api'
+import type { ReleaseTarget, UpdateChannel } from '../types/plugin'
 
-const getLatestVersionNum = callable<[], string>('get_latest_version_num')
+const getUpdateRelease = callable<[UpdateChannel], ReleaseTarget | null>('get_update_release')
 const VERSION_CACHE_KEY = 'DeckyZone.versionCache'
+const VERSION_PATTERN = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-pre\.([1-9]\d*))?$/
 
 export type VersionCache = {
   installedVersionNum: string
-  latestVersionNum: string
+  channel: UpdateChannel
+  release: ReleaseTarget | null
   lastCheckTime: number
 }
 
-let startupCheck: Promise<VersionCache> | null = null
-let startupInstalledVersionNum = ''
-let checkIsPending = false
+type Check = { promise: Promise<VersionCache>; pending: boolean }
+const checks = new Map<string, Check>()
+let cacheGeneration = 0
 
-export const readVersionCache = (installedVersionNum: string): VersionCache | null => {
+const parseVersion = (version: string) => {
+  const match = VERSION_PATTERN.exec(version)
+  return match?.[0] === version ? match : null
+}
+export const isValidVersion = (version: string): boolean => parseVersion(version) !== null
+
+// Decimal strings preserve ordering even when a version component exceeds JS's safe integer range.
+const compareComponent = (left: string, right: string): number => (
+  left.length !== right.length ? left.length - right.length : left === right ? 0 : left > right ? 1 : -1
+)
+
+export const compareVersions = (left: string, right: string): number => {
+  const leftParts = parseVersion(left)
+  const rightParts = parseVersion(right)
+  if (!leftParts || !rightParts) return 0
+  for (let index = 1; index <= 3; index += 1) {
+    const difference = compareComponent(leftParts[index], rightParts[index])
+    if (difference !== 0) return difference
+  }
+  if (leftParts[4] === undefined) return rightParts[4] === undefined ? 0 : 1
+  if (rightParts[4] === undefined) return -1
+  return compareComponent(leftParts[4], rightParts[4])
+}
+
+const cacheKey = (installedVersionNum: string, channel: UpdateChannel) => (
+  `${VERSION_CACHE_KEY}:${channel}:${installedVersionNum}`
+)
+
+const validTarget = (target: unknown, channel: UpdateChannel): target is ReleaseTarget => {
+  if (!target || typeof target !== 'object') return false
+  const release = target as Partial<ReleaseTarget>
+  return Number.isSafeInteger(release.id) && (release.id ?? 0) > 0
+    && Number.isSafeInteger(release.assetId) && (release.assetId ?? 0) > 0
+    && typeof release.version === 'string' && isValidVersion(release.version)
+    && typeof release.tagName === 'string'
+    && release.tagName.replace(/^v/, '') === release.version.replace(/^v/, '')
+    && typeof release.prerelease === 'boolean'
+    && release.prerelease === release.version.includes('-pre.')
+    && (channel === 'prerelease' || !release.prerelease)
+}
+
+export const readVersionCache = (installedVersionNum: string, channel: UpdateChannel): VersionCache | null => {
+  const key = cacheKey(installedVersionNum, channel)
   try {
-    const rawCache = localStorage.getItem(VERSION_CACHE_KEY)
-    if (!rawCache) {
+    const rawCache = localStorage.getItem(key)
+    if (!rawCache) return null
+    const cached = JSON.parse(rawCache) as Partial<VersionCache>
+    if (cached.installedVersionNum !== installedVersionNum || cached.channel !== channel
+      || typeof cached.lastCheckTime !== 'number' || !Number.isFinite(cached.lastCheckTime)
+      || (cached.release !== null && !validTarget(cached.release, channel))) {
+      localStorage.removeItem(key)
       return null
     }
-
-    const parsedCache = JSON.parse(rawCache) as Partial<VersionCache>
-    if (
-      typeof parsedCache.installedVersionNum !== 'string' ||
-      typeof parsedCache.latestVersionNum !== 'string' ||
-      typeof parsedCache.lastCheckTime !== 'number' ||
-      parsedCache.installedVersionNum !== installedVersionNum
-    ) {
-      localStorage.removeItem(VERSION_CACHE_KEY)
-      return null
-    }
-
-    return {
-      installedVersionNum: parsedCache.installedVersionNum,
-      latestVersionNum: parsedCache.latestVersionNum,
-      lastCheckTime: parsedCache.lastCheckTime,
-    }
+    return cached as VersionCache
   } catch {
-    try {
-      localStorage.removeItem(VERSION_CACHE_KEY)
-    } catch {
-      // Cache access should not prevent a fresh release check.
-    }
+    try { localStorage.removeItem(key) } catch { /* A cache failure must not block a release check. */ }
     return null
   }
 }
 
-export const compareVersions = (left: string, right: string): number => {
-  const leftParts = left
-    .replace(/^v/i, '')
-    .split('.')
-    .map((part) => Number.parseInt(part, 10) || 0)
-  const rightParts = right
-    .replace(/^v/i, '')
-    .split('.')
-    .map((part) => Number.parseInt(part, 10) || 0)
-  const maxLength = Math.max(leftParts.length, rightParts.length)
-
-  for (let index = 0; index < maxLength; index += 1) {
-    const leftPart = leftParts[index] ?? 0
-    const rightPart = rightParts[index] ?? 0
-    if (leftPart !== rightPart) {
-      return leftPart - rightPart
-    }
-  }
-
-  return 0
-}
-
 export const getLastCheckText = (lastCheckTime: number): string => {
   const diff = Date.now() - lastCheckTime
-
-  if (diff < 60 * 1000) {
-    return 'just now'
-  }
-
-  if (diff < 60 * 60 * 1000) {
+  if (diff < 60000) return 'just now'
+  if (diff < 3600000) {
     const minutes = Math.floor(diff / 60000)
     return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
   }
-
-  if (diff < 24 * 60 * 60 * 1000) {
+  if (diff < 86400000) {
     const hours = Math.floor(diff / 3600000)
     return `${hours} hour${hours === 1 ? '' : 's'} ago`
   }
-
   const days = Math.floor(diff / 86400000)
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
-const fetchLatestVersion = async (installedVersionNum: string): Promise<VersionCache> => {
-  const latestVersionNum = await getLatestVersionNum()
-  const cache: VersionCache = {
-    installedVersionNum,
-    latestVersionNum,
-    lastCheckTime: Date.now(),
-  }
-
-  try {
-    localStorage.setItem(VERSION_CACHE_KEY, JSON.stringify(cache))
-  } catch {
-    // The release check still succeeded even if the UI cache is unavailable.
-  }
-
-  return cache
-}
-
-const startCheck = (installedVersionNum: string): Promise<VersionCache> => {
-  const check = fetchLatestVersion(installedVersionNum)
-  startupInstalledVersionNum = installedVersionNum
-  startupCheck = check
-  checkIsPending = true
-
-  void check.then(
-    () => {
-      if (startupCheck === check) {
-        checkIsPending = false
-      }
-    },
-    () => {
-      if (startupCheck === check) {
-        startupCheck = null
-        checkIsPending = false
-      }
-    },
+const startCheck = (installedVersionNum: string, channel: UpdateChannel): Promise<VersionCache> => {
+  const key = cacheKey(installedVersionNum, channel)
+  const generation = cacheGeneration
+  const promise = getUpdateRelease(channel).then((release) => {
+    if (release !== null && !validTarget(release, channel)) throw new Error('Invalid update release')
+    const cache: VersionCache = { installedVersionNum, channel, release, lastCheckTime: Date.now() }
+    if (generation === cacheGeneration && checks.get(key)?.promise === promise) {
+      try { localStorage.setItem(key, JSON.stringify(cache)) } catch { /* Cache access is optional. */ }
+    }
+    return cache
+  })
+  const check: Check = { promise, pending: true }
+  checks.set(key, check)
+  void promise.then(
+    () => { if (checks.get(key) === check) check.pending = false },
+    () => { if (checks.get(key) === check) checks.delete(key) },
   )
-
-  return check
+  return promise
 }
 
-// Called on plugin initialization; a previous UI cache never skips this check.
-export const checkLatestVersion = (installedVersionNum: string): Promise<VersionCache> => {
-  if (startupCheck && startupInstalledVersionNum === installedVersionNum) {
-    return startupCheck
-  }
+// Initialization always performs a network check, sharing only this plugin session's check.
+export const checkLatestVersion = (installedVersionNum: string, channel: UpdateChannel): Promise<VersionCache> => (
+  checks.get(cacheKey(installedVersionNum, channel))?.promise ?? startCheck(installedVersionNum, channel)
+)
 
-  return startCheck(installedVersionNum)
-}
-
-// The panel's manual button performs another fresh check after startup.
-export const recheckLatestVersion = (installedVersionNum: string): Promise<VersionCache> => {
-  if (checkIsPending && startupCheck && startupInstalledVersionNum === installedVersionNum) {
-    return startupCheck
-  }
-
-  return startCheck(installedVersionNum)
+export const recheckLatestVersion = (installedVersionNum: string, channel: UpdateChannel): Promise<VersionCache> => {
+  const check = checks.get(cacheKey(installedVersionNum, channel))
+  return check?.pending ? check.promise : startCheck(installedVersionNum, channel)
 }
 
 export const resetStartupCheck = () => {
-  startupCheck = null
-  startupInstalledVersionNum = ''
-  checkIsPending = false
+  cacheGeneration += 1
+  checks.clear()
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index)
+      if (key === VERSION_CACHE_KEY || key?.startsWith(`${VERSION_CACHE_KEY}:`)) localStorage.removeItem(key)
+    }
+  } catch { /* Invalidating in-memory state is sufficient when storage is unavailable. */ }
 }

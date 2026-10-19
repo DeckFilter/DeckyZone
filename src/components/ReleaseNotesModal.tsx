@@ -13,11 +13,13 @@ import {
 } from '@decky/ui'
 import { useCallback, useEffect, useRef, useState, type ComponentProps, type ComponentType, type HTMLAttributes, type ReactNode, type RefAttributes, type RefObject } from 'react'
 import { getReleaseNotes, type PluginRelease } from '../utils/releaseNotes'
+import type { UpdateChannel } from '../types/plugin'
 import ReleaseNotesMarkdown from './ReleaseNotesMarkdown'
 import { releaseNotesClasses, releaseNotesStyles } from './releaseNotesStyles'
 
 type Props = {
   installedVersionNum: string
+  channel: UpdateChannel
   closeModal?: () => void
 }
 
@@ -104,7 +106,7 @@ const formatDate = (date: string) => {
     : parsed.toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric' })
 }
 
-const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
+const ReleaseNotesModal = ({ installedVersionNum, channel, closeModal }: Props) => {
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [viewport, setViewport] = useState(getViewport)
@@ -119,7 +121,7 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
   useEffect(() => {
     let active = true
     setLoad({ status: 'loading' })
-    void getReleaseNotes({ force: attempt > 0 })
+    void getReleaseNotes(channel, { force: attempt > 0 })
       .then((releases) => {
         if (active) setLoad({ status: 'ready', releases })
       })
@@ -127,7 +129,7 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
         if (active) setLoad({ status: 'error' })
       })
     return () => { active = false }
-  }, [attempt])
+  }, [attempt, channel])
 
   useEffect(() => {
     const steamWindow = findSP()
@@ -235,8 +237,8 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
   )
 }
 
-export const showReleaseNotesModal = (installedVersionNum: string) => (
-  showModal(<ReleaseNotesModal installedVersionNum={installedVersionNum} />)
+export const showReleaseNotesModal = (installedVersionNum: string, channel: UpdateChannel) => (
+  showModal(<ReleaseNotesModal installedVersionNum={installedVersionNum} channel={channel} />)
 )
 
 export default ReleaseNotesModal

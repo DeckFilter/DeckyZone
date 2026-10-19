@@ -2,35 +2,36 @@ import { Focusable, updaterFieldClasses } from '@decky/ui'
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { compareVersions } from '../utils/pluginUpdates'
+import type { ReleaseTarget, UpdateChannel } from '../types/plugin'
 import { getReleaseNotes, type PluginRelease } from '../utils/releaseNotes'
 import { showReleaseNotesModal } from './ReleaseNotesModal'
 import { releaseNotesHeadings } from './releaseNotesHeadings'
 
 type Props = {
-  versionNum: string
+  target: ReleaseTarget
+  channel: UpdateChannel
   installedVersionNum: string
 }
 
-const ReleaseNotesPreview = ({ versionNum, installedVersionNum }: Props) => {
+const ReleaseNotesPreview = ({ target, channel, installedVersionNum }: Props) => {
   const [release, setRelease] = useState<PluginRelease | null>(null)
 
   useEffect(() => {
     let active = true
     setRelease(null)
-    void getReleaseNotes()
+    void getReleaseNotes(channel)
       .then((releases) => {
         if (active) {
-          setRelease(releases.find((entry) => compareVersions(entry.version, versionNum) === 0) ?? null)
+          setRelease(releases.find((entry) => entry.id === target.id) ?? null)
         }
       })
       .catch(() => {
         // Release-note failures must not block checking for or installing updates.
       })
     return () => { active = false }
-  }, [versionNum])
+  }, [target.id, channel])
 
-  if (!release || compareVersions(release.version, versionNum) !== 0) return null
+  if (!release || release.id !== target.id) return null
 
   const publishedAt = new Date(release.publishedAt).getTime()
   const date = Number.isNaN(publishedAt) ? '' : new Intl.RelativeTimeFormat(undefined, {
@@ -41,7 +42,7 @@ const ReleaseNotesPreview = ({ versionNum, installedVersionNum }: Props) => {
   return (
     <Focusable
       className={updaterFieldClasses.PatchNotes}
-      onActivate={() => showReleaseNotesModal(installedVersionNum)}
+      onActivate={() => showReleaseNotesModal(installedVersionNum, channel)}
       onOKActionDescription="View Changelog"
     >
       <div className={updaterFieldClasses.PostedTime}>{date}</div>
