@@ -18,7 +18,6 @@ import { callable } from '@decky/api'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { FaCog, FaGamepad, FaTrash } from 'react-icons/fa'
 import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
-import GameControllerGeneral from '../components/controller/GameControllerGeneral'
 import { awaitGameControllerSaves } from '../components/controller/useGameControllerSettings'
 import { controllerMappingRoute, openControllerMapping } from '../routes'
 import { showDeckyToast } from '../utils/toasts'
@@ -63,7 +62,6 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
   const [state, setState] = useState<MappingState | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [generalBusy, setGeneralBusy] = useState(false)
   const inFlight = useRef(false)
   const mounted = useRef(true)
   const { store, bootstrap } = useDeckyZoneState()
@@ -102,7 +100,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
     }
   }, [appId, mappingRevision])
   const save = async (profile: MappingProfile) => {
-    if (inFlight.current || generalBusy || !state) throw new Error('A controller setting is still saving.')
+    if (inFlight.current || !state) throw new Error('A controller setting is still saving.')
     const previous = state
     inFlight.current = true
     setSaving(true)
@@ -134,9 +132,9 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
       .map(([id]) => ({ appId: id, name: getGameName(id) }))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }))
     : []
-  const disabled = saving || generalBusy
+  const disabled = saving
   const removeGameProfile = async (gameId: string) => {
-    if (inFlight.current || generalBusy) throw new Error('A controller setting is still saving.')
+    if (inFlight.current) throw new Error('A controller setting is still saving.')
     const current = store.getSnapshot().bootstrap
     if (current.state !== 'ready') throw new Error('Controller settings are not ready. Try again.')
     const game = current.snapshot.settings.perGameSettings[gameId]
@@ -286,27 +284,6 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
           eInitialFocus={lastSource.current || (appId === '0' && activeSection === 'games' && lastEditedGameId)
             ? sidebarFocus?.k_EPagedSettingsInitialFocus_PageContent : undefined}
           pages={[
-            {
-              title: 'General',
-              icon: SettingsIcon ? <SettingsIcon /> : <FaCog />,
-              route: `${baseRoute}/general`,
-              content: (
-                <DialogBody>
-                  {settings ? (
-                    <GameControllerGeneral
-                      appId={appId}
-                      gameName={appId === '0' ? undefined : getGameName(appId)}
-                      settings={settings}
-                      onSettingsChange={(update) => store.updateSettings(update)}
-                      disabled={saving}
-                      onBusyChange={setGeneralBusy}
-                    />
-                  ) : bootstrap.state === 'error' ? (
-                    <DialogBodyText>{bootstrap.message}</DialogBodyText>
-                  ) : <SteamSpinner />}
-                </DialogBody>
-              ),
-            },
             {
               title: 'Dials',
               icon: <MappingGlyph src={dialGlyph} label="Dials" className={ui.glyphClass} white />,

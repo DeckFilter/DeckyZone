@@ -38,7 +38,7 @@ Status key: ✅ tested and working, ❌ failed testing, ❓ untested or unknown,
 
 In Gamepad mode, the left dial controls volume and the right dial controls brightness by default. Brightness support works automatically while the plugin is running.
 
-Open **Controller settings** in the Controller panel to configure mappings and rumble globally or for individual games. **General** contains **Custom Rumble Strength**, **Intensity** and **Test Rumble**. Game profiles also include **Simulate Xbox Controller**. These quick controls remain available in the Quick Access Menu, which shows whether rumble changes apply globally or to the current game.
+Open **Controller settings** in the Controller panel to configure mappings globally or for individual games. **Custom Rumble Strength**, **Intensity** and **Test Rumble** are available in the Controller panel and Quick Access Menu. The Quick Access Menu also includes **Simulate Xbox Controller** for the current game and shows whether rumble changes apply globally or to that game.
 
 Under **Dials**, choose **Volume**, **Brightness** or **Custom** for either dial. Custom lets you assign a command to each direction. In global settings, **Buttons** lets the Home button take a **Screenshot (Default)** or open **Steam Home**. This action applies to every game.
 
@@ -48,7 +48,7 @@ Each trackpad has its own **Behavior** setting:
 - **None** turns off that trackpad.
 - **Button Pad** lets you assign commands to its four directions.
 
-Games without custom settings use the global settings. Use **Game settings** on the global controller screen to edit saved profiles without launching a game, including profiles with only rumble or Xbox simulation settings. Opening a profile does not change it; saving a change enables that game's settings. A game without saved mappings continues to use the global mappings.
+Games without custom settings use the global settings. Use **Game settings** on the global controller screen to edit mappings for saved profiles without launching a game. Opening a profile does not change it; saving a change enables that game's settings. A game without saved mappings continues to use the global mappings.
 
 The trash button removes all of a game's controller settings after confirmation, including mappings, rumble overrides and Xbox simulation. The game then uses global mappings and rumble settings. Use **Global settings** to return to the global controller screen.
 

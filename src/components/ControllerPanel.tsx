@@ -190,8 +190,8 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
             disabled={mappingDisabled || controls.busy}
             explainerTitle="Controller settings"
             explainer={isQuickAccess && activeGame
-              ? `Configure dials, trackpads, rumble and Xbox controller simulation for ${activeGame.display_name}.`
-              : 'Configure global buttons, dials, trackpads and rumble, or edit saved game settings including Xbox controller simulation.'}
+              ? `Configure dial and trackpad mappings for ${activeGame.display_name}.`
+              : 'Configure global button, dial and trackpad mappings, or edit saved game mappings.'}
             onClick={() => openControllerMapping(isQuickAccess ? activeGame?.appid ?? '0' : '0')}
           >
             Edit settings
