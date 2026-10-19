@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.6.4] - 2026-10-19
+
+
+### Features
+
+- Add update previews by @felixhirschfeld
+
+
+
+### Fixes
+
+- Match native changelog typography by @felixhirschfeld
+
+
+
+### Documentation
+
+- Update and simplify README by @felixhirschfeld
+
+
+
+### Maintenance
+
+- Remove changelog icons by @felixhirschfeld
+- *(ci)* Allow anonymous PR build downloads by @felixhirschfeld
+- Bump @decky/ui by @felixhirschfeld
+- Use native explainer props (#55) by @felixhirschfeld
+
+
 ## [0.6.3] - 2026-10-16
 
 
