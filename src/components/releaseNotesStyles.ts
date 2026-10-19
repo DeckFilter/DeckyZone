@@ -60,14 +60,6 @@ export const releaseNotesStyles = `
   margin: 0; padding: 24px; color: #cfd2d3;
   font-size: 14px; font-weight: 300; line-height: 19px; overflow-wrap: anywhere;
 }
-.dz-release-notes-viewer .dz-release-notes-body h1,
-.dz-release-notes-viewer .dz-release-notes-body h2,
-.dz-release-notes-viewer .dz-release-notes-body h3,
-.dz-release-notes-viewer .dz-release-notes-body h4,
-.dz-release-notes-viewer .dz-release-notes-body h5,
-.dz-release-notes-viewer .dz-release-notes-body h6 {
-  color: inherit; font-size: 14px; font-weight: 700; line-height: 19px; margin: 14px 0;
-}
 .dz-release-notes-viewer .dz-release-notes-paragraph { margin: 7px 0; }
 .dz-release-notes-viewer .dz-release-notes-body ul,
 .dz-release-notes-viewer .dz-release-notes-body ol { margin: 14px 0; padding-left: 40px; }

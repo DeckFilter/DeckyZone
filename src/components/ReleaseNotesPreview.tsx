@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { compareVersions } from '../utils/pluginUpdates'
 import { getReleaseNotes, type PluginRelease } from '../utils/releaseNotes'
 import { showReleaseNotesModal } from './ReleaseNotesModal'
+import { releaseNotesHeadings } from './releaseNotesHeadings'
 
 type Props = {
   versionNum: string
@@ -50,6 +51,7 @@ const ReleaseNotesPreview = ({ versionNum, installedVersionNum }: Props) => {
           remarkPlugins={[remarkGfm]}
           skipHtml
           components={{
+            ...releaseNotesHeadings,
             // The whole preview opens the changelog; links are selectable there.
             a: ({ children }) => <span>{children}</span>,
             img: () => null,

@@ -1,6 +1,7 @@
 import { Focusable, Navigation } from '@decky/ui'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { releaseNotesHeadings } from './releaseNotesHeadings'
 import { releaseNotesClasses } from './releaseNotesStyles'
 
 type Props = {
@@ -24,6 +25,7 @@ const ReleaseNotesMarkdown = ({ children, onDismiss }: Props) => (
       skipHtml
       urlTransform={externalUrl}
       components={{
+        ...releaseNotesHeadings,
         // Focusable's native element is a div, so paragraph containers must accept it.
         p: ({ children: content }) => <div className="dz-release-notes-paragraph">{content}</div>,
         a: ({ children: content, href, title }) => {
