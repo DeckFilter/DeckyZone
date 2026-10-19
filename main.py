@@ -257,6 +257,7 @@ class DeckyZoneService:
         self.logger = logger
         self.read_text = read_text or self._read_text
         self.settings_store = settings_store
+        self._plugin_update_lock = asyncio.Lock()
         self.gamescope_display_profiles = (
             gamescope_display_profiles
             or gamescope_display_profiles_module.GamescopeDisplayProfiles(
@@ -598,25 +599,56 @@ class DeckyZoneService:
         )
 
     async def get_latest_version_num(self):
-        try:
-            return await asyncio.to_thread(plugin_update.get_latest_version)
-        except Exception as error:
-            self.logger.error(f"Failed to fetch latest DeckyZone version: {error}")
-            raise RuntimeError("Failed to fetch latest DeckyZone version.")
+        target = await self.get_update_release("stable")
+        if target is None:
+            raise RuntimeError("No published stable DeckyZone release was found.")
+        return target["version"]
 
-    async def get_release_notes(self):
+    async def get_update_release(self, channel):
+        plugin_update.validate_channel(channel)
         try:
-            return await asyncio.to_thread(plugin_update.get_release_notes)
+            return await asyncio.to_thread(plugin_update.get_update_release, channel)
+        except Exception as error:
+            self.logger.error(f"Failed to fetch DeckyZone update: {error}")
+            raise RuntimeError("Failed to check for updates. Try again.") from error
+
+    async def set_update_channel(self, channel):
+        plugin_update.validate_channel(channel)
+        if self._plugin_update_lock.locked():
+            raise RuntimeError("Wait for the update operation to finish.")
+        async with self._plugin_update_lock:
+            self.settings_store.set_update_channel(channel)
+            return self._current_settings()
+
+    async def get_release_notes(self, channel="stable"):
+        plugin_update.validate_channel(channel)
+        try:
+            return await asyncio.to_thread(plugin_update.get_release_notes, channel)
         except Exception as error:
             self.logger.error(f"Failed to fetch DeckyZone release notes: {error}")
-            raise RuntimeError("Failed to fetch DeckyZone release notes.")
+            raise RuntimeError("Failed to fetch DeckyZone release notes.") from error
 
-    async def ota_update(self):
-        try:
-            return bool(plugin_update.ota_update())
-        except Exception as error:
-            self.logger.error(f"Failed to update DeckyZone: {error}")
-            return False
+    async def ota_update(self, channel, target):
+        plugin_update.validate_channel(channel)
+        if self._plugin_update_lock.locked():
+            raise RuntimeError("Wait for the update operation to finish.")
+        async with self._plugin_update_lock:
+            task = asyncio.create_task(asyncio.to_thread(
+                plugin_update.ota_update, channel, target,
+                get_saved_channel=self.settings_store.get_update_channel,
+            ))
+            try:
+                return bool(await asyncio.shield(task))
+            except asyncio.CancelledError:
+                # Keep the gate held until the installer thread has stopped.
+                try:
+                    await asyncio.shield(task)
+                except Exception:
+                    pass
+                raise
+            except Exception as error:
+                self.logger.error(f"Failed to update DeckyZone: {error}")
+                raise RuntimeError(str(error)) from error
 
     def _set_status(self, state, message):
         self._status = {"state": state, "message": message}
@@ -861,6 +893,7 @@ class DeckyZoneService:
             "gamescopeZotacProfileVerificationState": display_profile_settings["gamescopeZotacProfileVerificationState"],
             "inputplumberAvailable": self._inputplumber_available,
             "pluginVersionNum": decky.DECKY_PLUGIN_VERSION,
+            "updateChannel": self.settings_store.get_update_channel(),
             "rumbleEnabled": self.settings_store.get_rumble_enabled(),
             "rumbleIntensity": self.settings_store.get_rumble_intensity(),
             "rumbleAvailable": self._rumble_available,
@@ -4962,11 +4995,17 @@ class Plugin:
     async def get_latest_version_num(self):
         return await self.service.get_latest_version_num()
 
-    async def get_release_notes(self):
-        return await self.service.get_release_notes()
+    async def get_update_release(self, channel):
+        return await self.service.get_update_release(channel)
 
-    async def ota_update(self):
-        return await self._controller_operation(self.service.ota_update)
+    async def set_update_channel(self, channel):
+        return await self.service.set_update_channel(channel)
+
+    async def get_release_notes(self, channel="stable"):
+        return await self.service.get_release_notes(channel)
+
+    async def ota_update(self, channel, target):
+        return await self._controller_operation(self.service.ota_update, channel, target)
 
     async def _main(self):
         self._controller_initializing = True

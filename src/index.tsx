@@ -35,8 +35,8 @@ import {
   type PluginSettingsUpdate,
   useDeckyZoneState,
 } from './state/DeckyZoneState'
-import type { ActiveGame, InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult, PluginSettings, PluginStatus } from "./types/plugin"
-import { checkLatestVersion, compareVersions, resetStartupCheck } from './utils/pluginUpdates'
+import type { ActiveGame, InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult, PluginSettings, PluginStatus, ReleaseTarget, UpdateChannel } from "./types/plugin"
+import { checkLatestVersion, compareVersions, isValidVersion, resetStartupCheck } from './utils/pluginUpdates'
 import { showDeckyToast } from './utils/toasts'
 
 type BrightnessDialDirection = 'up' | 'down'
@@ -228,22 +228,28 @@ function startUpdateNoticeAfterBootstrap(bootstrap: Promise<void>, generation: n
     }
 
     const installedVersionNum = bootstrapState.snapshot.settings.pluginVersionNum ?? ''
+    const channel = bootstrapState.snapshot.settings.updateChannel
+    const settingsRevision = deckyZoneState.getSnapshot().settingsRevision
     try {
-      const { latestVersionNum } = await checkLatestVersion(installedVersionNum)
+      const { release } = await checkLatestVersion(installedVersionNum, channel)
+      const currentState = deckyZoneState.getSnapshot()
       if (
         generation !== updateNoticeGeneration ||
-        !/^v?\d+(?:\.\d+)*$/i.test(installedVersionNum) ||
-        !/^v?\d+(?:\.\d+)*$/i.test(latestVersionNum) ||
-        compareVersions(latestVersionNum, installedVersionNum) <= 0 ||
-        notifiedUpdateVersion === latestVersionNum
+        currentState.bootstrap.state !== 'ready' ||
+        currentState.settingsRevision !== settingsRevision ||
+        currentState.bootstrap.snapshot.settings.updateChannel !== channel ||
+        !release ||
+        !isValidVersion(installedVersionNum) ||
+        compareVersions(release.version, installedVersionNum) <= 0 ||
+        notifiedUpdateVersion === `${channel}:${release.id}`
       ) {
         return
       }
 
-      notifiedUpdateVersion = latestVersionNum
+      notifiedUpdateVersion = `${channel}:${release.id}`
       showDeckyToast({
         title: 'DeckyZone',
-        body: `Update ${latestVersionNum} available!`,
+        body: `Update ${release.version} available!`,
         severity: 'warning',
         onClick: openDeckyZoneSettings,
       })
@@ -426,7 +432,9 @@ function handleRetryBootstrap() {
 function Content() {
   const { activeGame, bootstrap, store, uiRevision } = useDeckyZoneState()
   const [activeTab, setActiveTab] = useState(currentMainTab)
-  const [latestVersionNum, setLatestVersionNum] = useState('')
+  const [updateSelection, setUpdateSelection] = useState<{ channel: UpdateChannel; release: ReleaseTarget | null } | null>(null)
+  const [updatesBusy, setUpdatesBusy] = useState(false)
+  const [troubleshootingBusy, setTroubleshootingBusy] = useState(false)
 
   const applySettingsUpdate = (update: PluginSettingsUpdate) => {
     store.updateSettings(update)
@@ -463,8 +471,9 @@ function Content() {
 
   const { settings, status } = bootstrap.snapshot
   const installedVersionNum = settings.pluginVersionNum ?? ''
-  const showReinstallPlugin = Boolean(latestVersionNum)
-    && compareVersions(latestVersionNum, installedVersionNum) === 0
+  const releaseTarget = updateSelection?.channel === settings.updateChannel ? updateSelection.release : null
+  const showReinstallPlugin = releaseTarget !== null && isValidVersion(installedVersionNum)
+    && compareVersions(releaseTarget.version, installedVersionNum) === 0
 
   const controllerPanel = (
     <ErrorBoundary title="Controller">
@@ -516,14 +525,21 @@ function Content() {
         onReapplyControllerProfile={handleReapplyControllerProfile}
         onUpdateInputPlumber={handleUpdateInputPlumber}
         showReinstallPlugin={showReinstallPlugin}
+        releaseTarget={releaseTarget}
+        updateChannel={settings.updateChannel}
+        updatesBusy={updatesBusy}
+        onBusyChange={setTroubleshootingBusy}
       />
     </ErrorBoundary>
   )
   const updatesPanel = (
     <ErrorBoundary title="Updates">
       <UpdatesPanel
-        installedVersionNum={installedVersionNum}
-        onLatestVersionChange={setLatestVersionNum}
+        settings={settings}
+        onSettingsChange={applySettingsUpdate}
+        onReleaseChange={(release, channel) => setUpdateSelection({ release, channel })}
+        onBusyChange={setUpdatesBusy}
+        disabled={troubleshootingBusy}
       />
     </ErrorBoundary>
   )

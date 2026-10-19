@@ -110,7 +110,9 @@ DeckyZone bundles `dbus-next` 0.2.3 for the controller mapping worker. Its unmod
 
 ## Changelog
 
-Focus **Software Updates** in the Quick Access Menu or **General** settings and press **Y** to view the latest ten stable GitHub releases. The viewer shows one dated card per version with formatted notes and links. Use the bumpers to switch releases and scroll within each card.
+Focus **Software Updates** in the Quick Access Menu or **General** settings and press **Y** to view the latest ten GitHub releases for your update channel. The viewer shows one dated card per version with formatted notes and links. Use the bumpers to switch releases and scroll within each card.
+
+Under **Beta Participation**, **Update Channel** defaults to **Stable**. Choose **Pre-release** to receive numbered preview builds and newer stable releases. Changing channels checks for updates; installation requires a button press. Returning to Stable offers the current stable version even if it is older than your installed preview, and keeps saved settings.
 
 ## Related plugins
 
@@ -144,13 +146,17 @@ These are ideas, not promised features.
 
 ## Releases
 
-Start **Actions > Release > Run workflow** on `main`. Choose `patch` (the default), `minor` or `major`. The workflow calculates the next version; the first patch release after `0.6.0` is `0.6.1`. Leave the local package version unchanged and let the workflow create the version commit and tag.
+Start **Actions > Release > Run workflow**. For a stable release, select `main`, leave **Release channel** set to `stable`, and choose `patch` (the default), `minor` or `major`. The workflow calculates the next version. Leave the local package version unchanged and let the workflow prepare the version commit and tag.
 
-The workflow uses the pinned pnpm version and a frozen lockfile. It builds the plugin and validates `DeckyZone.zip` and `DeckyZone.tar.gz` before committing the version change to `main` and pushing the matching stable `vX.Y.Z` tag. It then creates a draft release, uploads both archives and validates the uploaded assets before publishing. Publication keeps the draft's release ID and retries reads when GitHub has not yet exposed the updated metadata.
+For a preview, select the source branch, choose `prerelease`, and enter an explicit version such as `0.7.0-pre.1`. Increase the positive counter for each build, such as `0.7.0-pre.2`. There is one shared prerelease feed across branches. The workflow freezes the selected source commit, prepares the version and changelog in a child commit, and pushes only its `vX.Y.Z-pre.N` tag. Both `main` and the source branch stay unchanged. Previews are published with GitHub's prerelease flag and do not replace the latest stable release.
+
+Both channels use the pinned pnpm version and a frozen lockfile. The workflow builds the plugin and validates `DeckyZone.zip` and `DeckyZone.tar.gz` before pushing a tag. Stable releases also push their version commit to `main`. It creates a draft release, uploads both archives and validates the uploaded assets before publishing. Publication keeps the draft's release ID and retries reads when GitHub has not yet exposed updated metadata. All release runs share one publication queue.
 
 Release notes come from Conventional Commits through [cliff.toml](./cliff.toml). They contain dated headings, scopes and contributor credits when GitHub metadata is available, grouped into Features, Fixes, Documentation, Performance and Maintenance. Release commits, version bumps, dependency updates and non-conventional messages are omitted. CI and build changes appear under Maintenance, including `feat(ci)`, `fix(ci)`, `feat(build)` and `fix(build)`.
 
-If publishing fails, use **Re-run failed jobs** on the original run. The publish job reuses its saved version, notes and archives. A fresh **Run workflow** calculates another version; **Re-run all jobs** can collide with a version commit or tag that the original run already created. When a matching release is already published, its existing release notes are preserved.
+Preview notes include all changes since the nearest stable tag reachable from the source commit. Earlier preview tags do not shorten this range or split stable changelog history. Publish channel support in a stable release before distributing previews, and keep preview settings compatible with returning to stable.
+
+If publishing fails, use **Re-run failed jobs** on the original run. The publish job reuses its saved version, notes and archives. A fresh **Run workflow** prepares a new build; **Re-run all jobs** can collide with a version commit or tag that the original run already created. Existing tags are rejected during preparation. Publication can resume only with matching prepared artifacts. When a matching release is already published, its existing release notes are preserved.
 
 ## Credits
 

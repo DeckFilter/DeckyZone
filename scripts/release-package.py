@@ -21,6 +21,9 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "py_modules"))
+from release_versions import require_version as validate_version
+
 PLUGIN = "DeckyZone"
 TRANSFER_FILES = frozenset({
     "DeckyZone.zip", "DeckyZone.tar.gz", "package.json", "CHANGELOG.md", "CHANGES.md",
@@ -74,7 +77,6 @@ EXCLUDED_NAMES = frozenset({
 EXCLUDED_SUFFIXES = (
     ".pyc", ".pyo", ".key", ".p12", ".pfx", ".jks", ".keystore", ".ts", ".tsx", ".jsx",
 )
-VERSION_RE = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
 HASH_RE = re.compile(r"[0-9a-f]{64}\Z")
 DBUS_NEXT_PREFIX = "py_modules/dbus_next/"
@@ -168,8 +170,10 @@ def read_json(data: bytes) -> object:
 
 
 def require_version(version: object) -> str:
-    if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
-        raise PackageError("Release version must be a stable X.Y.Z version")
+    try:
+        validate_version(version)
+    except ValueError as exc:
+        raise PackageError("Release version must be X.Y.Z or X.Y.Z-pre.N with a positive counter") from exc
     return version
 
 

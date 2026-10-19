@@ -5,8 +5,10 @@ from copy import deepcopy
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -16,6 +18,11 @@ SPEC = importlib.util.spec_from_file_location(
     "release_publish", Path(__file__).with_name("release-publish.py"))
 publisher = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(publisher)
+PACKAGE_SPEC = importlib.util.spec_from_file_location(
+    "release_package", Path(__file__).with_name("release-package.py"))
+packager = importlib.util.module_from_spec(PACKAGE_SPEC)
+sys.modules[PACKAGE_SPEC.name] = packager
+PACKAGE_SPEC.loader.exec_module(packager)
 
 REPO = "DeckFilter/DeckyZone"
 TAG = "v0.6.1"
@@ -27,10 +34,12 @@ NOTES = "## Fixes\n\n- Bundle the controller mapping dependency.\n"
 class FakeGitHub:
     """Exercise the real publication logic through the gh command boundary."""
 
-    def __init__(self, directory, manifest, release=None):
+    def __init__(self, directory, manifest, release=None, tag=TAG):
         self.directory = directory
         self.manifest = manifest
         self.release = deepcopy(release)
+        self.tag = tag
+        self.prerelease = publisher.is_prerelease_version(tag, allow_tag=True)
         self.calls = []
         self.create_reads = 0
         self.asset_reads = 0
@@ -43,8 +52,8 @@ class FakeGitHub:
         self.corrupt_downloads = False
 
     def metadata(self, *, draft=True, assets=False):
-        return {"id": 101, "tag_name": TAG, "name": TITLE, "body": NOTES,
-                "draft": draft, "prerelease": False,
+        return {"id": 101, "tag_name": self.tag, "name": f"DeckyZone {self.tag}", "body": NOTES,
+                "draft": draft, "prerelease": self.prerelease,
                 "assets": self.assets() if assets else []}
 
     def assets(self):
@@ -103,8 +112,9 @@ class FakeGitHub:
             return self._result(args, self.release["assets"][-1])
         if endpoint == f"repos/{REPO}/releases" and method == "POST":
             data = json.loads(input_data)
-            assert data == {"tag_name": TAG, "name": TITLE, "body": NOTES,
-                            "draft": True, "prerelease": False}, data
+            assert data == {"tag_name": self.tag, "name": f"DeckyZone {self.tag}", "body": NOTES,
+                            "draft": True, "prerelease": self.prerelease,
+                            "make_latest": "false" if self.prerelease else "true"}, data
             self.release = self.metadata()
             created = deepcopy(self.release)
             if self.created_id_override is not None:
@@ -115,7 +125,8 @@ class FakeGitHub:
             value = [[]] if self.release is None or self.mutations("create") else [[self.release]]
             return self._result(args, value)
         if endpoint == f"repos/{REPO}/releases/101" and method == "PATCH":
-            assert json.loads(input_data) == {"draft": False, "make_latest": "true"}
+            assert json.loads(input_data) == {
+                "draft": False, "make_latest": "false" if self.prerelease else "true"}
             self.release["draft"] = False
             return self._result(args, self.release)
         if endpoint.startswith(f"repos/{REPO}/releases/assets/"):
@@ -193,15 +204,36 @@ class PublicationTests(unittest.TestCase):
                 "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
         (self.directory / "CHANGES.md").write_text(NOTES, encoding="utf-8")
 
-    def fake(self, *, draft=None, assets=False):
-        result = FakeGitHub(self.directory, self.manifest)
+    def fake(self, *, draft=None, assets=False, tag=TAG):
+        result = FakeGitHub(self.directory, self.manifest, tag=tag)
         if draft is not None:
             result.release = result.metadata(draft=draft, assets=assets)
         return result
 
     def run_publication(self, fake):
         with patch.object(publisher, "command", fake), patch("time.sleep"):
-            publisher.publish(REPO, TAG, self.directory, self.manifest)
+            publisher.publish(REPO, fake.tag, self.directory, self.manifest)
+
+    def test_prerelease_is_published_without_becoming_latest(self):
+        fake = self.fake(tag="v0.7.0-pre.1")
+        self.run_publication(fake)
+        self.assertTrue(fake.release["prerelease"])
+        self.assertFalse(fake.release["draft"])
+        self.assertEqual(fake.mutations(), ["create", "upload", "upload", "publish"])
+
+    def test_matching_prerelease_draft_resumes_verified_assets(self):
+        fake = self.fake(tag="v0.7.0-pre.2", draft=True, assets=True)
+        self.run_publication(fake)
+        self.assertEqual(fake.mutations(), ["publish"])
+
+    def test_prerelease_status_must_match_the_version_before_upload(self):
+        for tag in (TAG, "v0.7.0-pre.1"):
+            with self.subTest(tag=tag):
+                fake = self.fake(tag=tag, draft=True)
+                fake.release["prerelease"] = not fake.prerelease
+                with self.assertRaises(publisher.ReleaseError):
+                    self.run_publication(fake)
+                self.assertEqual(fake.mutations(), [])
 
     def test_created_draft_uses_returned_id_when_release_list_is_stale(self):
         fake = self.fake()
@@ -317,6 +349,115 @@ class PublicationTests(unittest.TestCase):
         self.assertGreater(fake.publish_reads, 1)
         self.assertLess(fake.publish_reads, 100)
         self.assertEqual(fake.mutations(), ["publish"])
+
+
+class PreparedTagTests(unittest.TestCase):
+    """Use a local bare remote to prove branch preservation and immutable resume."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        root = Path(self.temporary.name)
+        self.remote = root / "origin.git"
+        self.checkout = root / "checkout"
+        self.directory = root / "prepared"
+        self.checkout.mkdir()
+        self.directory.mkdir()
+        self.run_git("init", "--bare", "--initial-branch=main", str(self.remote), cwd=root)
+        self.run_git("init", "--initial-branch=main")
+        self.run_git("config", "user.name", "Release test")
+        self.run_git("config", "user.email", "release-test@example.invalid")
+        self.run_git("remote", "add", "origin", str(self.remote))
+        (self.checkout / "package.json").write_text('{"name":"deckyzone","version":"0.6.3"}\n')
+        (self.checkout / "CHANGELOG.md").write_text("# Stable history\n")
+        (self.checkout / "main.py").write_text("# stable runtime\n")
+        self.run_git("add", ".")
+        self.run_git("commit", "-m", "feat: stable source")
+        self.main_sha = self.run_git("rev-parse", "HEAD")
+        self.run_git("push", "origin", "main")
+        self.run_git("checkout", "-b", "wip")
+        (self.checkout / "main.py").write_text("# WIP runtime\n")
+        self.run_git("commit", "-am", "feat: WIP source")
+        self.source_sha = self.run_git("rev-parse", "HEAD")
+        self.run_git("push", "origin", "wip")
+        self.run_git("checkout", "--detach", self.source_sha)
+        self.prepare_files("0.7.0-pre.1")
+
+    def run_git(self, *args, cwd=None):
+        return subprocess.run(["git", *args], cwd=cwd or self.checkout,
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    def prepare_files(self, version):
+        (self.directory / "package.json").write_text(
+            json.dumps({"name": "deckyzone", "version": version}) + "\n")
+        (self.directory / "CHANGELOG.md").write_text(f"# Release {version}\n")
+
+    def prepare_tag(self, tag, source=None):
+        previous = Path.cwd()
+        try:
+            os.chdir(self.checkout)
+            return publisher.prepare_tag(source or self.source_sha, tag, self.directory)
+        finally:
+            os.chdir(previous)
+
+    def remote_sha(self, ref):
+        return self.run_git("rev-parse", ref, cwd=self.remote)
+
+    def test_prerelease_pushes_only_tag_preserving_main_and_source_branch(self):
+        release_sha, resumed = self.prepare_tag("v0.7.0-pre.1")
+        self.assertFalse(resumed)
+        self.assertEqual(self.remote_sha("refs/heads/main"), self.main_sha)
+        self.assertEqual(self.remote_sha("refs/heads/wip"), self.source_sha)
+        self.assertEqual(self.remote_sha("refs/tags/v0.7.0-pre.1"), release_sha)
+        self.assertEqual(self.run_git("rev-parse", release_sha + "^"), self.source_sha)
+        self.assertEqual(set(self.run_git("diff-tree", "--no-commit-id", "--name-only", "-r", release_sha).splitlines()),
+                         {"package.json", "CHANGELOG.md"})
+
+    def test_matching_prerelease_tag_resumes_without_moving_branches(self):
+        first_sha, _ = self.prepare_tag("v0.7.0-pre.1")
+        self.run_git("checkout", "--detach", self.source_sha)
+        release_sha, resumed = self.prepare_tag("v0.7.0-pre.1")
+        self.assertTrue(resumed)
+        self.assertEqual(release_sha, first_sha)
+        self.assertEqual(self.remote_sha("refs/heads/main"), self.main_sha)
+        self.assertEqual(self.remote_sha("refs/heads/wip"), self.source_sha)
+
+    def test_conflicting_prerelease_artifacts_cannot_resume_tag(self):
+        release_sha, _ = self.prepare_tag("v0.7.0-pre.1")
+        self.run_git("checkout", "--detach", self.source_sha)
+        (self.directory / "CHANGELOG.md").write_text("# Different prepared notes\n")
+        with self.assertRaises(publisher.ReleaseError):
+            self.prepare_tag("v0.7.0-pre.1")
+        self.assertEqual(self.remote_sha("refs/tags/v0.7.0-pre.1"), release_sha)
+        self.assertEqual(self.remote_sha("refs/heads/wip"), self.source_sha)
+
+    def test_stable_release_still_pushes_main_and_tag(self):
+        self.run_git("checkout", "--detach", self.main_sha)
+        self.prepare_files("0.6.4")
+        release_sha, resumed = self.prepare_tag("v0.6.4", source=self.main_sha)
+        self.assertFalse(resumed)
+        self.assertEqual(self.remote_sha("refs/heads/main"), release_sha)
+        self.assertEqual(self.remote_sha("refs/tags/v0.6.4"), release_sha)
+        self.assertEqual(self.remote_sha("refs/heads/wip"), self.source_sha)
+
+    def test_stable_release_rejects_source_other_than_current_main(self):
+        self.prepare_files("0.6.4")
+        with self.assertRaises(publisher.ReleaseError):
+            self.prepare_tag("v0.6.4")
+        self.assertEqual(self.remote_sha("refs/heads/main"), self.main_sha)
+
+
+class PackageVersionTests(unittest.TestCase):
+    def test_package_validation_accepts_stable_and_numbered_prereleases(self):
+        for version in ("0.6.3", "0.7.0-pre.1", "0.7.0-pre.10"):
+            with self.subTest(version=version):
+                self.assertEqual(packager.require_version(version), version)
+
+    def test_package_validation_rejects_unsupported_or_ambiguous_versions(self):
+        for version in ("v0.7.0-pre.1", "0.7.0-beta.1", "0.7.0-pre.0", "0.7.0-pre.01", "00.7.0", None):
+            with self.subTest(version=version):
+                with self.assertRaises(packager.PackageError):
+                    packager.require_version(version)
 
 
 if __name__ == "__main__":

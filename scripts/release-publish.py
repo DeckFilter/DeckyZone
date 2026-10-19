@@ -12,6 +12,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "py_modules"))
+from release_versions import is_prerelease_version, require_version
+
 
 RELEASE_READ_ATTEMPTS = 5
 RELEASE_READ_DELAY = 2
@@ -65,14 +68,15 @@ def verify_release_commit(release_sha, source_sha, release_dir):
 
 
 def prepare_tag(source_sha, tag, release_dir):
-    # Check the tag first: a successful push moves main before later upload jobs fail.
+    prerelease = is_prerelease_version(tag, allow_tag=True)
+    # Check the tag first: a prior push may have succeeded before publication failed.
     if remote_ref(f"refs/tags/{tag}"):
         git("fetch", "--no-tags", "origin", f"refs/tags/{tag}:refs/tags/{tag}")
         release_sha = git("rev-parse", f"refs/tags/{tag}^{{commit}}")
         verify_release_commit(release_sha, source_sha, release_dir)
         return release_sha, True
 
-    if remote_ref("refs/heads/main") != source_sha:
+    if not prerelease and remote_ref("refs/heads/main") != source_sha:
         raise ReleaseError("main advanced after preparation; dispatch a new release from current main")
     for name in ("package.json", "CHANGELOG.md"):
         shutil.copyfile(release_dir / name, name)
@@ -83,8 +87,12 @@ def prepare_tag(source_sha, tag, release_dir):
     release_sha = git("rev-parse", "HEAD")
     verify_release_commit(release_sha, source_sha, release_dir)
     git("-c", "tag.gpgsign=false", "tag", tag, release_sha)
-    # The normal fast-forward push also protects against main advancing after the check.
-    git("push", "--atomic", "origin", "HEAD:refs/heads/main", f"refs/tags/{tag}")
+    if prerelease:
+        # Publish the prepared snapshot without changing main or the selected branch.
+        git("push", "origin", f"refs/tags/{tag}")
+    else:
+        # Fast-forward protection also covers main advancing after the check.
+        git("push", "--atomic", "origin", "HEAD:refs/heads/main", f"refs/tags/{tag}")
     return release_sha, False
 
 
@@ -95,8 +103,8 @@ def validate_release(release, tag, release_id=None):
         raise ReleaseError("GitHub returned an invalid release identity")
     if release.get("tag_name") != tag or (release_id is not None and release["id"] != release_id):
         raise ReleaseError("GitHub release identity conflicts with the planned release")
-    if release.get("prerelease") is not False:
-        raise ReleaseError("GitHub release stable-release status conflicts")
+    if release.get("prerelease") is not is_prerelease_version(tag, allow_tag=True):
+        raise ReleaseError("GitHub release prerelease status conflicts with the planned version")
     if (not isinstance(release.get("draft"), bool)
             or not isinstance(release.get("assets"), list)
             or not all(isinstance(asset, dict) for asset in release["assets"])):
@@ -136,9 +144,11 @@ def read_release_by_id(repo, tag, release_id):
 
 
 def create_release(repo, tag, release_dir):
+    prerelease = is_prerelease_version(tag, allow_tag=True)
     payload = {"tag_name": tag, "name": f"DeckyZone {tag}",
                "body": (release_dir / "CHANGES.md").read_text(encoding="utf-8"),
-               "draft": True, "prerelease": False}
+               "draft": True, "prerelease": prerelease,
+               "make_latest": "false" if prerelease else "true"}
     # prepare_tag has already verified and pushed the tag. Keep the POST response
     # rather than rediscovering a new draft through a potentially stale list.
     result = command("gh", "api", "--hostname", "github.com", "--method", "POST",
@@ -201,7 +211,7 @@ def wait_for_release(repo, tag, release_id, release_dir, manifest, published=Fal
         if attempt + 1 < RELEASE_READ_ATTEMPTS:
             time.sleep(RELEASE_READ_DELAY)
     if published:
-        raise ReleaseError("Published stable release could not be verified after bounded retries")
+        raise ReleaseError("Published release could not be verified after bounded retries")
     raise ReleaseError("Both release assets must be verified before publication after bounded retries")
 
 
@@ -227,7 +237,8 @@ def publish(repo, tag, release_dir, manifest):
     if release["draft"]:
         command("gh", "api", "--hostname", "github.com", "--method", "PATCH",
                 f"repos/{repo}/releases/{release_id}", "--input", "-",
-                input_data=json.dumps({"draft": False, "make_latest": "true"}))
+                input_data=json.dumps({"draft": False, "make_latest":
+                                       "false" if is_prerelease_version(tag, allow_tag=True) else "true"}))
         wait_for_release(repo, tag, release_id, release_dir, manifest, published=True)
 
 
@@ -240,8 +251,7 @@ def main():
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.source_sha):
         raise ReleaseError("Expected a full source commit SHA")
-    if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", args.version):
-        raise ReleaseError("Expected a stable semantic version")
+    require_version(args.version)
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repo):
         raise ReleaseError("Expected a GitHub owner/repository")
     release_dir = args.release_dir.resolve()

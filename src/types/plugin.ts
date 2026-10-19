@@ -5,6 +5,15 @@ export type PluginStatus = {
 
 export type ControllerMode = 'gamepad' | 'desktop'
 export type TrackpadMode = 'default' | 'disabled' | 'directional_buttons'
+export type UpdateChannel = 'stable' | 'prerelease'
+
+export type ReleaseTarget = {
+  id: number
+  tagName: string
+  version: string
+  prerelease: boolean
+  assetId: number
+}
 
 export type GyroMountMatrixFixState = {
   visible: boolean
@@ -147,6 +156,7 @@ export type VramState = {
 }
 
 export type PluginSettings = {
+  updateChannel: UpdateChannel
   legacyLayoutEnabled: boolean
   controllerMode: ControllerMode | null
   controllerModeAvailable: boolean

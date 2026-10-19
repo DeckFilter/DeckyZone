@@ -2,8 +2,9 @@ import { callable } from '@decky/api'
 import { ButtonItem, ConfirmModal, Navigation, Spinner, showModal } from '@decky/ui'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { openDeckyZoneSettings } from '../routes'
-import type { InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult } from '../types/plugin'
+import type { InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult, ReleaseTarget, UpdateChannel } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
+import { beginUpdateOperation, useUpdateOperationBusy } from '../utils/updateOperations'
 import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
 import { SteamExplainerButtonItem } from './SteamExplainer'
 import InputPlumberUpdateControls from './InputPlumberUpdateControls'
@@ -16,6 +17,10 @@ type Props = {
   onUpdateInputPlumber: (restore: boolean, expectedVersion: string | null) => Promise<InputPlumberUpdateResult>
   showOpenSettings?: boolean
   showReinstallPlugin?: boolean
+  releaseTarget: ReleaseTarget | null
+  updateChannel: UpdateChannel
+  updatesBusy?: boolean
+  onBusyChange?: (busy: boolean) => void
 }
 
 type ResetPluginConfirmModalProps = Pick<Props, 'onResetPlugin'> & {
@@ -34,7 +39,7 @@ const RESET_COMPLETE_NOTICE = 'Plugin reset complete.'
 const REINSTALL_FAILED_NOTICE = 'Reinstall failed.'
 const REAPPLY_FAILED_NOTICE = 'Could not reapply the controller profile.'
 const REAPPLY_PROFILE_EXPLAINER = 'Reloads your dial, trackpad and Home button settings. Uses global settings when no game is running, and includes enabled game overrides when a game is running. Saved settings are kept.'
-const otaUpdate = callable<[], boolean>('ota_update')
+const otaUpdate = callable<[UpdateChannel, ReleaseTarget], boolean>('ota_update')
 
 const titleStyle = {
   display: 'flex',
@@ -145,26 +150,41 @@ const TroubleshootingPanel = ({
   onUpdateInputPlumber,
   showOpenSettings = true,
   showReinstallPlugin = false,
+  releaseTarget,
+  updateChannel,
+  updatesBusy = false,
+  onBusyChange,
 }: Props) => {
   const itemLayout = useSettingsItemLayout()
+  const sharedUpdateBusy = useUpdateOperationBusy()
   const [operation, setOperation] = useState<TroubleshootingOperation | null>(null)
   const [inputPlumberBusy, setInputPlumberBusy] = useState(false)
   const operationRef = useRef<TroubleshootingOperation | null>(null)
+  const releaseOperationRef = useRef<(() => void) | null>(null)
   const inputPlumberBusyRef = useRef(false)
   const isMountedRef = useRef(true)
+  const updatesBusyRef = useRef(updatesBusy)
+  const onBusyChangeRef = useRef(onBusyChange)
+  updatesBusyRef.current = updatesBusy
+  onBusyChangeRef.current = onBusyChange
 
   useEffect(() => {
     isMountedRef.current = true
     return () => {
       isMountedRef.current = false
+      onBusyChangeRef.current?.(false)
     }
   }, [])
 
   const beginOperation = useCallback((nextOperation: TroubleshootingOperation) => {
-    if (!isMountedRef.current || operationRef.current !== null || inputPlumberBusyRef.current) {
+    if (!isMountedRef.current || updatesBusyRef.current || operationRef.current !== null || inputPlumberBusyRef.current) {
       return false
     }
+    const release = beginUpdateOperation()
+    if (!release) return false
+    releaseOperationRef.current = release
     operationRef.current = nextOperation
+    onBusyChangeRef.current?.(true)
     if (isMountedRef.current) {
       setOperation(nextOperation)
     }
@@ -174,6 +194,9 @@ const TroubleshootingPanel = ({
   const endOperation = useCallback((completedOperation: TroubleshootingOperation) => {
     if (operationRef.current === completedOperation) {
       operationRef.current = null
+      releaseOperationRef.current?.()
+      releaseOperationRef.current = null
+      onBusyChangeRef.current?.(inputPlumberBusyRef.current)
       if (isMountedRef.current) {
         setOperation(null)
       }
@@ -182,19 +205,20 @@ const TroubleshootingPanel = ({
 
   const handleInputPlumberBusyChange = useCallback((busy: boolean) => {
     inputPlumberBusyRef.current = busy
+    onBusyChangeRef.current?.(busy || operationRef.current !== null)
     if (isMountedRef.current) {
       setInputPlumberBusy(busy)
     }
   }, [])
 
-  const busy = operation !== null || inputPlumberBusy
+  const busy = sharedUpdateBusy || updatesBusy || operation !== null || inputPlumberBusy
 
   const handleReinstall = async () => {
-    if (!beginOperation('reinstall')) {
+    if (!releaseTarget || !beginOperation('reinstall')) {
       return
     }
     try {
-      const success = await otaUpdate()
+      const success = await otaUpdate(updateChannel, releaseTarget)
       if (!success) {
         showDeckyToast({
           title: 'DeckyZone',

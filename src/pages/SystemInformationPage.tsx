@@ -50,8 +50,8 @@ import {
   DECKYZONE_SPECIFICATIONS_ROUTE,
 } from '../routes'
 import { useDeckyZoneState } from '../state/DeckyZoneState'
-import type { DebugInfoSnapshot, InputPlumberUpdateResult, PluginReapplyResult, SystemReport } from '../types/plugin'
-import { compareVersions } from '../utils/pluginUpdates'
+import type { DebugInfoSnapshot, InputPlumberUpdateResult, PluginReapplyResult, ReleaseTarget, SystemReport, UpdateChannel } from '../types/plugin'
+import { compareVersions, isValidVersion } from '../utils/pluginUpdates'
 import { showDeckyToast } from '../utils/toasts'
 
 const getDebugInfo = callable<[], DebugInfoSnapshot>('get_debug_info')
@@ -529,7 +529,9 @@ const ControllerInformationSection = (props: Omit<SnapshotPageProps, 'children'>
 const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUpdateInputPlumber, onRetryBootstrap }: Props) => {
   const { activeGame, bootstrap, settingsRevision, store, uiRevision } = useDeckyZoneState()
   const [snapshot, setSnapshot] = useState<DebugInfoSnapshot | null>(null)
-  const [latestVersionNum, setLatestVersionNum] = useState('')
+  const [updateSelection, setUpdateSelection] = useState<{ channel: UpdateChannel; release: ReleaseTarget | null } | null>(null)
+  const [updatesBusy, setUpdatesBusy] = useState(false)
+  const [troubleshootingBusy, setTroubleshootingBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const isMountedRef = useRef(true)
@@ -600,8 +602,9 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
 
   const { settings, status } = bootstrap.snapshot
   const installedVersionNum = settings.pluginVersionNum ?? ''
-  const showReinstallPlugin = Boolean(latestVersionNum)
-    && compareVersions(latestVersionNum, installedVersionNum) === 0
+  const releaseTarget = updateSelection?.channel === settings.updateChannel ? updateSelection.release : null
+  const showReinstallPlugin = releaseTarget !== null && isValidVersion(installedVersionNum)
+    && compareVersions(releaseTarget.version, installedVersionNum) === 0
 
   const snapshotPageProps = { snapshot, error, isLoading }
   const applySettingsUpdate = (update: Parameters<typeof store.updateSettings>[0]) => {
@@ -619,8 +622,11 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
             <DialogBody>
               <ErrorBoundary title="Updates">
                 <UpdatesPanel
-                  installedVersionNum={installedVersionNum}
-                  onLatestVersionChange={setLatestVersionNum}
+                  settings={settings}
+                  onSettingsChange={applySettingsUpdate}
+                  onReleaseChange={(release, channel) => setUpdateSelection({ release, channel })}
+                  onBusyChange={setUpdatesBusy}
+                  disabled={troubleshootingBusy}
                 />
               </ErrorBoundary>
               <GeneralInformationSection
@@ -634,6 +640,10 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
                   onUpdateInputPlumber={onUpdateInputPlumber}
                   showOpenSettings={false}
                   showReinstallPlugin={showReinstallPlugin}
+                  releaseTarget={releaseTarget}
+                  updateChannel={settings.updateChannel}
+                  updatesBusy={updatesBusy}
+                  onBusyChange={setTroubleshootingBusy}
                 />
               </ErrorBoundary>
               <ErrorBoundary title="Layout">
