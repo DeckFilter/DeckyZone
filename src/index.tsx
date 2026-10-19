@@ -229,14 +229,13 @@ function startUpdateNoticeAfterBootstrap(bootstrap: Promise<void>, generation: n
 
     const installedVersionNum = bootstrapState.snapshot.settings.pluginVersionNum ?? ''
     const channel = bootstrapState.snapshot.settings.updateChannel
-    const settingsRevision = deckyZoneState.getSnapshot().settingsRevision
     try {
       const { release } = await checkLatestVersion(installedVersionNum, channel)
       const currentState = deckyZoneState.getSnapshot()
       if (
         generation !== updateNoticeGeneration ||
         currentState.bootstrap.state !== 'ready' ||
-        currentState.settingsRevision !== settingsRevision ||
+        (currentState.bootstrap.snapshot.settings.pluginVersionNum ?? '') !== installedVersionNum ||
         currentState.bootstrap.snapshot.settings.updateChannel !== channel ||
         !release ||
         !isValidVersion(installedVersionNum) ||
