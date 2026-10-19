@@ -15,8 +15,8 @@ DeckyZone is a Decky Loader plugin for the Zotac Gaming Zone. It adds custom con
 - Zotac OLED display profile and green tint compensation.
 - SteamOS battery time estimate fix.
 - VRAM size selection (4–8 GB).
-- Native Steam performance profiles and TDP controls.
-- Global fan control with custom curves.
+- Native Steam performance profiles and an 8–28 W TDP slider (SteamOS).
+- Global fan control: System Auto, Manual or Curve, with PowerControl curve import.
 
 ## Installation
 
@@ -28,53 +28,16 @@ curl -L https://raw.githubusercontent.com/DeckFilter/DeckyZone/main/install.sh |
 
 Check for updates in **General > Software Updates**, or read the [release notes](https://github.com/DeckFilter/DeckyZone/releases). **Update Channel**, under **Beta Participation**, defaults to **Stable**. Choose **Pre-release** to try preview builds. Switching back offers the stable version and keeps saved settings.
 
-## Native performance controls
+## Performance profiles
 
-Turn on **Performance > Native Performance Controls** in DeckyZone to add profiles to Steam's Performance menu:
+Enable **Performance > Native Performance Controls** in DeckyZone to add these profiles to Steam's Performance menu:
 
 | Profile     | Power limit |
 | ----------- | ----------- |
 | Low Power   | 8 W         |
 | Balanced    | 15 W        |
 | Performance | 28 W        |
-| Custom      | 8 to 28 W   |
-
-The TDP slider appears only in Custom. Steam saves per-game selections; keep DeckyZone loaded to restore them. These presets use ONE Launcher's wattages and leave CPU boost, GPU clocks and fan settings unchanged.
-
-Setup installs the required files and can repair them after a SteamOS update. If the controls do not appear, use DeckyZone's **Restart Steam** option.
-
-DeckyZone currently supports native controls on SteamOS with a ZONE G0A1W, BIOS 1.20, Ryzen 7 8840U and SteamOS Manager `26.4.0` or newer. It checks compatibility before enabling the controls. Bazzite and CachyOS support still needs implementation and device testing.
-
-Turning off Custom's TDP limit can request 28 W. Disabling or removing native controls leaves the last power limit in place.
-
-<details>
-<summary>Bridge diagnostics and removal</summary>
-
-Inspect support without changing settings:
-
-```sh
-cd /var/lib/deckyzone-performance
-sudo python3 -m services.performance_bridge probe
-```
-
-Remove native performance support and restore the system configuration:
-
-```sh
-cd /var/lib/deckyzone-performance
-sudo python3 -m services.performance_bridge.install rollback --enable
-```
-
-</details>
-
-## Fan control
-
-Open **Fan control** and choose a mode: **System Auto** lets the device control the fan, **Manual** holds a chosen speed, and **Curve** follows your temperature curve. System Auto is the default. Fan settings apply to all games.
-
-Edit the custom curve on the same page, then **Save and apply**. You can import a curve from PowerControl or reset to ONE Launcher's default points; both load a draft for you to save or discard. Import leaves PowerControl's settings unchanged. The quick-access menu shows the active curve.
-
-Manual and Curve use at least 10% fan speed and reach 100% at 95°C. The fan returns to System Auto if control fails, before sleep and when DeckyZone unloads. Your selected mode resumes after wake. Use **Restore System Auto** if another plugin left the fan in manual mode.
-
-Fan control works without native performance controls. It requires the G0A1W's `zotac_platform` fan driver, `k10temp` sensor, systemd and `dbus-next`.
+| Custom      | 8–28 W      |
 
 ## Compatibility and troubleshooting
 
@@ -82,7 +45,7 @@ I test and develop DeckyZone on SteamOS. Bazzite and CachyOS compatibility is ba
 
 Controller features require InputPlumber and drivers for the ZONE's input devices.
 
-Disable PowerControl and SimpleDeckyTDP in Decky settings before using native performance controls or Manual or Curve fan mode. Turning off their TDP switches is insufficient. Enabling either plugin turns native controls off and returns the fan to System Auto. After disabling it, re-enable native controls or select your fan mode again. Installed but disabled plugins do not block these features.
+Disable PowerControl and SimpleDeckyTDP in Decky settings before using native controls or Manual/Curve fan mode.
 
 - The battery time estimate fix is available only on SteamOS.
 - Green Tint Compensation may not correct green tint at low brightness.
