@@ -37,13 +37,13 @@ commit_parsers = [
   { message = "^chore: (bump version|prepare release|release v?[0-9])", skip = true },
   { message = "^[a-z]+\\(deps[^)]*\\)", skip = true },
   { message = "^chore: (update dependencies|bump dependencies)", skip = true },
-  { message = "^(feat|fix)\\((ci|build)\\)", group = "<!-- 4 -->🛠️ Maintenance" },
-  { message = "^feat", group = "<!-- 0 -->🚀 Features" },
-  { message = "^fix", group = "<!-- 1 -->🐛 Fixes" },
-  { message = "^doc", group = "<!-- 2 -->📚 Documentation" },
-  { message = "^perf", group = "<!-- 3 -->⚡ Performance" },
-  { message = "^(refactor|style|test|ci|build|chore)", group = "<!-- 4 -->🛠️ Maintenance" },
-  { message = ".*", group = "<!-- 4 -->🛠️ Maintenance" },
+  { message = "^(feat|fix)\\((ci|build)\\)", group = "<!-- 4 -->Maintenance" },
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^fix", group = "<!-- 1 -->Fixes" },
+  { message = "^doc", group = "<!-- 2 -->Documentation" },
+  { message = "^perf", group = "<!-- 3 -->Performance" },
+  { message = "^(refactor|style|test|ci|build|chore)", group = "<!-- 4 -->Maintenance" },
+  { message = ".*", group = "<!-- 4 -->Maintenance" },
 ]
 filter_commits = true
 tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"

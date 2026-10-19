@@ -3,14 +3,14 @@
 ## [0.6.3] - 2026-10-16
 
 
-### 🚀 Features
+### Features
 
 - Add donation buttons (#47) by @felixhirschfeld
 - Add changelog viewer (#48) by @felixhirschfeld
 
 
 
-### 🐛 Fixes
+### Fixes
 
 - Support upcoming InputPlumber button maps by @felixhirschfeld
 
@@ -18,7 +18,7 @@
 ## [0.6.2] - 2026-10-15
 
 
-### 🐛 Fixes
+### Fixes
 
 - Preserve translated ZOTAC button events by @felixhirschfeld
 - Apply button filter correction to default mappings by @felixhirschfeld
@@ -27,7 +27,7 @@
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - *(ci)* Handle delayed release metadata by @felixhirschfeld
 
@@ -35,20 +35,20 @@
 ## [0.6.1] - 2026-10-09
 
 
-### 🚀 Features
+### Features
 
 - Open updates from notification by @felixhirschfeld
 - Add controller profile recovery action (#41) by @felixhirschfeld
 
 
 
-### 🐛 Fixes
+### Fixes
 
 - Bundle controller mapping dependency (#46) by @felixhirschfeld
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Automate manual releases and formatted changelogs by @felixhirschfeld
 
@@ -56,14 +56,14 @@
 ## [0.6.0] - 2026-10-06
 
 
-### 🚀 Features
+### Features
 
 - Add Zotac launch animations and fix hidden controls (#39) by @felixhirschfeld
 - Add custom controller mappings (#40) by @felixhirschfeld
 
 
 
-### 📚 Documentation
+### Documentation
 
 - Fix readme by @felixhirschfeld
 
@@ -71,7 +71,7 @@
 ## [0.5.1] - 2026-09-21
 
 
-### 🐛 Fixes
+### Fixes
 
 - Recover from stalled backend bootstrap (#33) by @felixhirschfeld
 - Treat uninitialized CMOS VRAM as default by @felixhirschfeld
@@ -79,7 +79,7 @@
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Move VRAM fixes into pull request by @felixhirschfeld
 - Fix Decky stub version by @felixhirschfeld
@@ -88,7 +88,7 @@
 ## [0.5.0] - 2026-09-16
 
 
-### 🚀 Features
+### Features
 
 - Implement VRAM size control (#8) by @ti-ro
 - Add SteamOS-style restart dialog by @felixhirschfeld
@@ -97,7 +97,7 @@
 
 
 
-### 📚 Documentation
+### Documentation
 
 - Mark Zotac Glyphs working on Bazzite
 
@@ -105,13 +105,13 @@
 ## [0.4.0] - 2026-05-07
 
 
-### 🚀 Features
+### Features
 
 - Add gyro orientation fix toggle
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Move gyro orientation fix to end of controller section
 
@@ -119,7 +119,7 @@
 ## [0.3.1] - 2026-04-27
 
 
-### 🐛 Fixes
+### Fixes
 
 - Remove steam input disabled toast
 - Package gamescope display assets
@@ -130,7 +130,7 @@
 ## [0.3.0] - 2026-04-21
 
 
-### 🚀 Features
+### Features
 
 - Use toasts for feedback
 - Global disable trackpads
@@ -140,7 +140,7 @@
 
 
 
-### 🐛 Fixes
+### Fixes
 
 - Improve rumble slider feedback and save reliability
 - Dropdown state
@@ -152,13 +152,13 @@
 
 
 
-### 📚 Documentation
+### Documentation
 
 - Update README for 0.3.0 features
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Use toast logo and shorten toast copy
 - Replace zotac button glyphs with svgs
@@ -167,7 +167,7 @@
 ## [0.2.1] - 2026-04-09
 
 
-### 🚀 Features
+### Features
 
 - Use zotac shoulder glyphs
 - Add per-game m1 and m2 remaps when steam input is disabled
@@ -175,7 +175,7 @@
 
 
 
-### 🐛 Fixes
+### Fixes
 
 - Debug dialog
 - Verify startup gamepad device before marking applied
@@ -187,13 +187,13 @@
 
 
 
-### 📚 Documentation
+### Documentation
 
 - Update readme
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Replace upstream glyph asset prefix
 - Sync decky stub version with package json
@@ -203,7 +203,7 @@
 ## [0.2.0] - 2026-04-02
 
 
-### 🚀 Features
+### Features
 
 - Add Zotac Gamescope display fixes
 - Add system info header popup
@@ -215,7 +215,7 @@
 
 
 
-### 🐛 Fixes
+### Fixes
 
 - Handle null release assets in installers
 - Follow github redirects in installer after repo transfer
@@ -224,13 +224,13 @@
 
 
 
-### 📚 Documentation
+### Documentation
 
 - Update readme
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Add TODO for display toggle race hardening
 - Update repository URLs
@@ -248,7 +248,7 @@
 ## [0.1.3] - 2026-03-27
 
 
-### 🐛 Fixes
+### Fixes
 
 - Preserve prompt-fix target after startup reapply
 
@@ -256,13 +256,13 @@
 ## [0.1.2] - 2026-03-27
 
 
-### 📚 Documentation
+### Documentation
 
 - Add feature compatibility table to readme
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Inputplumber target sync helpers
 
@@ -270,13 +270,13 @@
 ## [0.1.1] - 2026-03-27
 
 
-### 🐛 Fixes
+### Fixes
 
 - Gate inputplumber-dependent controls when unavailable
 
 
 
-### 📚 Documentation
+### Documentation
 
 - Add release badges to readme
 
@@ -284,14 +284,14 @@
 ## [0.1.0] - 2026-03-27
 
 
-### 📚 Documentation
+### Documentation
 
 - Update readme
 - Add readme badge and screenshot
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Update readme and metadata
 - Update license and feedback links
@@ -300,19 +300,19 @@
 ## [0.0.2] - 2026-03-27
 
 
-### 🚀 Features
+### Features
 
 - Add retry for ota
 
 
 
-### 🐛 Fixes
+### Fixes
 
 - Make ota reinstall safe during failed installs
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Simplify copy
 - Gate home and brightness toggles on controller
@@ -321,7 +321,7 @@
 ## [0.0.1] - 2026-03-27
 
 
-### 🚀 Features
+### Features
 
 - Add DeckyZone startup mode reapply for Zotac Zone
 - Add rumble intensity
@@ -333,7 +333,7 @@
 
 
 
-### 🐛 Fixes
+### Fixes
 
 - Use InputPlumber force feedback for test rumble
 - Switch DeckyZone startup target from xbox-elite to deck-uhid
@@ -342,13 +342,13 @@
 
 
 
-### 📚 Documentation
+### Documentation
 
 - Update readme
 
 
 
-### 🛠️ Maintenance
+### Maintenance
 
 - Add release workflow and installer
 - Change to toggle
