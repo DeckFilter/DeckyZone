@@ -16,6 +16,14 @@ let cachedReleases: PluginRelease[] | null = null
 let cacheTime = 0
 let pendingRequest: Promise<PluginRelease[]> | null = null
 
+const releaseBody = (release: PluginRelease) => {
+  const version = release.version.replace(/^v/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // git-cliff repeats this version/date heading; the viewer already shows the release title.
+  const heading = new RegExp(`^\\s*##[ \\t]+(?:\\[v?${version}\\]|v?${version})(?:[ \\t]+-[ \\t]+\\d{4}-\\d{2}-\\d{2})?[ \\t]*(?:\\r?\\n|$)`)
+  return release.body.replace(heading, '').trim()
+    || 'No release notes were provided for this version.'
+}
+
 export const getReleaseNotes = ({ force = false }: { force?: boolean } = {}): Promise<PluginRelease[]> => {
   if (pendingRequest) {
     return pendingRequest
@@ -27,10 +35,10 @@ export const getReleaseNotes = ({ force = false }: { force?: boolean } = {}): Pr
 
   pendingRequest = fetchReleaseNotes().then(
     (releases) => {
-      cachedReleases = releases
+      cachedReleases = releases.map((release) => ({ ...release, body: releaseBody(release) }))
       cacheTime = Date.now()
       pendingRequest = null
-      return releases
+      return cachedReleases
     },
     (error: unknown) => {
       pendingRequest = null

@@ -104,14 +104,6 @@ const formatDate = (date: string) => {
     : parsed.toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric' })
 }
 
-const releaseBody = (release: PluginRelease) => {
-  const version = release.version.replace(/^v/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  // git-cliff repeats this version/date heading; the article header already shows it.
-  const heading = new RegExp(`^\\s*##[ \\t]+(?:\\[v?${version}\\]|v?${version})(?:[ \\t]+-[ \\t]+\\d{4}-\\d{2}-\\d{2})?[ \\t]*(?:\\r?\\n|$)`)
-  return release.body.replace(heading, '').trim()
-    || 'No release notes were provided for this version.'
-}
-
 const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
@@ -231,7 +223,7 @@ const ReleaseNotesModal = ({ installedVersionNum, closeModal }: Props) => {
                     </h1>
                   </header>
                   <ReleaseNotesMarkdown onDismiss={closeModal}>
-                    {releaseBody(release)}
+                    {release.body}
                   </ReleaseNotesMarkdown>
                 </article>
               </ArticleFocusable>

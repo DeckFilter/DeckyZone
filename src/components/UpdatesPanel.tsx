@@ -1,6 +1,6 @@
 import { callable } from '@decky/api'
-import { DialogButton, Field } from '@decky/ui'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { DialogButton, Field, IconsModule } from '@decky/ui'
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import {
   checkLatestVersion,
   compareVersions,
@@ -11,9 +11,11 @@ import {
 } from '../utils/pluginUpdates'
 import { useDeckyToastNotice } from '../utils/toasts'
 import { showReleaseNotesModal } from './ReleaseNotesModal'
+import ReleaseNotesPreview from './ReleaseNotesPreview'
 import { SettingsRow, SettingsSection, useSettingsItemLayout, useSettingsSurface } from './SettingsSurface'
 
 const otaUpdate = callable<[], boolean>('ota_update')
+const UpdateAvailableIcon = IconsModule?.FieldYellowExclamation as ComponentType | undefined
 
 type Props = {
   installedVersionNum: string
@@ -150,6 +152,10 @@ const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => 
   }
 
   const updateStatusText = useMemo(() => {
+    if (updateButtonText) {
+      return undefined
+    }
+
     if (isLoadingLatestVersion) {
       return 'Checking for updates…'
     }
@@ -162,24 +168,15 @@ const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => 
       return 'Not checked yet'
     }
 
-    const versionCompare = compareVersions(latestVersionNum, installedVersionNum)
-    if (versionCompare > 0) {
-      return `Update available: ${latestVersionNum}`
-    }
-
-    if (versionCompare < 0) {
-      return 'Newer than latest release'
-    }
-
     return lastCheckTime
       ? `Up to date: last checked ${getLastCheckText(lastCheckTime)}`
       : 'Up to date'
   }, [
-    installedVersionNum,
     isLoadingLatestVersion,
     lastCheckTime,
     latestVersionNum,
     relativeTimeTick,
+    updateButtonText,
     versionError,
   ])
 
@@ -205,6 +202,7 @@ const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => 
       <SettingsRow>
         <Field
           label="Software Updates"
+          icon={updateButtonText && UpdateAvailableIcon ? <UpdateAvailableIcon /> : undefined}
           description={updateStatusText}
           childrenLayout={itemLayout}
           childrenContainerWidth={surface === 'settings' ? 'fixed' : 'max'}
@@ -216,6 +214,14 @@ const UpdatesPanel = ({ installedVersionNum, onLatestVersionChange }: Props) => 
           </DialogButton>
         </Field>
       </SettingsRow>
+      {updateButtonText && (
+        <SettingsRow>
+          <ReleaseNotesPreview
+            versionNum={latestVersionNum}
+            installedVersionNum={installedVersionNum}
+          />
+        </SettingsRow>
+      )}
     </SettingsSection>
   )
 }
