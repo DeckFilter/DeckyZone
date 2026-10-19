@@ -1,11 +1,10 @@
 import { callable } from '@decky/api'
-import { ConfirmModal, Spinner, showModal } from '@decky/ui'
+import { ButtonItem, ConfirmModal, Spinner, showModal } from '@decky/ui'
 import { type ComponentProps, type ComponentType, useCallback, useEffect, useRef, useState } from 'react'
 import type { InputPlumberUpdateResult, InputPlumberUpdateStatus } from '../types/plugin'
 import { compareVersions, getLastCheckText } from '../utils/pluginUpdates'
 import { showDeckyToast } from '../utils/toasts'
 import { SettingsRow, useSettingsItemLayout } from './SettingsSurface'
-import { SteamExplainerButtonItem } from './SteamExplainer'
 
 type Props = {
   disabled: boolean
@@ -299,7 +298,7 @@ const InputPlumberUpdateControls = ({
   return (
     <>
       <SettingsRow>
-        <SteamExplainerButtonItem
+        <ButtonItem
           layout={itemLayout}
           label="InputPlumber Update"
           description={updateText}
@@ -311,11 +310,11 @@ const InputPlumberUpdateControls = ({
           {pendingAction === 'update' ? 'Updating…'
             : checking ? 'Checking…'
               : hasNewerVersion ? `Update to ${status.latestVersion}` : 'Check for Updates'}
-        </SteamExplainerButtonItem>
+        </ButtonItem>
       </SettingsRow>
       {status.canRestore && (
         <SettingsRow>
-          <SteamExplainerButtonItem
+          <ButtonItem
             layout={itemLayout}
             label="Restore SteamOS InputPlumber"
             description={`SteamOS: ${status.systemVersion ?? 'Unavailable'}`}
@@ -325,7 +324,7 @@ const InputPlumberUpdateControls = ({
             onClick={() => openConfirmation(true)}
           >
             {pendingAction === 'restore' ? 'Restoring…' : 'Restore SteamOS InputPlumber'}
-          </SteamExplainerButtonItem>
+          </ButtonItem>
         </SettingsRow>
       )}
     </>

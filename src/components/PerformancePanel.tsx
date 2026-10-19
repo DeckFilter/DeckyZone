@@ -1,11 +1,11 @@
 import { callable } from '@decky/api'
-import { gamepadDialogClasses } from '@decky/ui'
+import { ToggleField, gamepadDialogClasses } from '@decky/ui'
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
-import { SteamExplainerDropdownItem, SteamExplainerToggleField } from './SteamExplainer'
+import { SteamExplainerDropdownItem } from './SteamExplainer'
 import {
   SettingsGroup,
   SettingsPanel,
@@ -241,7 +241,7 @@ const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: P
       {settings.remainingBatteryTimeFixAvailable && (
         <SettingsGroup title="Battery">
           <SettingsRow>
-            <SteamExplainerToggleField
+            <ToggleField
               label="Remaining Battery Time Fix"
               explainerTitle="Remaining Battery Time Fix"
               explainer={REMAINING_BATTERY_TIME_FIX_EXPLAINER}

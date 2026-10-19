@@ -1,7 +1,7 @@
 import { callable } from '@decky/api'
+import { ButtonItem, ToggleField } from '@decky/ui'
 import { useState } from 'react'
 import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
-import { SteamExplainerButtonItem, SteamExplainerToggleField } from './SteamExplainer'
 import { openControllerMapping } from '../routes'
 import { SettingsGroup, SettingsPanel, SettingsRow, useSettingsSurface } from './SettingsSurface'
 import ControllerTogglesPanel from './controller/ControllerTogglesPanel'
@@ -183,7 +183,7 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
       )}
       <SettingsGroup title="Input">
         <SettingsRow>
-          <SteamExplainerButtonItem
+          <ButtonItem
             layout={isQuickAccess ? 'below' : 'inline'}
             childrenContainerWidth={isQuickAccess ? 'max' : 'fixed'}
             label="Controller settings"
@@ -195,12 +195,12 @@ const ControllerPanel = ({ activeGame, settings, status, onSettingsChange, onSta
             onClick={() => openControllerMapping(isQuickAccess ? activeGame?.appid ?? '0' : '0')}
           >
             Edit settings
-          </SteamExplainerButtonItem>
+          </ButtonItem>
         </SettingsRow>
 
         {settings.gyroMountMatrixFix.visible && (
           <SettingsRow>
-            <SteamExplainerToggleField
+            <ToggleField
               label="Gyro Orientation Fix"
               explainerTitle="Gyro Orientation Fix"
               explainer={GYRO_MOUNT_MATRIX_FIX_EXPLAINER}

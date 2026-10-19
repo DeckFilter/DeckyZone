@@ -1,10 +1,10 @@
 import { callable } from '@decky/api'
+import { ToggleField } from '@decky/ui'
 import { useState } from 'react'
 import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
 import SettingsDialogBodyText from './SettingsDialogBodyText'
-import { SteamExplainerToggleField } from './SteamExplainer'
 import { SettingsRow, SettingsSection, useSettingsSurface } from './SettingsSurface'
 
 type Props = {
@@ -149,7 +149,7 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
       <SettingsSection title="Display" settingsTitle={null}>
         {!settings.gamescopeZotacProfileBuiltIn && (
           <SettingsRow>
-            <SteamExplainerToggleField
+            <ToggleField
               label="Enable Zotac OLED Profile"
               explainerTitle="Zotac OLED Profile"
               explainer={ZOTAC_PROFILE_EXPLAINER}
@@ -160,7 +160,7 @@ const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
           </SettingsRow>
         )}
         <SettingsRow>
-          <SteamExplainerToggleField
+          <ToggleField
             label="Green Tint Compensation"
             explainerTitle="Green Tint Compensation"
             explainer={getGreenTintExplainer(isBaseProfileAvailable)}

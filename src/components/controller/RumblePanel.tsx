@@ -1,6 +1,5 @@
-import { ButtonItem, type NotchLabel } from '@decky/ui'
+import { ButtonItem, SliderField, ToggleField, type NotchLabel } from '@decky/ui'
 import { SettingsRow, useSettingsItemLayout } from '../SettingsSurface'
-import { SteamExplainerSliderField, SteamExplainerToggleField } from '../SteamExplainer'
 
 type Props = {
   scopeDescription?: string
@@ -47,7 +46,7 @@ const RumblePanel = ({
   return (
     <>
       <SettingsRow>
-        <SteamExplainerToggleField
+        <ToggleField
           label="Custom Rumble Strength"
           explainerTitle="Custom Rumble Strength"
           explainer={getRumbleExplainer(rumbleAvailable)}
@@ -60,7 +59,7 @@ const RumblePanel = ({
       {rumbleEnabled && (
         <>
           <SettingsRow>
-            <SteamExplainerSliderField
+            <SliderField
               label="Intensity"
               explainerTitle="Rumble Intensity"
               explainer={RUMBLE_INTENSITY_EXPLAINER}

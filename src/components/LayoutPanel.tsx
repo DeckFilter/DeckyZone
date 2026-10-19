@@ -1,8 +1,8 @@
 import { callable } from '@decky/api'
+import { ToggleField } from '@decky/ui'
 import { useRef, useState } from 'react'
 import type { PluginSettings } from '../types/plugin'
 import { useDeckyToastNotice } from '../utils/toasts'
-import { SteamExplainerToggleField } from './SteamExplainer'
 import { SettingsRow, SettingsSection } from './SettingsSurface'
 
 type Props = {
@@ -57,7 +57,7 @@ const LayoutPanel = ({ settings, onSettingsChange }: Props) => {
   return (
     <SettingsSection title="Layout">
       <SettingsRow>
-        <SteamExplainerToggleField
+        <ToggleField
           label="Legacy Layout"
           explainerTitle="Legacy Layout"
           explainer={LEGACY_LAYOUT_EXPLAINER}

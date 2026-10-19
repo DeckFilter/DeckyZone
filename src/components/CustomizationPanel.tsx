@@ -1,4 +1,5 @@
 import { callable } from "@decky/api"
+import { ToggleField } from "@decky/ui"
 import { useRef, useState } from "react"
 import {
   applyHideUnsupportedButtonsRuntimeEnabled,
@@ -7,7 +8,6 @@ import {
 import type { PluginSettingsUpdate } from "../state/DeckyZoneState"
 import type { PluginSettings } from "../types/plugin"
 import { useDeckyToastNotice } from "../utils/toasts"
-import { SteamExplainerToggleField } from "./SteamExplainer"
 import { SettingsRow, SettingsSection } from "./SettingsSurface"
 
 type Props = {
@@ -126,7 +126,7 @@ const CustomizationPanel = ({ settings, onSettingsChange }: Props) => {
   return (
     <SettingsSection title="Customization" settingsTitle={null}>
       <SettingsRow>
-        <SteamExplainerToggleField
+        <ToggleField
           label="Zotac Controller Artwork"
           explainerTitle="Zotac Controller Artwork"
           explainer={ZOTAC_CONTROLLER_ARTWORK_EXPLAINER}
@@ -136,7 +136,7 @@ const CustomizationPanel = ({ settings, onSettingsChange }: Props) => {
         />
       </SettingsRow>
       <SettingsRow>
-        <SteamExplainerToggleField
+        <ToggleField
           label="Hide Unsupported Controls"
           explainerTitle="Unsupported Controls"
           explainer={HIDE_UNSUPPORTED_BUTTONS_EXPLAINER}
