@@ -100,30 +100,39 @@ def test_no_partial_success_or_retry(backend, failed_command):
     assert len(backend.calls) == failed_command
 
 
-def test_presets_and_custom_survive_restart(backend):
+@pytest.mark.parametrize("watts", (12, 15, 29, 30))
+def test_presets_and_custom_survive_restart(backend, watts):
     controller = Controller(backend, lambda: None)
-    controller.change(watts=12)
+    controller.change(watts=watts)
+    assert backend.calls == [
+        f"--slow-limit={watts * 1000}",
+        f"--stapm-limit={watts * 1000}",
+        f"--fast-limit={watts * 1000}",
+    ]
     controller.change(profile="performance")
     assert controller.snapshot.limits == (28, 28, 28)
     backend.initialize()
     restarted = Controller(backend, lambda: None)
     restarted.change(profile="custom")
-    assert restarted.snapshot.limits == (12, 12, 12)
+    assert restarted.snapshot.limits == (watts,) * 3
 
 
 def test_power_event_reapplies_only_once(backend, monkeypatch):
     controller = Controller(backend, lambda: None)
+    assert controller.snapshot.profile == "custom"
+    assert controller.snapshot.limits == (20, 20, 20)
+    assert controller.custom_tdp == 20
     monkeypatch.setattr(backend, "_power_source", lambda: ("battery",))
     controller.read()
     controller.read()
     assert backend.calls == [
-        "--slow-limit=15000",
-        "--stapm-limit=15000",
-        "--fast-limit=15000",
+        "--slow-limit=20000",
+        "--stapm-limit=20000",
+        "--fast-limit=20000",
     ]
 
 
-@pytest.mark.parametrize("watts", (0, 7, 29, True, 8.5))
+@pytest.mark.parametrize("watts", (0, 7, 31, True, 8.5))
 def test_rejects_unsafe_values_before_commands(backend, watts):
     with pytest.raises(ValueError):
         backend.set_tdp(watts)
