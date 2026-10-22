@@ -57,10 +57,10 @@ export class NativePerformanceRestore {
     this.pending ||= !previous || previous.profile !== 'custom' ||
       !previous.available || !next.available
     if (!this.pending || !next.available) return
-    // Match the validated bridge contract. Never repair malformed/stale values
-    // by clamping them or by inventing a different user selection.
-    if (next.minimum !== 8 || next.maximum !== 28 ||
-      (next.enabled && (!Number.isInteger(next.watts) || next.watts < 8 || next.watts > 28))) {
+    // Accept the previous bridge until its installed payload is repaired.
+    // Never clamp malformed/stale values or invent a different user selection.
+    if (next.minimum !== 8 || (next.maximum !== 28 && next.maximum !== 30) ||
+      (next.enabled && (!Number.isInteger(next.watts) || next.watts < next.minimum || next.watts > next.maximum))) {
       this.pending = false
       return
     }

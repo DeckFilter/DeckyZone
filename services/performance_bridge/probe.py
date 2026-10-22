@@ -103,7 +103,9 @@ def inspect(root: Path = Path("/")) -> dict:
     marker = root / "etc/deckyzone/performance-enabled"
     report["opted_in"] = marker.is_file()
     if marker.is_file():
-        from .ryzenadj import BINARY_SHA256, check_device, check_ownership
+        from .ryzenadj import (
+            BINARY_SHA256, RyzenAdjBackend, check_device, check_ownership,
+        )
         import hashlib
 
         try:
@@ -125,8 +127,8 @@ def inspect(root: Path = Path("/")) -> dict:
                 available=True,
                 selected_backend="ryzenadj-0.18.0-g0a1w-bios1.20",
                 state_kind="acknowledged_requests_not_hardware_readback",
-                tdp_min=8,
-                tdp_max=28,
+                tdp_min=RyzenAdjBackend.minimum,
+                tdp_max=RyzenAdjBackend.maximum,
                 blockers=[],
             )
         except (OSError, ValueError, KeyError, Unavailable) as error:

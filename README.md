@@ -15,7 +15,7 @@ DeckyZone is a Decky Loader plugin for the Zotac Gaming Zone. It adds custom con
 - Zotac OLED display profile and green tint compensation.
 - SteamOS battery time estimate fix.
 - VRAM size selection (4–8 GB).
-- Native Steam performance profiles and an 8–28 W TDP slider (SteamOS).
+- Native Steam performance profiles and an 8–30 W TDP slider (SteamOS).
 - Global fan control: System Auto, Manual or Curve, with PowerControl curve import.
 
 ## Installation
@@ -32,12 +32,12 @@ Check for updates in **General > Software Updates**, or read the [release notes]
 
 Enable **Performance > Native Performance Controls** in DeckyZone to add these profiles to Steam's Performance menu:
 
-| Profile     | Power limit |
-| ----------- | ----------- |
-| Low Power   | 8 W         |
-| Balanced    | 15 W        |
-| Performance | 28 W        |
-| Custom      | 8–28 W      |
+| Profile     | Power limit            |
+| ----------- | ---------------------- |
+| Low Power   | 8 W                    |
+| Balanced    | 15 W                   |
+| Performance | 28 W                   |
+| Custom      | 8–30 W (20 W default)   |
 
 ## Compatibility and troubleshooting
 

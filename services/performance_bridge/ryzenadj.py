@@ -75,13 +75,14 @@ def check_ownership(root=Path("/")):
 
 class RyzenAdjBackend:
     minimum = 8
-    maximum = 28
+    maximum = 30
+    default_custom_tdp = 20
 
     def __init__(self, binary=INSTALL / "bin/ryzenadj", state=INSTALL / "state.json"):
         self.binary = binary
         self.state_path = state
         self.snapshot = None
-        self.custom_tdp = 15
+        self.custom_tdp = self.default_custom_tdp
         self.last_power = self._power_source()
         self.last_sleep = self._sleep_elapsed()
         self.validate_binary()
@@ -105,7 +106,7 @@ class RyzenAdjBackend:
         return time.clock_gettime(time.CLOCK_BOOTTIME) - time.monotonic()
 
     def initialize(self):
-        profile, watts = "custom", 15
+        profile, watts = "custom", self.default_custom_tdp
         if self.state_path.exists():
             state = json.loads(self.state_path.read_text())
             profile, watts = state["profile"], state["watts"]
@@ -124,7 +125,9 @@ class RyzenAdjBackend:
             or type(watts) is not int
             or not self.minimum <= watts <= self.maximum
         ):
-            raise ValueError("TDP must be an integer between 8 and 28 W")
+            raise ValueError(
+                f"TDP must be an integer between {self.minimum} and {self.maximum} W"
+            )
         self.validate_binary()
         # One command per limit: a failed command stops the sequence immediately.
         # The inspected ONE Launcher fallback sets Slow, STAPM, then Fast.
