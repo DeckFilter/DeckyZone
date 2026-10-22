@@ -16,10 +16,12 @@ async def serve(controller):
 
     from .dbus_service import Bridge
     from .lifecycle import notify_ready
+    from .runtime_events import RuntimeEvents
 
     profile_bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
     tdp_bus = None
     bridge = None
+    events = None
     tasks = []
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -27,7 +29,9 @@ async def serve(controller):
         loop.add_signal_handler(sig, stop.set)
     try:
         tdp_bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
-        bridge = Bridge(controller, profile_bus, tdp_bus)
+        events = RuntimeEvents(profile_bus, controller)
+        await events.start()
+        bridge = Bridge(controller, profile_bus, tdp_bus, events)
         await bridge.start()
         notify_ready()
         tasks = [
@@ -42,6 +46,10 @@ async def serve(controller):
                 "Provider lost its backend or bus; manual inspection required"
             )
     finally:
+        # Block any worker already running before withdrawing the provider.
+        controller.preparing.set()
+        if events:
+            events.close()
         if bridge:
             await bridge.close()
         for task in tasks:

@@ -78,11 +78,13 @@ class RyzenAdjBackend:
     maximum = 30
     default_custom_tdp = 20
 
-    def __init__(self, binary=INSTALL / "bin/ryzenadj", state=INSTALL / "state.json"):
+    def __init__(self, binary=INSTALL / "bin/ryzenadj", state=INSTALL / "state.json",
+                 *, before_write=check_ownership):
         self.binary = binary
         self.state_path = state
         self.snapshot = None
         self.custom_tdp = self.default_custom_tdp
+        self.before_write = before_write
         self.last_power = self._power_source()
         self.last_sleep = self._sleep_elapsed()
         self.validate_binary()
@@ -132,6 +134,7 @@ class RyzenAdjBackend:
         # One command per limit: a failed command stops the sequence immediately.
         # The inspected ONE Launcher fallback sets Slow, STAPM, then Fast.
         for name in ("slow", "stapm", "fast"):
+            self.before_write()
             try:
                 result = subprocess.run(
                     [str(self.binary), f"--{name}-limit={watts * 1000}"],
@@ -163,9 +166,9 @@ class RyzenAdjBackend:
             raise Unavailable("No acknowledged limits yet")
         return self.snapshot
 
-    def refresh_after_power_event(self):
+    def refresh_after_power_event(self, *, force=False):
         power, sleep = self._power_source(), self._sleep_elapsed()
-        changed = power != self.last_power or sleep - self.last_sleep > 1
+        changed = force or power != self.last_power or sleep - self.last_sleep > 1
         self.last_power, self.last_sleep = power, sleep
         if changed:
             LOG.info(

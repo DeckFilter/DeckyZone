@@ -68,7 +68,8 @@ def backend(tmp_path, monkeypatch):
     monkeypatch.setattr(RyzenAdjBackend, "validate_binary", lambda self: None)
     monkeypatch.setattr(RyzenAdjBackend, "_power_source", staticmethod(lambda: ("ac",)))
     monkeypatch.setattr(RyzenAdjBackend, "_sleep_elapsed", staticmethod(lambda: 0))
-    result = RyzenAdjBackend(Path("/fixture/ryzenadj"), tmp_path / "state.json")
+    result = RyzenAdjBackend(Path("/fixture/ryzenadj"), tmp_path / "state.json",
+                             before_write=lambda: None)
     result.calls = []
     result.fail_at = None
 

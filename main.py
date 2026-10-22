@@ -22,6 +22,7 @@ import inputplumber_device_profile
 import inputplumber_update
 import inputplumber_target_sync
 import native_performance
+from native_performance_events import EVENT as NATIVE_PERFORMANCE_STATUS_EVENT, NativePerformanceEvents
 import os_release
 import plugin_lifecycle
 import plugin_update
@@ -4595,6 +4596,9 @@ class Plugin:
         self.service = service or DeckyZoneService()
         self.fan_control = FanControl(decky.DECKY_PLUGIN_SETTINGS_DIR, decky.DECKY_HOME)
         self.cpu_boost = CpuBoost(decky.DECKY_PLUGIN_SETTINGS_DIR, decky.DECKY_HOME, decky.DECKY_USER)
+        self.native_performance_events = NativePerformanceEvents(
+            decky.DECKY_HOME, lambda: decky.emit(NATIVE_PERFORMANCE_STATUS_EVENT), decky.logger
+        )
         self._controller_operation_lock = asyncio.Lock()
         self._controller_initialized = asyncio.Event()
         self._controller_initializing = False
@@ -4897,7 +4901,10 @@ class Plugin:
             return {"ok": False, "error": str(error), "state": await self.cpu_boost.status()}
 
     async def set_native_performance_enabled(self, enabled):
-        return await asyncio.to_thread(native_performance.set_enabled, enabled)
+        try:
+            return await asyncio.to_thread(native_performance.set_enabled, enabled)
+        finally:
+            self.native_performance_events.changed()
 
     async def get_debug_info(self):
         return self.service.get_debug_info()
@@ -5054,6 +5061,7 @@ class Plugin:
         return await self._controller_operation(self.service.ota_update, channel, target)
 
     async def _main(self):
+        await self.native_performance_events.start()
         self._controller_initializing = True
         try:
             if self._closing:
@@ -5127,6 +5135,7 @@ class Plugin:
     async def _begin_controller_cleanup(self):
         # Reject queued game switches before waiting for an in-flight update.
         self._closing = True
+        await self.native_performance_events.close()
         update_task = self._inputplumber_update_task
         if update_task is not None and not update_task.done():
             if self._inputplumber_update_preparing:

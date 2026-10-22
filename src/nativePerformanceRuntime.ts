@@ -46,6 +46,15 @@ function getManagerService(): ManagerService | undefined {
   ) as ManagerService | undefined
 }
 
+export function subscribeNativePerformanceControlsVisibility(listener: () => void): () => void {
+  try {
+    const registration = getManagerService()?.RegisterForNotifyStateChanged(() => { listener(); return 1 })
+    return () => registration?.unregister()
+  } catch {
+    return () => {}
+  }
+}
+
 export async function nativePerformanceControlsVisible(): Promise<boolean | null> {
   try {
     const manager = getManagerService()

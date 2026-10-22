@@ -148,7 +148,7 @@ def production_controller():
     import os
 
     from .controller import Controller
-    from .ryzenadj import INSTALL, RyzenAdjBackend, check_device
+    from .ryzenadj import INSTALL, RyzenAdjBackend, check_device, check_ownership
 
     if os.geteuid() != 0 or not Path("/etc/deckyzone/performance-enabled").is_file():
         raise Unavailable(
@@ -161,7 +161,9 @@ def production_controller():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         backend = RyzenAdjBackend()
         backend.initialize()
-        controller = Controller(backend, check_runtime)
+        # Compatibility was validated above. Runtime transactions still verify
+        # exclusive ownership, without rescanning the Manager package/schema.
+        controller = Controller(backend, check_ownership)
     except Exception:
         lock.close()
         raise
