@@ -7,17 +7,17 @@ from pathlib import Path, PurePosixPath
 import shutil
 import sys
 import tarfile
+import time
+import urllib.error
 import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE = ROOT / "tmp/native-performance-deps"
 TARGET = ROOT / "defaults/assets/native-performance"
+GPL_LICENSE = ROOT / "licenses/GPL-3.0.txt"
+GPL_LICENSE_SHA256 = "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
 DEPENDENCIES = {
-    "GPL-3.0.txt": (
-        "https://www.gnu.org/licenses/gpl-3.0.txt",
-        "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
-    ),
     "PowerControl.zip": (
         "https://github.com/mengmeet/PowerControl/releases/download/v3.15.1/PowerControl.zip",
         "9c14eddbec7657a23e73eaf811bd8344198159d48303481cf70ebb7c1c1ebd7c",
@@ -37,8 +37,16 @@ def dependency(name):
     url, expected = DEPENDENCIES[name]
     cached = CACHE / name
     if not cached.is_file() or hashlib.sha256(cached.read_bytes()).hexdigest() != expected:
-        with urllib.request.urlopen(url, timeout=30) as response:
-            data = response.read(8 * 1024 * 1024)
+        for attempt in range(1, 4):
+            print(f"Downloading {name} (attempt {attempt}/3): {url}", flush=True)
+            try:
+                with urllib.request.urlopen(url, timeout=30) as response:
+                    data = response.read(8 * 1024 * 1024)
+                break
+            except (urllib.error.URLError, TimeoutError) as error:
+                if attempt == 3:
+                    raise RuntimeError(f"Could not download {name} from {url}: {error}") from error
+                time.sleep(attempt)
         if hashlib.sha256(data).hexdigest() != expected:
             raise RuntimeError(f"Dependency checksum mismatch: {name}")
         cached.write_bytes(data)
@@ -46,6 +54,9 @@ def dependency(name):
 
 
 def main():
+    gpl_license = GPL_LICENSE.read_bytes()
+    if hashlib.sha256(gpl_license).hexdigest() != GPL_LICENSE_SHA256:
+        raise RuntimeError("Bundled GPL-3.0.txt checksum mismatch")
     CACHE.mkdir(parents=True, exist_ok=True)
     downloads = {name: dependency(name) for name in DEPENDENCIES}
     sys.path.insert(0, str(ROOT))
@@ -73,7 +84,7 @@ def main():
             output.write_bytes(archive.read(name))
     licenses = TARGET / "licenses"
     licenses.mkdir()
-    (licenses / "GPL-3.0.txt").write_bytes(downloads["GPL-3.0.txt"])
+    (licenses / "GPL-3.0.txt").write_bytes(gpl_license)
     source = downloads["RyzenAdj-source.tar.gz"]
     (licenses / "RyzenAdj-source.tar.gz").write_bytes(source)
     with tarfile.open(fileobj=io.BytesIO(source), mode="r:gz") as archive:
