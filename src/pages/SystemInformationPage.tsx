@@ -708,25 +708,24 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
                 {error && <ErrorField message={error} />}
                 <PerformancePanel
                   settings={settings}
-                  settingsLeadingRows={(
-                    <>
-                      {isLoading && !snapshot && <SteamSpinner />}
-                      {snapshot && (
-                        <>
-                          <SnapshotRow
-                            label="System RAM"
-                            value={formatGigabytes(snapshot.memory.systemRamGb)}
-                          />
-                          <SnapshotRow
-                            label="Active VRAM"
-                            value={formatGigabytes(snapshot.memory.activeVramGb)}
-                          />
-                        </>
-                      )}
-                    </>
-                  )}
                   onSettingsChange={applySettingsUpdate}
                 />
+                <DialogControlsSection>
+                  <SettingsDialogSubHeader>Memory</SettingsDialogSubHeader>
+                  {isLoading && !snapshot && <SteamSpinner />}
+                  {snapshot && (
+                    <>
+                      <SnapshotRow
+                        label="System RAM"
+                        value={formatGigabytes(snapshot.memory.systemRamGb)}
+                      />
+                      <SnapshotRow
+                        label="Active VRAM"
+                        value={formatGigabytes(snapshot.memory.activeVramGb)}
+                      />
+                    </>
+                  )}
+                </DialogControlsSection>
               </ErrorBoundary>
             </DialogBody>
           ),

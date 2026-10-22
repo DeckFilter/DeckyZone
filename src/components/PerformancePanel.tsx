@@ -1,6 +1,6 @@
 import { callable } from '@decky/api'
 import { ToggleField, gamepadDialogClasses } from '@decky/ui'
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import type { PluginSettings } from '../types/plugin'
 import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
@@ -17,7 +17,6 @@ import {
 
 type Props = {
   settings: PluginSettings
-  settingsLeadingRows?: ReactNode
   onSettingsChange: (update: PluginSettingsUpdate) => void
 }
 
@@ -78,7 +77,7 @@ function getOptimisticVramSettings(settings: PluginSettings, pendingVramGb: numb
   }
 }
 
-const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: Props) => {
+const PerformancePanel = ({ settings, onSettingsChange }: Props) => {
   const surface = useSettingsSurface()
   const [savingVram, setSavingVram] = useState(false)
   const savingVramRef = useRef(false)
@@ -217,9 +216,6 @@ const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: P
   return (
     <SettingsPanel title="Performance">
       <SettingsGroup>
-        {surface === 'settings' && settingsLeadingRows}
-        <NativePerformanceControl />
-        <CpuBoostControl />
         <SettingsRow>
           <SteamExplainerDropdownItem
             controlled
@@ -241,6 +237,8 @@ const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: P
             <div className={gamepadDialogClasses.FieldDescription}>{vramRebootHint}</div>
           </SettingsRow>
         )}
+        <NativePerformanceControl />
+        <CpuBoostControl />
       </SettingsGroup>
       {settings.remainingBatteryTimeFixAvailable && (
         <SettingsGroup title="Battery">
