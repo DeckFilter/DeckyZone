@@ -7,6 +7,7 @@ import { showRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
 import { SteamExplainerDropdownItem } from './SteamExplainer'
 import NativePerformanceControl from './NativePerformanceControl'
+import CpuBoostControl from './CpuBoostControl'
 import {
   SettingsGroup,
   SettingsPanel,
@@ -218,6 +219,7 @@ const PerformancePanel = ({ settings, settingsLeadingRows, onSettingsChange }: P
       <SettingsGroup>
         {surface === 'settings' && settingsLeadingRows}
         <NativePerformanceControl />
+        <CpuBoostControl />
         <SettingsRow>
           <SteamExplainerDropdownItem
             controlled
