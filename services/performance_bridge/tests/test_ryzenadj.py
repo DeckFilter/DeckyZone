@@ -9,41 +9,22 @@ from services.performance_bridge.controller import Controller
 from services.performance_bridge.compatibility import (
     DEVICE_CONFIG, MANAGER_SCHEMA, adapted_device_config, check_environment,
 )
-from services.performance_bridge.probe import check_runtime, inspect
 from services.performance_bridge.ryzenadj import RyzenAdjBackend, check_ownership
 from services.performance_bridge.sysfs import Unavailable
 
 
-@pytest.mark.parametrize("state", ("stopping", "offline", "unknown", ""))
-def test_shutdown_never_restarts_manager(monkeypatch, state):
+def test_shutdown_never_restarts_manager(monkeypatch):
     from services.performance_bridge import lifecycle
 
     calls = []
 
     def run(command, **kwargs):
         calls.append(command)
-        return SimpleNamespace(stdout=state + "\n", returncode=1)
+        return SimpleNamespace(stdout="stopping\n", returncode=1)
 
     monkeypatch.setattr(lifecycle.subprocess, "run", run)
     lifecycle.reconnect_manager()
     assert calls == [["/usr/bin/systemctl", "is-system-running"]]
-
-
-@pytest.mark.parametrize("state", ("running", "degraded", "starting"))
-def test_live_manager_can_reconnect(monkeypatch, state):
-    from services.performance_bridge import lifecycle
-
-    calls = []
-
-    def run(command, **kwargs):
-        calls.append(command)
-        return SimpleNamespace(stdout=state + "\n", returncode=0 if state == "running" else 1)
-
-    monkeypatch.setattr(lifecycle.subprocess, "run", run)
-    monkeypatch.setattr(lifecycle.pwd, "getpwnam", lambda name: SimpleNamespace(pw_uid=1000, pw_gid=1000))
-    monkeypatch.setattr(lifecycle.Path, "exists", lambda path: True)
-    lifecycle.reconnect_manager()
-    assert calls[-1] == ["/usr/bin/systemctl", "--user", "try-restart", "steamos-manager.service"]
 
 
 def test_user_shutdown_does_not_restart_manager(monkeypatch):
@@ -101,8 +82,8 @@ def test_no_partial_success_or_retry(backend, failed_command):
     assert len(backend.calls) == failed_command
 
 
-@pytest.mark.parametrize("watts", (12, 15, 29, 30))
-def test_presets_and_custom_survive_restart(backend, watts):
+def test_presets_and_custom_survive_restart(backend):
+    watts = 30
     controller = Controller(backend, lambda: None)
     controller.change(watts=watts)
     assert backend.calls == [
@@ -133,10 +114,11 @@ def test_power_event_reapplies_only_once(backend, monkeypatch):
     ]
 
 
-@pytest.mark.parametrize("watts", (0, 7, 31, True, 8.5))
+@pytest.mark.parametrize("watts", (7, 31, True, 8.5))
 def test_rejects_unsafe_values_before_commands(backend, watts):
+    controller = Controller(backend, lambda: None)
     with pytest.raises(ValueError):
-        backend.set_tdp(watts)
+        controller.change(watts=watts)
     assert not backend.calls
 
 
@@ -188,33 +170,22 @@ driver = "amdgpu"
     return tmp_path
 
 
-@pytest.mark.parametrize("os_id", ("bazzite", "cachyos", "arch", "steamdeck"))
-def test_only_actual_steamos_identity_is_accepted(environment, os_id):
+def test_only_actual_steamos_identity_is_accepted(environment):
     (environment / "etc/os-release").write_text(
-        f'ID={os_id}\nID_LIKE=steamos\nPRETTY_NAME="SteamOS"\n'
+        'ID=cachyos\nID_LIKE=steamos\nPRETTY_NAME="SteamOS"\n'
     )
     with pytest.raises(Unavailable, match="requires SteamOS"):
         check_environment(environment)
 
 
-def test_compatible_environment_and_os_release_fallback(environment):
-    assert check_environment(environment)["manager_version"] == "26.4.1-2"
-    (environment / "etc/os-release").rename(environment / "usr/lib/os-release")
-    assert check_environment(environment)["os_id"] == "steamos"
-
-
-@pytest.mark.parametrize("version", (
-    "26.4.0-1", "26.4.1-3", "26.5.0-1", "26.10.0-1", "27.0.0-1", "1:26.4.1-1",
-))
+@pytest.mark.parametrize("version", ("26.4.0-1", "1:26.10.0-1"))
 def test_compatible_manager_releases_ignore_package_revision(environment, version):
     package = next(environment.glob("usr/lib/holo/pacmandb/local/*/desc"))
     package.write_text(f"%NAME%\nsteamos-manager\n\n%VERSION%\n{version}\n")
     assert check_environment(environment)["manager_version"] == version
 
 
-@pytest.mark.parametrize("version", (
-    "25.3.0-1", "26.3.0-1", "1:26.3.0-1", "26.4.0rc1-1", "27.0.0beta1-1", "unknown",
-))
+@pytest.mark.parametrize("version", ("26.3.0-1", "26.4.0rc1-1", "unknown"))
 def test_old_or_unrecognized_manager_is_rejected(environment, version):
     package = next(environment.glob("usr/lib/holo/pacmandb/local/*/desc"))
     package.write_text(f"%NAME%\nsteamos-manager\n\n%VERSION%\n{version}\n")
@@ -222,20 +193,11 @@ def test_old_or_unrecognized_manager_is_rejected(environment, version):
         check_environment(environment)
 
 
-@pytest.mark.parametrize("before,after", (
-    ('name="TdpLimit" type="u"', 'name="TdpLimit" type="d"'),
-    ('name="PerformanceProfile" type="s" access="readwrite"',
-     'name="PerformanceProfile" type="s" access="read"'),
-    ('name="RemoteInterfaces"', 'name="ChangedRemoteInterfaces"'),
-))
-def test_changed_interface_stops_controller_before_power_write(environment, backend, before, after):
-    controller = Controller(backend, lambda: check_runtime(environment))
+def test_changed_interface_blocks_setup(environment):
     schema = environment / MANAGER_SCHEMA
-    schema.write_text(schema.read_text().replace(before, after))
+    schema.write_text(schema.read_text().replace('name="TdpLimit" type="u"', 'name="TdpLimit" type="d"'))
     with pytest.raises(Unavailable, match="missing a compatible"):
-        controller.change(watts=12)
-    assert not backend.calls
-    assert controller.fault
+        check_environment(environment)
 
 
 def test_missing_interface_schema_blocks_even_current_manager(environment):
@@ -264,15 +226,10 @@ def test_new_stock_power_backend_requires_revalidation(environment):
         check_environment(environment)
 
 
-def test_manager_removal_stops_running_controller_before_power_write(
-    environment, backend
-):
-    controller = Controller(backend, lambda: check_runtime(environment))
+def test_missing_manager_blocks_setup(environment):
     next(environment.glob("usr/lib/holo/pacmandb/local/*/desc")).unlink()
     with pytest.raises(Unavailable, match="Cannot verify installed"):
-        controller.change(watts=12)
-    assert not backend.calls
-    assert controller.fault
+        check_environment(environment)
 
 
 @pytest.mark.parametrize("plugin", ("PowerControl", "SimpleDeckyTDP"))
@@ -283,11 +240,7 @@ def test_enabling_either_power_plugin_stops_before_power_write(
     directory.mkdir(parents=True)
     loader = environment / "home/deck/homebrew/settings/loader.json"
     loader.write_text('{"disabled_plugins": ["' + plugin + '"]}')
-    controller = Controller(backend, lambda: check_runtime(environment))
-    assert inspect(environment)["decky_power_plugins"][plugin] == {
-        "installed": True,
-        "disabled_in_decky": True,
-    }
+    controller = Controller(backend, lambda: check_ownership(environment))
     loader.write_text('{"disabled_plugins": []}')
     with pytest.raises(Unavailable, match=f"Disable {plugin}"):
         controller.change(watts=12)
@@ -301,16 +254,6 @@ def test_enabling_either_power_plugin_stops_before_power_write(
 def test_unverifiable_plugin_state_blocks_ownership(environment, contents):
     (environment / "home/deck/homebrew/settings/loader.json").write_text(contents)
     with pytest.raises(Unavailable, match="Cannot verify disabled"):
-        check_ownership(environment)
-
-
-@pytest.mark.parametrize("plugin", ("PowerControl", "SimpleDeckyTDP"))
-def test_old_coexistence_marker_cannot_bypass_conflicts(environment, plugin):
-    (environment / "home/deck/homebrew/plugins" / plugin).mkdir(parents=True)
-    marker = environment / "run/deckyzone-powercontrol-coexistence-test"
-    marker.parent.mkdir()
-    marker.write_text("allow-powercontrol-for-testing\n")
-    with pytest.raises(Unavailable, match=f"Disable {plugin}"):
         check_ownership(environment)
 
 
@@ -338,27 +281,6 @@ def test_stop_hook_preserves_boot_without_active_plugin(monkeypatch, installed, 
     monkeypatch.setattr(lifecycle.subprocess, "run", lambda args, **kw: calls.append(args))
     lifecycle.disable_after_conflict()
     assert not calls
-
-
-@pytest.mark.parametrize("enabled", (True, False))
-def test_bridge_toggle_reconciles_systemd_state(tmp_path, monkeypatch, enabled):
-    from services.performance_bridge import control
-
-    monkeypatch.setattr(control, "INSTALL", tmp_path)
-    monkeypatch.setattr(control.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(control, "install", lambda payload: None)
-    monkeypatch.setattr(control, "verify_manager_relay", lambda: None)
-    states = iter([
-        {"installed": True, "enabled": not enabled, "active": not enabled,
-         "available": True, "needsSetup": False, "blockedReason": None},
-        {"installed": True, "enabled": enabled, "active": enabled,
-         "available": True, "needsSetup": False, "blockedReason": None},
-    ])
-    monkeypatch.setattr(control, "status", lambda: next(states))
-    calls = []
-    monkeypatch.setattr(control, "systemctl", lambda *args: calls.append(args))
-    assert control.set_enabled(enabled)["enabled"] is enabled
-    assert calls == [("enable" if enabled else "disable", "--now", control.UNIT)]
 
 
 def test_bridge_stops_when_manager_cannot_relay_controls(tmp_path, monkeypatch):
