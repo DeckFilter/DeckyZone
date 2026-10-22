@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.5] - 2026-10-22
+
+
+### Fixes
+
+- Restore custom mappings on InputPlumber 0.82 and newer (#56) by @felixhirschfeld
+
+
 ## [0.6.4] - 2026-10-19
 
 
