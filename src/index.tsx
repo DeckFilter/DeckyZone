@@ -41,7 +41,7 @@ import { checkLatestVersion, compareVersions, isValidVersion, resetStartupCheck 
 import { initializePluginUpdateStatus } from './utils/pluginUpdateStatus'
 import { showDeckyToast } from './utils/toasts'
 import { startNativePerformanceRuntime } from './nativePerformanceRuntime'
-import { warmNativePerformanceStatus } from './state/nativePerformanceState'
+import { startNativePerformanceStatus } from './state/nativePerformanceState'
 
 type BrightnessDialDirection = 'up' | 'down'
 type ActiveGameChangedHandler = (newGame: ActiveGame | null, oldGame: ActiveGame | null) => void
@@ -658,7 +658,7 @@ function Content() {
 
 export default definePlugin(() => {
   const cleanupPluginUpdateStatus = initializePluginUpdateStatus()
-  void warmNativePerformanceStatus()
+  const stopNativePerformanceStatus = startNativePerformanceStatus()
   const mappingRoute = `${DECKYZONE_MAPPING_ROUTE}/:appId/:section?/:sourceId?`
   const MappingRoute = () => {
     const { appId, sourceId } = useParams<{ appId: string; sourceId?: string }>()
@@ -727,6 +727,7 @@ export default definePlugin(() => {
     icon: <ZotacIcon />,
     onDismount() {
       cleanupPluginUpdateStatus()
+      stopNativePerformanceStatus()
       stopNativePerformanceRuntime()
       routerHook.removeRoute(DECKYZONE_ROUTE)
       routerHook.removeRoute(mappingRoute)

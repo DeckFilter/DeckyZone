@@ -8,7 +8,7 @@ from dbus_next.aio import MessageBus
 from dbus_next.constants import NameFlag, PropertyAccess, RequestNameReply
 from dbus_next.service import ServiceInterface, dbus_property
 
-from .controller import Controller
+from .controller import Controller, PreparingForSleep
 from .sysfs import PROFILES, Unavailable
 
 
@@ -77,7 +77,8 @@ class Bridge:
     """
 
     def __init__(
-        self, controller: Controller, profile_bus: MessageBus, tdp_bus: MessageBus
+        self, controller: Controller, profile_bus: MessageBus, tdp_bus: MessageBus,
+        runtime_events=None,
     ):
         self.controller = controller
         self.profile_bus = profile_bus
@@ -88,6 +89,7 @@ class Bridge:
         self.profile_owned = False
         self.tdp_owned = False
         self.stopped = asyncio.Event()
+        self.runtime_events = runtime_events
 
     def published_snapshot(self):
         # Properties expose the last completed transaction. Polling and every
@@ -163,8 +165,8 @@ class Bridge:
                 ) from error
             return result
 
-    async def read(self):
-        return await self._execute(self.controller.read)
+    async def read(self, *, force_restore=False):
+        return await self._execute(self.controller.read, force_restore=force_restore)
 
     async def change(self, **kwargs):
         # Keep publication inside the same lock as the write. A second request
@@ -177,6 +179,8 @@ class Bridge:
                     raise Unavailable("Provider bus disconnected")
                 snapshot = await asyncio.to_thread(self.controller.change, **kwargs)
                 await self._tdp_visibility(snapshot.profile == "custom")
+            except PreparingForSleep as error:
+                raise DBusError("org.freedesktop.DBus.Error.Failed", str(error)) from error
             except ValueError as error:
                 raise DBusError(
                     "org.freedesktop.DBus.Error.InvalidArgs", str(error)
@@ -194,15 +198,31 @@ class Bridge:
                 self.tdp.emit_properties_changed({"TdpLimit": snapshot.limits[0]})
 
     async def monitor(self):
+        events = self.runtime_events
         while not self.stopped.is_set():
+            if events:
+                events.changed.clear()
+                if events.error:
+                    LOG.error("Withdrawing performance provider: %s", events.error)
+                    await self.close()
+                    return
+            if not events or not events.preparing:
+                try:
+                    await self.read()
+                except DBusError:
+                    return
+            waiting = [asyncio.create_task(self.stopped.wait())]
+            if events:
+                waiting.append(asyncio.create_task(events.changed.wait()))
             try:
-                await self.read()
-            except DBusError:
-                return
-            try:
-                await asyncio.wait_for(self.stopped.wait(), timeout=1)
-            except TimeoutError:
-                pass
+                # Events handle normal transitions. This bounded fallback only
+                # checks ownership and power-source/sleep markers, not packages.
+                await asyncio.wait(waiting, timeout=15,
+                                   return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for task in waiting:
+                    task.cancel()
+                await asyncio.gather(*waiting, return_exceptions=True)
 
     async def close(self):
         # Do not cancel an in-flight sysfs worker: cancellation cannot undo writes.

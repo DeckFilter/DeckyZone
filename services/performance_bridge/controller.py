@@ -1,8 +1,12 @@
 """Serialize transactions and stop permanently after uncertain application."""
 
-from threading import RLock
+from threading import Event, RLock
 
 from .sysfs import PROFILES, Snapshot, SysfsBackend, Unavailable
+
+
+class PreparingForSleep(Unavailable):
+    """A new transaction must wait until sleep/shutdown preparation ends."""
 
 
 class Controller:
@@ -10,7 +14,11 @@ class Controller:
         self.backend = backend
         self.check_ownership = check_ownership
         self.lock = RLock()
+        self.preparing = Event()
+        self.restore_pending = Event()
         self.fault = None
+        if hasattr(backend, "before_write"):
+            backend.before_write = self._before_write
         self.check_ownership()
         self.snapshot = backend.read()
         # Session-only custom value. Steam retains responsibility for game settings.
@@ -21,13 +29,23 @@ class Controller:
             value if backend.minimum <= value <= backend.maximum else None,
         )
 
-    def _check(self) -> Snapshot:
+    def _before_write(self):
+        if self.preparing.is_set():
+            raise PreparingForSleep("Device is preparing to sleep or shut down")
+        self.check_ownership()
+        if self.preparing.is_set():
+            raise PreparingForSleep("Device is preparing to sleep or shut down")
+
+    def _check(self, *, force_restore=False) -> Snapshot:
         if self.fault:
             raise Unavailable(self.fault)
         try:
             self.check_ownership()
-            if hasattr(self.backend, "refresh_after_power_event"):
-                self.backend.refresh_after_power_event()
+            if (not self.preparing.is_set()
+                    and hasattr(self.backend, "refresh_after_power_event")):
+                force_restore = force_restore or self.restore_pending.is_set()
+                self.restore_pending.clear()
+                self.backend.refresh_after_power_event(force=force_restore)
             current = self.backend.read()
             if current != self.snapshot:
                 raise Unavailable("Driver state changed outside the bridge")
@@ -36,14 +54,16 @@ class Controller:
             self.fault = str(error)
             raise Unavailable(self.fault) from error
 
-    def read(self) -> Snapshot:
+    def read(self, *, force_restore=False) -> Snapshot:
         with self.lock:
-            return self._check()
+            return self._check(force_restore=force_restore)
 
     def change(
         self, *, profile: str | None = None, watts: int | None = None
     ) -> Snapshot:
         with self.lock:
+            if self.preparing.is_set():
+                raise PreparingForSleep("Device is preparing to sleep or shut down")
             before = self._check()
             if (profile is None) == (watts is None):
                 raise ValueError("Exactly one property must be changed")

@@ -50,6 +50,7 @@ NATIVE_REQUIRED_FILES = frozenset({
     "services/performance_bridge/lifecycle.py",
     "services/performance_bridge/probe.py",
     "services/performance_bridge/ryzenadj.py",
+    "services/performance_bridge/runtime_events.py",
     "services/performance_bridge/sysfs.py",
     "services/performance_bridge/requirements.txt",
     "services/performance_bridge/packaging/com.deckyzone.Performance.conf.example",
