@@ -15,6 +15,7 @@ import controller_targets
 import controller_mappings
 from controller_mapping_runtime import MappingRuntime
 import firmware_info
+from cpu_boost import CpuBoost
 from fan_control import FanControl
 import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_device_profile
@@ -4593,6 +4594,7 @@ class Plugin:
         self.startup_task = None
         self.service = service or DeckyZoneService()
         self.fan_control = FanControl(decky.DECKY_PLUGIN_SETTINGS_DIR, decky.DECKY_HOME)
+        self.cpu_boost = CpuBoost(decky.DECKY_PLUGIN_SETTINGS_DIR, decky.DECKY_HOME, decky.DECKY_USER)
         self._controller_operation_lock = asyncio.Lock()
         self._controller_initialized = asyncio.Event()
         self._controller_initializing = False
@@ -4809,6 +4811,7 @@ class Plugin:
 
     async def _reset_plugin_cleanup(self):
         steps = []
+        boost_step = await self._run_cleanup_step(steps, "stopCpuBoost", lambda: self.cpu_boost.shutdown(reset=True))
         fan_step = await self._run_cleanup_step(steps, "stopFanControl", lambda: self.fan_control.shutdown(reset=True))
         startup_step = await self._run_cleanup_step(
             steps,
@@ -4836,9 +4839,9 @@ class Plugin:
                 "steps": [],
             }
 
-        steps = [fan_step, startup_step, *result.get("steps", [])]
+        steps = [boost_step, fan_step, startup_step, *result.get("steps", [])]
         result["steps"] = steps
-        result["ok"] = bool(fan_step["ok"] and startup_step["ok"] and result.get("ok", True))
+        result["ok"] = bool(boost_step["ok"] and fan_step["ok"] and startup_step["ok"] and result.get("ok", True))
         return result
 
     def _log_cleanup_result(self, action_name, result):
@@ -4883,6 +4886,15 @@ class Plugin:
 
     async def get_native_performance_status(self):
         return await asyncio.to_thread(native_performance.get_status)
+
+    async def get_cpu_boost_status(self):
+        return await self.cpu_boost.status()
+
+    async def set_cpu_boost_enabled(self, enabled):
+        try:
+            return {"ok": True, "state": await self.cpu_boost.set_enabled(enabled)}
+        except Exception as error:
+            return {"ok": False, "error": str(error), "state": await self.cpu_boost.status()}
 
     async def set_native_performance_enabled(self, enabled):
         return await asyncio.to_thread(native_performance.set_enabled, enabled)
@@ -5083,6 +5095,7 @@ class Plugin:
         if self._closing:
             return
         await self.fan_control.startup()
+        await self.cpu_boost.startup()
         settings = self.service.get_settings()
         if not self._controller_startup_deferred:
             await self.service.start_controller_mode_monitor()
@@ -5133,6 +5146,7 @@ class Plugin:
         await self._begin_controller_cleanup()
         async with self._controller_operation_lock:
             steps = []
+            boost_step = await self._run_cleanup_step(steps, "stopCpuBoost", self.cpu_boost.shutdown)
             fan_step = await self._run_cleanup_step(steps, "stopFanControl", self.fan_control.shutdown)
             startup_step = await self._run_cleanup_step(
                 steps,
@@ -5156,8 +5170,8 @@ class Plugin:
                     "steps": [],
                 }
 
-            result["steps"] = [fan_step, startup_step, *result.get("steps", [])]
-            result["ok"] = bool(fan_step["ok"] and startup_step["ok"] and result.get("ok", True))
+            result["steps"] = [boost_step, fan_step, startup_step, *result.get("steps", [])]
+            result["ok"] = bool(boost_step["ok"] and fan_step["ok"] and startup_step["ok"] and result.get("ok", True))
             self._log_cleanup_result("unload", result)
 
     async def _uninstall(self):

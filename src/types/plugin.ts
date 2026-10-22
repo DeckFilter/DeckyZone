@@ -19,6 +19,20 @@ export type NativePerformanceResult = {
   error?: string
 }
 
+export type CpuBoostState = {
+  available: boolean
+  enabled: boolean | null
+  savedEnabled: boolean | null
+  blockedReason: string
+  conflictingPlugins: string[]
+}
+
+export type CpuBoostResult = {
+  ok: boolean
+  state: CpuBoostState
+  error?: string
+}
+
 export type ControllerMode = 'gamepad' | 'desktop'
 export type TrackpadMode = 'default' | 'disabled' | 'directional_buttons'
 export type UpdateChannel = 'stable' | 'prerelease'
