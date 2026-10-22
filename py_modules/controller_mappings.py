@@ -283,7 +283,7 @@ def _is_zotac_keyboard_source(match):
     ) is not None
 
 
-def _allow_translated_keyboard_events(profile, *, allow_trackpad_markers=False):
+def _allow_translated_keyboard_events(profile, *, allow_trackpad_mapping_events=False):
     def update_source(match):
         block, indent = match.group(), match.group("indent")
         if not _is_zotac_keyboard_source(match):
@@ -307,7 +307,7 @@ def _allow_translated_keyboard_events(profile, *, allow_trackpad_markers=False):
             for line in include.group("items").splitlines()
         }
         # Trackpad markers must pass the source filter before profile mapping.
-        required = list(MARKER_CAPS.values()) if allow_trackpad_markers else []
+        required = list(MARKER_CAPS.values()) if allow_trackpad_mapping_events else []
         if re.search(
             r"(?m)^" + indent + r"  capability_map_id:[ \t]+[^# \t\r\n]",
             block,
@@ -451,7 +451,7 @@ def sync_source_file(directory, system_profile, enabled, *, allow_default_filter
             if not native_map.is_file():
                 raise RuntimeError("The native ZOTAC button capability map is unavailable.")
     corrected_profile = _allow_translated_keyboard_events(
-        corrected_profile, allow_trackpad_markers=enabled
+        corrected_profile, allow_trackpad_mapping_events=enabled
     )
     if not enabled:
         return update_files(
