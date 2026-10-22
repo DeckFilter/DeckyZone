@@ -1,25 +1,33 @@
 import { callable } from '@decky/api'
 import { ButtonItem, ToggleField, showModal } from '@decky/ui'
-import { useEffect, useRef, useState } from 'react'
-import type { NativePerformanceResult, NativePerformanceState } from '../types/plugin'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { NativePerformanceResult } from '../types/plugin'
 import { nativePerformanceControlsVisible } from '../nativePerformanceRuntime'
+import {
+  beginNativePerformanceChange,
+  confirmNativePerformanceState,
+  finishNativePerformanceChange,
+  getNativePerformanceSnapshot,
+  refreshNativePerformanceStatus,
+  subscribeNativePerformance,
+} from '../state/nativePerformanceState'
 import { showSteamRestartRequiredDialog } from '../utils/showRestartRequiredDialog'
 import { useDeckyToastNotice } from '../utils/toasts'
 import { SettingsRow, useSettingsSurface } from './SettingsSurface'
 import NativePerformanceProgressDialog from './NativePerformanceProgressDialog'
 
-const getStatus = callable<[], NativePerformanceState>('get_native_performance_status')
 const setEnabled = callable<[boolean], NativePerformanceResult>('set_native_performance_enabled')
 const EXPLAINER =
   "Enables performance profiles and the TDP slider in Steam's Performance menu. The slider is available in Custom. Disable PowerControl and SimpleDeckyTDP in Decky settings first; their own TDP switches are not enough. Enabling either plugin later automatically turns native controls off, including startup at boot. After disabling those plugins, turn native controls back on here. Turning native controls off keeps the last applied power limits. Fan settings and CPU boost are unchanged."
 
 const NativePerformanceControl = () => {
   const surface = useSettingsSurface()
-  const [state, setState] = useState<NativePerformanceState | null>(null)
-  const [saving, setSaving] = useState(false)
+  const { state, saving, checking: sharedChecking, confirmed } = useSyncExternalStore(
+    subscribeNativePerformance, getNativePerformanceSnapshot,
+  )
+  const [checking, setChecking] = useState(true)
   const [notice, setNotice] = useState<string | null>(null)
   const [visibleInSteam, setVisibleInSteam] = useState<boolean | null>(null)
-  const savingRef = useRef(false)
   const revision = useRef(0)
   const mounted = useRef(false)
   const conflicts = state?.conflictingPlugins ?? []
@@ -27,20 +35,25 @@ const NativePerformanceControl = () => {
   useEffect(() => {
     mounted.current = true
     const refresh = async () => {
-      if (savingRef.current) return
+      if (getNativePerformanceSnapshot().saving) {
+        setChecking(false)
+        return
+      }
       const request = ++revision.current
+      setChecking(true)
       try {
-        const next = await getStatus()
+        const next = await refreshNativePerformanceStatus()
+        if (!next) return
         const visible = next.active ? await nativePerformanceControlsVisible() : null
         if (mounted.current && request === revision.current) {
-          setState(next)
           setVisibleInSteam(visible)
         }
       } catch {
         if (mounted.current && request === revision.current) {
-          setState(null)
           setNotice("Couldn't read native performance status")
         }
+      } finally {
+        if (mounted.current && request === revision.current) setChecking(false)
       }
     }
     void refresh()
@@ -60,30 +73,29 @@ const NativePerformanceControl = () => {
   } : null)
 
   const change = async (enabled: boolean) => {
-    if (!state || savingRef.current || (enabled && (!state.available || conflicts.length > 0))) return
-    savingRef.current = true
+    if (!state || checking || (enabled && (!state.available || conflicts.length > 0))) return
+    const before = beginNativePerformanceChange(enabled)
+    if (!before) return
     revision.current++ // Invalidate a status read started before this transaction.
-    setSaving(true)
     setNotice(null)
     setVisibleInSteam(null)
-    setState({ ...state, enabled })
     let progressTimer: ReturnType<typeof setTimeout> | undefined
     try {
       const operation = setEnabled(enabled)
       progressTimer = setTimeout(() => {
         showModal(<NativePerformanceProgressDialog operation={operation} message={
           enabled
-            ? state.needsSetup
-              ? state.installed ? 'Repairing native performance controls…' : 'Installing native performance controls…'
+            ? before.needsSetup
+              ? before.installed ? 'Repairing native performance controls…' : 'Installing native performance controls…'
               : 'Starting native performance controls…'
             : 'Stopping native performance controls…'
         } />)
       }, 600)
       const result = await operation
       clearTimeout(progressTimer)
-      if (!mounted.current) return
       if (!result.state) throw new Error(result.error ?? "Couldn't read bridge status")
-      setState(result.state)
+      confirmNativePerformanceState(result.state)
+      if (!mounted.current) return
       if (result.ok && result.state.active) {
         const visible = await nativePerformanceControlsVisible()
         if (mounted.current) setVisibleInSteam(visible)
@@ -93,36 +105,36 @@ const NativePerformanceControl = () => {
       // Refetch the authoritative state; the command may have reached systemd
       // even if its response was lost. Never roll back unrelated settings.
       try {
-        const next = await getStatus()
-        if (mounted.current) setState(next)
-      } catch {
-        if (mounted.current) setState(null)
-      }
+        await refreshNativePerformanceStatus(true)
+      } catch { /* Keep the last position disabled until a successful status read. */ }
       if (mounted.current) setNotice("Couldn't confirm native performance controls")
     } finally {
       clearTimeout(progressTimer)
-      savingRef.current = false
-      if (mounted.current) setSaving(false)
+      finishNativePerformanceChange()
     }
   }
 
   const description = saving
     ? 'Applying change…'
-    : !state
+    : checking || sharedChecking
       ? 'Checking availability…'
-      : conflicts.length > 0
-        ? `Disable ${conflicts.join(' and ')} in Decky settings`
-        : state.blockedReason
-          ? `${state.enabled && !state.active ? 'Stopped: ' : ''}${state.blockedReason}`
-          : state.needsSetup
-            ? state.enabled
-              ? 'Turn off and on to repair native controls'
-              : state.installed ? 'Enable to repair native controls' : 'Enable to install native controls'
-          : state.active
-            ? visibleInSteam === false
-              ? 'Restart Steam to show native controls'
-              : visibleInSteam === null ? "Checking Steam's controls…" : "Use Steam's Performance menu"
-            : "Adds profiles and TDP control to Steam's Performance menu"
+      : !state
+        ? 'Checking availability…'
+        : !confirmed
+          ? "Couldn't confirm native performance status"
+          : conflicts.length > 0
+            ? `Disable ${conflicts.join(' and ')} in Decky settings`
+            : state.blockedReason
+              ? `${state.enabled && !state.active ? 'Stopped: ' : ''}${state.blockedReason}`
+              : state.needsSetup
+                ? state.enabled
+                  ? 'Turn off and on to repair native controls'
+                  : state.installed ? 'Enable to repair native controls' : 'Enable to install native controls'
+                : state.active
+                  ? visibleInSteam === false
+                    ? 'Restart Steam to show native controls'
+                    : visibleInSteam === null ? "Checking Steam's controls…" : "Use Steam's Performance menu"
+                  : "Adds profiles and TDP control to Steam's Performance menu"
 
   return (
     <>
@@ -134,7 +146,7 @@ const NativePerformanceControl = () => {
           checked={state?.enabled ?? false}
           description={surface === 'settings' ? description : undefined}
           onChange={(value: boolean) => void change(value)}
-          disabled={saving || !state || (!state.enabled && (!state.available || conflicts.length > 0))}
+          disabled={saving || checking || sharedChecking || !confirmed || !state || (!state.enabled && (!state.available || conflicts.length > 0))}
         />
       </SettingsRow>
       {state?.active && visibleInSteam === false && !saving && (
