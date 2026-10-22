@@ -283,13 +283,10 @@ def _is_zotac_keyboard_source(match):
     ) is not None
 
 
-def _allow_translated_keyboard_events(profile):
+def _allow_translated_keyboard_events(profile, *, allow_trackpad_markers=False):
     def update_source(match):
         block, indent = match.group(), match.group("indent")
-        if not _is_zotac_keyboard_source(match) or not re.search(
-            r"(?m)^" + indent + r"  capability_map_id:[ \t]+[^# \t\r\n]",
-            block,
-        ):
+        if not _is_zotac_keyboard_source(match):
             return block
         events = re.search(
             r"(?m)^" + indent + r"  events:[ \t]*(?:#.*)?\n"
@@ -309,19 +306,25 @@ def _allow_translated_keyboard_events(profile):
             line.strip()[2:].split(" #", 1)[0].strip().strip("\"'")
             for line in include.group("items").splitlines()
         }
-        # InputPlumber filters these events after the keyboard capability map.
-        missing = [
-            "Gamepad:Button:" + button
-            for button in (
-                "Guide",
-                "QuickAccess",
-                "QuickAccess2",
-                "Keyboard",
-                "LeftPaddle1",
-                "RightPaddle1",
+        # Trackpad markers must pass the source filter before profile mapping.
+        required = list(MARKER_CAPS.values()) if allow_trackpad_markers else []
+        if re.search(
+            r"(?m)^" + indent + r"  capability_map_id:[ \t]+[^# \t\r\n]",
+            block,
+        ):
+            # Legacy source maps translate buttons before this filter.
+            required.extend(
+                "Gamepad:Button:" + button
+                for button in (
+                    "Guide",
+                    "QuickAccess",
+                    "QuickAccess2",
+                    "Keyboard",
+                    "LeftPaddle1",
+                    "RightPaddle1",
+                )
             )
-            if "Gamepad:Button:" + button not in existing
-        ]
+        missing = [cap for cap in required if cap not in existing]
         position = events.start() + include.end()
         if block[position - 1:position] == "\n":
             position -= 1
@@ -447,7 +450,9 @@ def sync_source_file(directory, system_profile, enabled, *, allow_default_filter
             native_map = Path(system_profile).parent.parent / "capability_maps" / "zone_buttons.yaml"
             if not native_map.is_file():
                 raise RuntimeError("The native ZOTAC button capability map is unavailable.")
-    corrected_profile = _allow_translated_keyboard_events(corrected_profile)
+    corrected_profile = _allow_translated_keyboard_events(
+        corrected_profile, allow_trackpad_markers=enabled
+    )
     if not enabled:
         return update_files(
             {destination: corrected_profile} if corrected_profile != profile else {}
