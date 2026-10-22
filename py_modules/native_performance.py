@@ -1,7 +1,9 @@
 """Install and control the bridge using DeckyZone's bundled offline payload."""
 
 import json
+import os
 from pathlib import Path
+import stat
 import subprocess
 
 
@@ -57,6 +59,31 @@ def get_status():
     if response.get("state") is None:
         raise RuntimeError(response.get("error", "Could not read bridge status"))
     return response["state"]
+
+
+def get_report_status():
+    """Read service status and its last acknowledged request; never query/write SMU."""
+    state = get_status()
+    if not state.get("installed"):
+        return state
+    try:
+        flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+        with os.fdopen(os.open(INSTALL / "state.json", flags), "r", encoding="utf-8") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise ValueError("Saved performance state is not a regular file")
+            text = handle.read(4097)
+        if len(text) > 4096:
+            raise ValueError("Saved performance state is too large")
+        saved = json.loads(text)
+        if (not isinstance(saved, dict)
+                or saved.get("profile") not in ("low-power", "balanced", "performance", "custom")
+                or type(saved.get("watts")) is not int
+                or type(saved.get("custom_tdp")) is not int):
+            raise ValueError("Saved performance state is invalid")
+        state["lastRequest"] = {key: saved[key] for key in ("profile", "watts", "custom_tdp")}
+    except (OSError, ValueError) as error:
+        state["lastRequestError"] = str(error)
+    return state
 
 
 def set_enabled(enabled):

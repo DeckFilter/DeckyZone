@@ -464,28 +464,10 @@ class DeckyZoneService:
         self._rumble_available = bool(self.probe_rumble_available())
         return self._current_settings()
 
-    def get_debug_info(self):
+    def _get_debug_runtime_snapshot(self):
+        # HID commands and display migration share loop-owned mutable state.
         status = self.get_status()
         inputplumber_available = bool(self.probe_inputplumber_available())
-        inputplumber_version = self._get_binary_version("inputplumber")
-        gamescope_version = self._get_binary_version("gamescope")
-        firmware_versions = firmware_info.read_firmware_versions(
-            self.read_text,
-            supported_device=self.is_supported_device(),
-        )
-        system_ram_gb = None
-        active_vram_gb = None
-
-        try:
-            system_ram_gb = system_memory.read_system_ram_gb()
-        except Exception as error:
-            self.logger.warning(f"Failed to read system RAM: {error}")
-
-        try:
-            active_vram_gb = vram_control.read_active_vram_gb()
-        except Exception as error:
-            self.logger.warning(f"Failed to read active VRAM: {error}")
-
         controller_mode_snapshot = self._get_controller_mode_snapshot()
         profile_name = None
         profile_path = None
@@ -524,24 +506,8 @@ class DeckyZoneService:
         )
 
         return {
-            "deviceIdentity": {
-                "vendorName": self._read_optional_text(DMI_SYS_VENDOR_PATH),
-                "productName": self._read_optional_text(DMI_PRODUCT_NAME_PATH),
-                "boardName": self._read_optional_text(DMI_BOARD_NAME_PATH),
-                "boardVendor": self._read_optional_text(DMI_BOARD_VENDOR_PATH),
-            },
-            "osContext": {
-                "prettyName": self._get_os_pretty_name(),
-                "kernelRelease": self._get_kernel_release(),
-            },
-            "firmware": firmware_versions,
-            "memory": {
-                "systemRamGb": system_ram_gb,
-                "activeVramGb": active_vram_gb,
-            },
             "inputPlumber": {
                 "available": inputplumber_available,
-                "version": inputplumber_version,
                 "profileName": profile_name,
                 "profilePath": profile_path,
                 "controllerMode": controller_mode_snapshot["mode"],
@@ -557,7 +523,6 @@ class DeckyZoneService:
                 "zotacZoneHidLoaded": self._path_exists(ZOTAC_ZONE_HID_MODULE_PATH),
             },
             "gamescope": {
-                "version": gamescope_version,
                 "builtInAvailable": bool(display_profile_settings["gamescopeZotacProfileBuiltIn"]),
                 "managedProfileInstalled": bool(display_profile_settings["gamescopeZotacProfileInstalled"]),
                 "greenTintFixEnabled": bool(display_profile_settings["gamescopeGreenTintFixEnabled"]),
@@ -570,9 +535,45 @@ class DeckyZoneService:
             },
         }
 
-    def get_support_report(self, debug_snapshot=None):
-        if debug_snapshot is None:
-            debug_snapshot = self.get_debug_info()
+    def get_debug_info(self, runtime_snapshot=None):
+        if runtime_snapshot is None:
+            runtime_snapshot = self._get_debug_runtime_snapshot()
+        inputplumber_version = self._get_binary_version("inputplumber")
+        gamescope_version = self._get_binary_version("gamescope")
+        firmware_versions = firmware_info.read_firmware_versions(
+            self.read_text, supported_device=self.is_supported_device(),
+        )
+        system_ram_gb = None
+        active_vram_gb = None
+        try:
+            system_ram_gb = system_memory.read_system_ram_gb()
+        except Exception as error:
+            self.logger.warning(f"Failed to read system RAM: {error}")
+        try:
+            active_vram_gb = vram_control.read_active_vram_gb()
+        except Exception as error:
+            self.logger.warning(f"Failed to read active VRAM: {error}")
+
+        return {
+            **runtime_snapshot,
+            "deviceIdentity": {
+                "vendorName": self._read_optional_text(DMI_SYS_VENDOR_PATH),
+                "productName": self._read_optional_text(DMI_PRODUCT_NAME_PATH),
+                "boardName": self._read_optional_text(DMI_BOARD_NAME_PATH),
+                "boardVendor": self._read_optional_text(DMI_BOARD_VENDOR_PATH),
+            },
+            "osContext": {
+                "prettyName": self._get_os_pretty_name(),
+                "kernelRelease": self._get_kernel_release(),
+            },
+            "firmware": firmware_versions,
+            "memory": {"systemRamGb": system_ram_gb, "activeVramGb": active_vram_gb},
+            "inputPlumber": {**runtime_snapshot["inputPlumber"], "version": inputplumber_version},
+            "gamescope": {**runtime_snapshot["gamescope"], "version": gamescope_version},
+        }
+
+    def get_support_report(self, *, runtime_snapshot=None, native_status=None, boost_status=None, fan_status=None):
+        debug_snapshot = self.get_debug_info(runtime_snapshot)
 
         return support_report.build_support_report(
             plugin_version=decky.DECKY_PLUGIN_VERSION,
@@ -582,6 +583,9 @@ class DeckyZoneService:
             remaining_battery_enabled=(
                 self.settings_store.get_remaining_battery_time_fix_enabled()
             ),
+            native_status=native_status,
+            boost_status=boost_status,
+            fan_status=fan_status,
             logger=self.logger,
             log_path=decky.DECKY_PLUGIN_LOG,
             command_runner=self.command_runner,
@@ -589,7 +593,6 @@ class DeckyZoneService:
             read_text=self.read_text,
             path_exists=self._path_exists,
             pending_vram_reader=vram_control.read_pending_vram_gb,
-            active_vram_reader=vram_control.read_active_vram_gb,
             redaction_paths=(
                 decky.DECKY_USER_HOME,
                 decky.DECKY_HOME,
@@ -4910,10 +4913,21 @@ class Plugin:
         return self.service.get_debug_info()
 
     async def get_support_report(self):
-        debug_snapshot = self.service.get_debug_info()
+        runtime_snapshot = self.service._get_debug_runtime_snapshot()
+        statuses = await asyncio.gather(
+            asyncio.to_thread(native_performance.get_report_status),
+            self.cpu_boost.status(),
+            asyncio.to_thread(self.fan_control.status),
+            return_exceptions=True,
+        )
+        diagnostics = {
+            name: {"error": str(value)} if isinstance(value, Exception) else value
+            for name, value in zip(("native_status", "boost_status", "fan_status"), statuses)
+        }
         return await asyncio.to_thread(
             self.service.get_support_report,
-            debug_snapshot,
+            runtime_snapshot=runtime_snapshot,
+            **diagnostics,
         )
 
     async def save_support_report(self, report_text):
