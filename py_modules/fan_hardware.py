@@ -1,6 +1,8 @@
 """Existing ZONE hwmon API only; no direct EC access or kernel changes."""
 
+import json
 from pathlib import Path
+import time
 from fan_curve import read_json
 
 POWER_PLUGINS = ("PowerControl", "SimpleDeckyTDP")
@@ -8,7 +10,17 @@ POWER_PLUGINS = ("PowerControl", "SimpleDeckyTDP")
 
 def conflicts(homebrew):
     root = Path(homebrew)
-    data = read_json(root / "settings/loader.json")
+    # Decky briefly truncates or replaces this file while saving settings.
+    # Retry that write window; never reuse an older ownership decision.
+    for delay in (0, 0.1, 0.25, 0.5):
+        if delay:
+            time.sleep(delay)
+        try:
+            data = read_json(root / "settings/loader.json")
+            break
+        except (json.JSONDecodeError, FileNotFoundError):
+            if delay == 0.5:
+                raise
     disabled = data.get("disabled_plugins", [])
     if not isinstance(disabled, list) or any(not isinstance(name, str) for name in disabled):
         raise ValueError("Cannot verify which Decky plugins are disabled")

@@ -5109,8 +5109,23 @@ class Plugin:
     async def get_release_notes(self, channel="stable"):
         return await self.service.get_release_notes(channel)
 
+    async def _install_plugin_update(self, operation, *args):
+        async def install():
+            try:
+                # The worker and its ExecStopPost use files in the plugin tree.
+                # Stop them before the updater replaces that tree.
+                await self.fan_control.shutdown()
+                return await operation(*args)
+            except BaseException:
+                if not self._closing:
+                    self.fan_control.closing = False
+                    await self.fan_control.startup()
+                raise
+
+        return await self._controller_operation(install)
+
     async def ota_update(self, channel, target):
-        return await self._controller_operation(self.service.ota_update, channel, target)
+        return await self._install_plugin_update(self.service.ota_update, channel, target)
 
     async def get_plugin_update_status(self):
         return await self.service.get_plugin_update_status()
@@ -5119,7 +5134,7 @@ class Plugin:
         return await self._controller_operation(self.service.prepare_plugin_update, channel, target)
 
     async def activate_plugin_update(self):
-        return await self._controller_operation(self.service.activate_plugin_update)
+        return await self._install_plugin_update(self.service.activate_plugin_update)
 
     async def _main(self):
         await self.native_performance_events.start()
@@ -5161,6 +5176,14 @@ class Plugin:
                     decky.logger.warning(message)
                     self.service._set_status("failed", message)
                     self._controller_startup_deferred = True
+        if self._closing:
+            return
+        try:
+            if await asyncio.to_thread(native_performance.restore_enabled):
+                decky.logger.info("Updated enabled native performance bridge from bundled files")
+        except Exception as error:
+            decky.logger.warning(f"Could not restore native performance bridge: {error}")
+        self.native_performance_events.changed()
         if self._closing:
             return
         await self.fan_control.startup()

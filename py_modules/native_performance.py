@@ -90,3 +90,14 @@ def set_enabled(enabled):
     if type(enabled) is not bool:
         raise ValueError("Enabled must be a boolean")
     return request("enable" if enabled else "disable")
+
+
+def restore_enabled():
+    """Update an already opted-in installation after the plugin payload changes."""
+    state = get_status()
+    if not all(state.get(key) for key in ("installed", "enabled", "needsSetup", "available")):
+        return False
+    response = set_enabled(True)
+    if not response["ok"]:
+        raise RuntimeError(response.get("error", "Could not update native performance controls"))
+    return True

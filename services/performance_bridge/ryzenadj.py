@@ -36,7 +36,17 @@ def check_device(root=Path("/")):
 
 
 def power_plugin_status(root=Path("/")):
-    loader = json.loads((root / "home/deck/homebrew/settings/loader.json").read_text())
+    # Loader rewrites this file in place. Wait briefly for a complete fresh
+    # config; never reuse an earlier ownership decision while it is unreadable.
+    for attempt, delay in enumerate((0, 0.1, 0.25, 0.5)):
+        if delay:
+            time.sleep(delay)
+        try:
+            loader = json.loads((root / "home/deck/homebrew/settings/loader.json").read_text())
+            break
+        except (json.JSONDecodeError, FileNotFoundError):
+            if attempt == 3:
+                raise
     if not isinstance(loader, dict):
         raise Unavailable("Cannot verify disabled Decky power plugins")
     disabled = loader.get("disabled_plugins", [])

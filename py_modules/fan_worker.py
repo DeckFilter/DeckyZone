@@ -153,8 +153,15 @@ class FanWorker:
             await self.setup_sleep()
             notify('READY=1')
             while not self.stop.is_set():
-                if parent_identity(self.parent) != self.parent_started:
-                    raise RuntimeError('DeckyZone backend exited')
+                try:
+                    parent_running = parent_identity(self.parent) == self.parent_started
+                except FileNotFoundError:
+                    parent_running = False
+                if not parent_running:
+                    # Reloads replace the backend. Restore hardware Auto below
+                    # while retaining the requested mode for the new backend.
+                    print('DeckyZone backend exited; stopping fan control', flush=True)
+                    break
                 if not self.bus.connected:
                     raise RuntimeError('Lost the connection used for sleep protection')
                 config = self.settings.read()
