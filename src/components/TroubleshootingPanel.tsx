@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { openDeckyZoneSettings } from '../routes'
 import type { InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult, ReleaseTarget, UpdateChannel } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
-import { isPluginUpdateBusy, needsPluginUpdateStatusRefresh, refreshPluginUpdateStatus, showPreparedPluginUpdateDialog, startPluginUpdate, usePluginUpdateState } from '../utils/pluginUpdateStatus'
+import { activatePreparedUpdate, isPluginUpdateBusy, needsPluginUpdateStatusRefresh, refreshPluginUpdateStatus, startPluginUpdate, usePluginUpdateState } from '../utils/pluginUpdateStatus'
 import { beginUpdateOperation, useUpdateOperationBusy } from '../utils/updateOperations'
 import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
 import InputPlumberUpdateControls from './InputPlumberUpdateControls'
@@ -224,7 +224,7 @@ const TroubleshootingPanel = ({
       return
     }
     if (updateReady) {
-      showPreparedPluginUpdateDialog()
+      void activatePreparedUpdate().catch(() => { /* The shared updater reports failures. */ })
       return
     }
     try {
@@ -299,7 +299,7 @@ const TroubleshootingPanel = ({
           >
             {pluginUpdateBusy ? <PluginUpdateProgress /> : (
               <DialogButton disabled={busy} onClick={() => void handleReinstall()}>
-                {needsStatusRefresh ? 'Check Status' : updateReady ? 'Install and Restart' : 'Reinstall Plugin'}
+                {needsStatusRefresh ? 'Check Status' : updateReady ? 'Restart' : 'Reinstall Plugin'}
               </DialogButton>
             )}
           </Field>

@@ -1,6 +1,5 @@
 import { addEventListener, callable, removeEventListener } from '@decky/api'
-import { ConfirmModal, showModal } from '@decky/ui'
-import { createElement, useSyncExternalStore, type ComponentProps, type ComponentType } from 'react'
+import { useSyncExternalStore } from 'react'
 import type { PluginUpdateStatus, ReleaseTarget, UpdateChannel } from '../types/plugin'
 import { closeRestartNotice, showRestartNotice } from './showRestartRequiredDialog'
 import { showDeckyToast } from './toasts'
@@ -9,21 +8,21 @@ import { beginUpdateOperation } from './updateOperations'
 const getStatus = callable<[], PluginUpdateStatus>('get_plugin_update_status')
 const prepareUpdate = callable<[UpdateChannel, ReleaseTarget], PluginUpdateStatus>('prepare_plugin_update')
 const activateUpdate = callable<[], PluginUpdateStatus>('activate_plugin_update')
-const FocusedConfirmModal = ConfirmModal as ComponentType<
-  ComponentProps<typeof ConfirmModal> & { focusButton: 'primary' | 'secondary' }
->
+
+export const MINIMUM_APPLY_DURATION_MS = 30000
 
 type UpdateState = {
   status: PluginUpdateStatus | null
   automaticRestart: boolean
   action: 'prepare' | 'activate' | 'refresh' | null
+  applyUntil: number | null
   error: string | null
 }
 
-let state: UpdateState = { status: null, automaticRestart: false, action: null, error: null }
+let state: UpdateState = { status: null, automaticRestart: false, action: null, applyUntil: null, error: null }
 let generation = 0
-let confirmation: ReturnType<typeof showModal> | null = null
 let cancelActivation: (() => void) | null = null
+let cancelApplyDelay: (() => void) | null = null
 const listeners = new Set<() => void>()
 const getSnapshot = () => state
 const publish = (next: UpdateState) => {
@@ -38,15 +37,11 @@ const subscribe = (listener: () => void) => {
 const applyStatus = (status: PluginUpdateStatus) => {
   if (state.status && status.revision <= state.status.revision) return
   publish({ ...state, status, error: null })
-  if (status.phase !== 'ready') {
-    confirmation?.Close()
-    confirmation = null
-  }
 }
 
 export function initializePluginUpdateStatus() {
   const currentGeneration = ++generation
-  publish({ status: null, automaticRestart: false, action: null, error: null })
+  publish({ status: null, automaticRestart: false, action: null, applyUntil: null, error: null })
   const listener = addEventListener<[PluginUpdateStatus]>('plugin_update_status', (status) => {
     if (currentGeneration === generation) applyStatus(status)
   })
@@ -60,9 +55,8 @@ export function initializePluginUpdateStatus() {
     removeEventListener('plugin_update_status', listener)
     if (currentGeneration !== generation) return
     generation += 1
+    cancelApplyDelay?.()
     cancelActivation?.()
-    confirmation?.Close()
-    confirmation = null
     closeRestartNotice()
   }
 }
@@ -162,7 +156,7 @@ function waitForActivation(currentGeneration: number) {
   })
 }
 
-async function activatePreparedUpdate() {
+export async function activatePreparedUpdate() {
   if (isPluginUpdateBusy(state) || state.status?.phase !== 'ready') return false
   const releaseOperation = beginUpdateOperation()
   if (!releaseOperation) return false
@@ -188,21 +182,18 @@ async function activatePreparedUpdate() {
   }
 }
 
-export function showPreparedPluginUpdateDialog() {
-  if (confirmation || state.action || state.status?.phase !== 'ready' || !state.status.release) return
-  confirmation = showModal(createElement(FocusedConfirmModal, {
-    strTitle: 'Update Ready',
-    strDescription: `DeckyZone ${state.status.release.version} is ready to install. Decky Loader will restart.`,
-    strOKButtonText: 'Install and Restart',
-    strCancelButtonText: 'Later',
-    focusButton: 'secondary',
-    onOK: () => {
-      confirmation = null
-      void activatePreparedUpdate().catch(() => {})
-    },
-    onCancel: () => { confirmation = null },
-    onEscKeypress: () => { confirmation = null },
-  }), undefined, { fnOnClose: () => { confirmation = null } })
+function waitForApplyWindow(deadline: number) {
+  const remaining = deadline - performance.now()
+  if (remaining <= 0) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer)
+      if (cancelApplyDelay === finish) cancelApplyDelay = null
+      resolve()
+    }
+    const timer = setTimeout(finish, remaining)
+    cancelApplyDelay = finish
+  })
 }
 
 export async function startPluginUpdate(channel: UpdateChannel, target: ReleaseTarget) {
@@ -210,12 +201,15 @@ export async function startPluginUpdate(channel: UpdateChannel, target: ReleaseT
   const releaseOperation = beginUpdateOperation()
   if (!releaseOperation) return false
   const currentGeneration = generation
-  publish({ ...state, action: 'prepare', error: null })
+  const applyUntil = performance.now() + MINIMUM_APPLY_DURATION_MS
+  publish({ ...state, action: 'prepare', applyUntil, error: null })
   try {
     const status = await prepareUpdate(channel, target)
     if (currentGeneration !== generation) return false
     applyStatus(status)
     if (status.phase !== 'ready') throw new Error(status.error ?? 'Preparation failed')
+    // Keep the automatic-restart choice available even for tiny plugin downloads.
+    await waitForApplyWindow(applyUntil)
   } catch (error) {
     if (currentGeneration !== generation) return false
     const message = 'Couldn’t prepare this release. Check for updates and try again.'
@@ -223,11 +217,10 @@ export async function startPluginUpdate(channel: UpdateChannel, target: ReleaseT
     showDeckyToast({ title: 'Updates', body: message, severity: 'error' })
     throw error
   } finally {
-    if (currentGeneration === generation) publish({ ...state, action: null })
+    if (currentGeneration === generation) publish({ ...state, action: null, applyUntil: null })
     releaseOperation()
   }
   if (currentGeneration !== generation) return false
   if (state.automaticRestart) return activatePreparedUpdate()
-  showPreparedPluginUpdateDialog()
   return true
 }

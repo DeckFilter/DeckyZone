@@ -15,11 +15,11 @@ import {
 } from '../utils/pluginUpdates'
 import { resetReleaseNotesCache } from '../utils/releaseNotes'
 import {
+  activatePreparedUpdate,
   isPluginUpdateBusy,
   needsPluginUpdateStatusRefresh,
   refreshPluginUpdateStatus,
   setAutomaticPluginRestart,
-  showPreparedPluginUpdateDialog,
   startPluginUpdate,
   usePluginUpdateState,
 } from '../utils/pluginUpdateStatus'
@@ -228,9 +228,9 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
   const updateButtonText = useMemo(() => {
     if (!release || !isValidVersion(installedVersionNum)) return null
     const comparison = compareVersions(release.version, installedVersionNum)
-    if (comparison > 0) return `Update to ${release.version}`
+    if (comparison > 0) return 'Apply'
     if (comparison < 0 && savedChannel === 'stable' && installedVersionNum.includes('-pre.')) {
-      return `Install stable ${release.version}`
+      return 'Apply'
     }
     return null
   }, [installedVersionNum, release, savedChannel])
@@ -254,8 +254,8 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
 
   const updateStatusText = useMemo(() => {
     if (isSavingChannel) return 'Saving update channel…'
-    if (updateReady && updateStatus.release) return `${updateStatus.release.version} ready to install`
     if (isUpdating) return undefined
+    if (updateReady) return 'Restart required'
     if (isChecking) return undefined
     if (needsStatusRefresh) return updateState.error?.replace(/\.$/, '')
     if (updateState.error || updateStatus?.error) return 'Update failed'
@@ -271,14 +271,14 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
   const recentlyChecked = !isChecking && !versionError && release !== null && lastCheckTime !== null
     && Date.now() - lastCheckTime < CHECK_FEEDBACK_DURATION_MS
   const showUpToDate = recentlyChecked && !updateButtonText
-  const actionText = needsStatusRefresh ? 'Check Status' : updateReady ? 'Install and Restart' : isSavingChannel ? 'Saving…' : isChecking ? 'Checking'
+  const actionText = needsStatusRefresh ? 'Check Status' : updateReady ? 'Restart' : isSavingChannel ? 'Saving…' : isChecking ? 'Checking'
     : updateButtonText ?? (showUpToDate ? 'Up-to-date' : 'Check For Updates')
   const actionDisabled = disabled || operationBusy || isUpdating || isSavingChannel
     || (!updateReady && !needsStatusRefresh && (isChecking || showUpToDate || !isValidVersion(installedVersionNum)))
   const handleAction = () => {
     if (saving.current || installing.current || refs.current.disabled) return
     if (needsStatusRefresh) void refreshPluginUpdateStatus()
-    else if (updateReady) showPreparedPluginUpdateDialog()
+    else if (updateReady) void activatePreparedUpdate().catch(() => { /* The shared updater reports failures. */ })
     else if (checking.current !== null || showUpToDate) return
     else if (updateButtonText && !versionError) void handleUpdate()
     else void loadRelease(savedChannel, installedVersionNum, true)
