@@ -23,6 +23,28 @@ def empty_status():
             "downloadedBytes": 0, "totalBytes": None, "error": None, "revision": 0}
 
 
+def process_identity(pid):
+    """Identify the owning process across PID reuse and system boots."""
+    try:
+        # comm can contain spaces and parentheses; fields after its final ')' start at state.
+        started = Path(f"/proc/{pid}/stat").read_text(
+            encoding="utf-8", errors="replace").rsplit(")", 1)[1].split()[19]
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+    except (OSError, IndexError):
+        return None
+    return f"{boot}:{started}"
+
+
+def current_owner():
+    pid = os.getpid()
+    return {"ownerPid": pid, "ownerIdentity": process_identity(pid)}
+
+
+def clear_owner(state):
+    state.pop("ownerPid", None)
+    state.pop("ownerIdentity", None)
+
+
 def read_status(update_dir):
     try:
         with open(Path(update_dir) / STATE_FILE, encoding="utf-8") as handle:
@@ -141,7 +163,7 @@ def install_update(update_dir, plugin_dir, *, command_runner=subprocess.run):
     # The launching RPC holds this gate until systemd acknowledges exec.
     with operation_lock(update_dir, wait=True):
         state = read_status(update_dir)
-        state.update(phase="restarting", error=None, ownerPid=os.getpid())
+        state.update(phase="restarting", error=None, **current_owner())
         state = write_status(update_dir, state)
         stopped, moved_old, installed = False, False, False
         error = None
@@ -171,7 +193,7 @@ def install_update(update_dir, plugin_dir, *, command_runner=subprocess.run):
                 result.update(phase="ready" if pending.exists() else "error", error=error)
             if installed:
                 result["installedVersion"] = state["release"]["version"]
-            result.pop("ownerPid", None)
+            clear_owner(result)
             # The new frontend reads its settled state as soon as Loader starts.
             try:
                 write_status(update_dir, result)
@@ -186,8 +208,8 @@ def install_update(update_dir, plugin_dir, *, command_runner=subprocess.run):
                 except BaseException as failure:
                     detail = f"Could not start Decky Loader: {failure}"
                     error = f"{error} {detail}" if error else detail
-                    result = dict(state, phase="error", error=error)
-                    result.pop("ownerPid", None)
+                    result = dict(result, phase="error", error=error)
+                    clear_owner(result)
                     try:
                         write_status(update_dir, result)
                     except Exception:

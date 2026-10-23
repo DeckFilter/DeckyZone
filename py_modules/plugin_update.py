@@ -13,8 +13,9 @@ import urllib.request
 import decky
 from release_versions import normalize_version, parse_version
 from plugin_update_install import (
-    BUSY_PHASES, INSTALL_UNIT, empty_status, operation_lock, public_status,
-    read_status, remove_tree, validate_paths, validate_staged_plugin, write_status,
+    BUSY_PHASES, INSTALL_UNIT, clear_owner, current_owner, empty_status, operation_lock,
+    process_identity, public_status, read_status, remove_tree, validate_paths,
+    validate_staged_plugin, write_status,
 )
 
 
@@ -239,13 +240,9 @@ def _update_paths():
 
 def _owner_running(state):
     pid = state.get("ownerPid")
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
+    identity = state.get("ownerIdentity")
+    return (isinstance(pid, int) and pid > 0 and isinstance(identity, str)
+            and identity == process_identity(pid))
 
 
 def _notify(update_dir, state, on_progress):
@@ -269,7 +266,7 @@ def get_update_status():
             if state.get("phase") in BUSY_PHASES and not _owner_running(state):
                 state.update(phase="ready" if (update_dir / "pending").exists() else "error",
                              error="The update was interrupted. Try again.")
-                state.pop("ownerPid", None)
+                clear_owner(state)
                 state = write_status(update_dir, state)
     return public_status(state)
 
@@ -277,9 +274,13 @@ def get_update_status():
 def discard_update(*, on_progress=None):
     update_dir, _ = _update_paths()
     with operation_lock(update_dir):
-        _require_idle(read_status(update_dir))
+        previous = read_status(update_dir)
+        _require_idle(previous)
         remove_tree(update_dir / "pending")
-        return public_status(_notify(update_dir, empty_status(), on_progress))
+        state = empty_status()
+        if "installedVersion" in previous:
+            state["installedVersion"] = previous["installedVersion"]
+        return public_status(_notify(update_dir, state, on_progress))
 
 
 def prepare_update(channel, target, *, get_saved_channel, on_progress=None):
@@ -291,7 +292,9 @@ def prepare_update(channel, target, *, get_saved_channel, on_progress=None):
         previous = read_status(update_dir)
         _require_idle(previous)
         state = dict(empty_status(), phase="checking", channel=channel,
-                     release=target, ownerPid=os.getpid())
+                     release=target, **current_owner())
+        if "installedVersion" in previous:
+            state["installedVersion"] = previous["installedVersion"]
         state = _notify(update_dir, state, on_progress)
         archive_path = None
         try:
@@ -326,11 +329,11 @@ def prepare_update(channel, target, *, get_saved_channel, on_progress=None):
             # Use the currently running installer, never code from the downloaded build.
             shutil.copyfile(Path(__file__).with_name("plugin_update_install.py"), update_dir / "install.py")
             state.update(phase="ready", error=None)
-            state.pop("ownerPid", None)
+            clear_owner(state)
             return public_status(_notify(update_dir, state, on_progress))
         except BaseException as error:
             state.update(phase="error", error=str(error) or type(error).__name__)
-            state.pop("ownerPid", None)
+            clear_owner(state)
             _notify(update_dir, state, on_progress)
             raise
         finally:
@@ -356,7 +359,7 @@ def activate_update(*, get_saved_channel, on_progress=None):
             state.update(phase="error", error=str(error) or type(error).__name__)
             _notify(update_dir, state, on_progress)
             raise
-        state.update(phase="restarting", error=None, ownerPid=os.getpid())
+        state.update(phase="restarting", error=None, **current_owner())
         state = _notify(update_dir, state, on_progress)
         try:
             subprocess.run([
@@ -366,7 +369,7 @@ def activate_update(*, get_saved_channel, on_progress=None):
             ], check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=get_env())
         except BaseException as error:
             state.update(phase="ready", error=str(error) or type(error).__name__)
-            state.pop("ownerPid", None)
+            clear_owner(state)
             _notify(update_dir, state, on_progress)
             raise
         return public_status(state)
