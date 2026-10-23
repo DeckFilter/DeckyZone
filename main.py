@@ -3473,9 +3473,16 @@ class DeckyZoneService:
         controller_runtime_required = self._is_controller_runtime_required()
 
         if not controller_mode_safe:
-            await self._disable_effective_controller_runtime()
-            if update_status and controller_runtime_required:
-                self._set_status("idle", GAMEPAD_MODE_REQUIRED_MESSAGE)
+            # A missing HID reply during resume does not confirm a mode change.
+            if (
+                controller_mode_snapshot["available"]
+                and controller_mode_snapshot["mode"] == ZOTAC_CONTROLLER_MODE_DESKTOP
+            ):
+                await self._disable_effective_controller_runtime()
+                if update_status and controller_runtime_required:
+                    self._set_status("idle", GAMEPAD_MODE_REQUIRED_MESSAGE)
+            else:
+                self._mapping_runtime.defer_recovery()
             return controller_mode_snapshot
 
         if (
