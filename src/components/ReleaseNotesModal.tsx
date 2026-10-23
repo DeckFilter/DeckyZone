@@ -18,7 +18,6 @@ import ReleaseNotesMarkdown from './ReleaseNotesMarkdown'
 import { releaseNotesClasses, releaseNotesStyles } from './releaseNotesStyles'
 
 type Props = {
-  installedVersionNum: string
   channel: UpdateChannel
   closeModal?: () => void
 }
@@ -106,7 +105,7 @@ const formatDate = (date: string) => {
     : parsed.toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric' })
 }
 
-const ReleaseNotesModal = ({ installedVersionNum, channel, closeModal }: Props) => {
+const ReleaseNotesModal = ({ channel, closeModal }: Props) => {
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const [viewport, setViewport] = useState(getViewport)
@@ -197,7 +196,6 @@ const ReleaseNotesModal = ({ installedVersionNum, channel, closeModal }: Props) 
         fnItemRenderer={(index) => {
           const release = load.releases[index - 1]
           if (!release) return null
-          const installed = release.version.replace(/^v/, '') === installedVersionNum.replace(/^v/, '')
           const date = formatDate(release.publishedAt)
           return (
             <ReleaseNotesScrollPanel
@@ -218,7 +216,9 @@ const ReleaseNotesModal = ({ installedVersionNum, channel, closeModal }: Props) 
                           <time dateTime={release.publishedAt}>{date}</time>
                         </span>
                       )}
-                      {installed && <span className="dz-release-notes-installed">Installed</span>}
+                      <span className="dz-release-notes-channel">
+                        {release.version.includes('-pre.') ? 'Pre-release channel' : 'Stable channel'}
+                      </span>
                     </div>
                     <h1 className={`${releaseNotesClasses.title} dz-release-notes-title`}>
                       {`DeckyZone v${release.version.replace(/^v/, '')}`}
@@ -237,8 +237,8 @@ const ReleaseNotesModal = ({ installedVersionNum, channel, closeModal }: Props) 
   )
 }
 
-export const showReleaseNotesModal = (installedVersionNum: string, channel: UpdateChannel) => (
-  showModal(<ReleaseNotesModal installedVersionNum={installedVersionNum} channel={channel} />)
+export const showReleaseNotesModal = (channel: UpdateChannel) => (
+  showModal(<ReleaseNotesModal channel={channel} />)
 )
 
 export default ReleaseNotesModal

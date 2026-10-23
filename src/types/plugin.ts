@@ -15,6 +15,16 @@ export type ReleaseTarget = {
   assetId: number
 }
 
+export type PluginUpdateStatus = {
+  revision: number
+  phase: 'idle' | 'checking' | 'downloading' | 'staging' | 'ready' | 'restarting' | 'error'
+  channel: UpdateChannel | null
+  release: ReleaseTarget | null
+  downloadedBytes: number
+  totalBytes: number | null
+  error: string | null
+}
+
 export type GyroMountMatrixFixState = {
   visible: boolean
   enabled: boolean

@@ -48,7 +48,7 @@ export const releaseNotesStyles = `
 .dz-release-notes-viewer .dz-release-notes-posted {
   margin-right: 3px; text-transform: uppercase;
 }
-.dz-release-notes-viewer .dz-release-notes-installed {
+.dz-release-notes-viewer .dz-release-notes-channel {
   color: #b8d6a4; font-size: 10px; margin-left: auto; text-transform: uppercase;
 }
 .dz-release-notes-viewer .dz-release-notes-title {

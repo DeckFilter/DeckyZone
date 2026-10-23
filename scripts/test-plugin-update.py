@@ -16,6 +16,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "py_modules"))
 sys.modules.setdefault("decky", types.SimpleNamespace(DECKY_USER_HOME="/unused"))
 import plugin_update as updater
+import plugin_update_install as installer
 from release_versions import is_prerelease_version, normalize_version, parse_version, require_version
 
 
@@ -32,10 +33,14 @@ def release(version="0.7.0", *, release_id=1):
 
 def archive(path, version, *, unsafe=False):
     with tarfile.open(path, "w:gz") as output:
-        payload = json.dumps({"version": version}).encode()
-        info = tarfile.TarInfo("../escape" if unsafe else "DeckyZone/package.json")
-        info.size = len(payload)
-        output.addfile(info, io.BytesIO(payload))
+        files = {"package.json": json.dumps({"name": "deckyzone", "version": version}),
+                 "plugin.json": '{"name":"DeckyZone"}', "main.py": "# backend",
+                 "dist/index.js": "// frontend"}
+        for name, contents in files.items():
+            payload = contents.encode()
+            info = tarfile.TarInfo("../escape" if unsafe else f"DeckyZone/{name}")
+            info.size = len(payload)
+            output.addfile(info, io.BytesIO(payload))
 
 
 class VersionTests(unittest.TestCase):
@@ -106,7 +111,8 @@ class ReleaseTests(unittest.TestCase):
 
 class InstallTests(unittest.TestCase):
     def test_mismatched_package_and_unsafe_archive_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(updater, "UPDATE_DIRECTORY", str(Path(directory) / "updates")):
             path = Path(directory) / "build.tar.gz"
             stage = Path(directory) / "stage"
             stage.mkdir()
@@ -117,6 +123,15 @@ class InstallTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "invalid entry"):
                 updater._stage_build(path, stage, "0.7.0")
             self.assertFalse((Path(directory) / "escape").exists())
+            protected = installer.protected_update_directory(Path(directory) / "protected")
+            self.assertEqual(protected.stat().st_mode & 0o777, 0o700)
+            alias = Path(directory) / "alias"
+            alias.symlink_to(protected, target_is_directory=True)
+            with self.assertRaisesRegex(RuntimeError, "protected directory"):
+                installer.protected_update_directory(alias)
+            protected.chmod(0o777)
+            with self.assertRaisesRegex(RuntimeError, "mode 0700"):
+                installer.protected_update_directory(protected)
 
     def test_channel_changed_before_fetch_or_replacement(self):
         metadata = release()
@@ -125,11 +140,13 @@ class InstallTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "channel changed"):
                 updater.ota_update("stable", target, get_saved_channel=lambda: "prerelease")
             fetch.assert_not_called()
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(updater, "UPDATE_DIRECTORY", str(Path(directory) / "updates")):
             path = Path(directory) / "build.tar.gz"
             archive(path, "0.7.0")
             channels = iter(["stable", "prerelease"])
-            with patch.object(updater, "_fetch_json", return_value=metadata), \
+            with patch.object(updater.decky, "DECKY_USER_HOME", directory), \
+                    patch.object(updater, "_fetch_json", return_value=metadata), \
                     patch.object(updater, "_download_build", return_value=str(path)), \
                     patch.object(updater.shutil, "copytree") as copy:
                 with self.assertRaisesRegex(RuntimeError, "channel changed"):
@@ -137,8 +154,9 @@ class InstallTests(unittest.TestCase):
                 copy.assert_not_called()
             self.assertFalse(path.exists())
 
-    def test_exact_selected_build_installs_and_preserves_settings(self):
-        with tempfile.TemporaryDirectory() as directory:
+    def test_exact_selected_build_stages_then_installs_and_preserves_settings(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(updater, "UPDATE_DIRECTORY", str(Path(directory) / "updates")):
             home = Path(directory)
             plugin = home / "homebrew/plugins/DeckyZone"
             plugin.mkdir(parents=True)
@@ -153,16 +171,39 @@ class InstallTests(unittest.TestCase):
             with patch.object(updater.decky, "DECKY_USER_HOME", directory), \
                     patch.object(updater, "_fetch_json", return_value=metadata), \
                     patch.object(updater, "_download_build", return_value=str(path)), \
-                    patch.object(updater.subprocess, "run") as restart:
-                self.assertTrue(updater.ota_update("prerelease", updater._release_target(metadata),
-                                                  get_saved_channel=lambda: "prerelease"))
-                self.assertEqual(restart.call_args.args[0], ["systemctl", "restart", "plugin_loader.service"])
+                    patch.object(updater.subprocess, "run") as launch:
+                status = updater.prepare_update("prerelease", updater._release_target(metadata),
+                                                get_saved_channel=lambda: "prerelease")
+                self.assertEqual(status["phase"], "ready")
+                self.assertEqual(updater.get_update_status(), status)
+                self.assertEqual(json.loads((plugin / "package.json").read_text())["version"], "0.6.9")
+                launch.assert_not_called()
+                restarting = updater.activate_update(get_saved_channel=lambda: "prerelease")
+                self.assertEqual(restarting["phase"], "restarting")
+                self.assertGreater(restarting["revision"], status["revision"])
+                self.assertEqual(launch.call_args.args[0][:4],
+                                 ["systemd-run", "--quiet", "--collect", "--unit=deckyzone-plugin-update"])
+                self.assertNotIn("--wait", launch.call_args.args[0])
+                update_dir, _ = updater._update_paths()
+            calls = []
+
+            def loader(command, **kwargs):
+                calls.append(command)
+                expected = "0.6.9" if command[1] == "stop" else "0.7.0-pre.2"
+                self.assertEqual(json.loads((plugin / "package.json").read_text())["version"], expected)
+
+            self.assertTrue(installer.install_update(update_dir, plugin, command_runner=loader))
+            self.assertEqual(calls, [["systemctl", "stop", "plugin_loader.service"],
+                                     ["systemctl", "start", "plugin_loader.service"]])
             self.assertEqual(json.loads((plugin / "package.json").read_text())["version"], "0.7.0-pre.2")
             self.assertEqual(settings.read_bytes(), before)
             self.assertFalse(path.exists())
+            self.assertFalse((update_dir / "backup").exists())
+            self.assertEqual(installer.read_status(update_dir)["phase"], "idle")
 
-    def test_copy_failure_restores_previous_install(self):
-        with tempfile.TemporaryDirectory() as directory:
+    def test_swap_failure_restores_previous_install_and_can_retry(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(updater, "UPDATE_DIRECTORY", str(Path(directory) / "updates")):
             home = Path(directory)
             plugin = home / "homebrew/plugins/DeckyZone"
             plugin.mkdir(parents=True)
@@ -172,13 +213,52 @@ class InstallTests(unittest.TestCase):
             metadata = release()
             with patch.object(updater.decky, "DECKY_USER_HOME", directory), \
                     patch.object(updater, "_fetch_json", return_value=metadata), \
-                    patch.object(updater, "_download_build", return_value=str(path)), \
-                    patch.object(updater.shutil, "copytree", side_effect=OSError("copy failed")), \
-                    patch.object(updater.subprocess, "run") as restart:
-                with self.assertRaisesRegex(OSError, "copy failed"):
-                    updater.ota_update("stable", updater._release_target(metadata), get_saved_channel=lambda: "stable")
-                restart.assert_not_called()
+                    patch.object(updater, "_download_build", return_value=str(path)):
+                updater.prepare_update("stable", updater._release_target(metadata), get_saved_channel=lambda: "stable")
+                update_dir, _ = updater._update_paths()
+            replace = installer.os.replace
+
+            def fail_swap(source, destination):
+                if Path(source) == update_dir / "pending":
+                    raise OSError("swap failed")
+                return replace(source, destination)
+
+            with patch.object(installer.os, "replace", side_effect=fail_swap), \
+                    patch.object(installer.subprocess, "run") as loader:
+                self.assertFalse(installer.install_update(update_dir, plugin, command_runner=loader))
+                self.assertEqual([call.args[0][1] for call in loader.call_args_list], ["stop", "start"])
             self.assertEqual((plugin / "original").read_text(), "preserved")
+            self.assertEqual(installer.read_status(update_dir)["phase"], "ready")
+            self.assertIn("swap failed", installer.read_status(update_dir)["error"])
+            with patch.object(installer.subprocess, "run") as loader:
+                self.assertTrue(installer.install_update(update_dir, plugin, command_runner=loader))
+            self.assertEqual(json.loads((plugin / "package.json").read_text())["version"], "0.7.0")
+
+    def test_failed_loader_start_keeps_backup_and_durable_error(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(updater, "UPDATE_DIRECTORY", str(Path(directory) / "updates")):
+            home = Path(directory)
+            plugin = home / "homebrew/plugins/DeckyZone"
+            plugin.mkdir(parents=True)
+            (plugin / "original").write_text("preserved")
+            path = home / "build.tar.gz"
+            archive(path, "0.7.0")
+            metadata = release()
+            with patch.object(updater.decky, "DECKY_USER_HOME", directory), \
+                    patch.object(updater, "_fetch_json", return_value=metadata), \
+                    patch.object(updater, "_download_build", return_value=str(path)):
+                updater.prepare_update("stable", updater._release_target(metadata), get_saved_channel=lambda: "stable")
+                update_dir, _ = updater._update_paths()
+
+            def loader(command, **kwargs):
+                if command[1] == "start":
+                    self.assertEqual(installer.read_status(update_dir)["phase"], "idle")
+                    raise OSError("start failed")
+
+            self.assertFalse(installer.install_update(update_dir, plugin, command_runner=loader))
+            self.assertEqual((update_dir / "backup/original").read_text(), "preserved")
+            self.assertEqual(installer.read_status(update_dir)["phase"], "error")
+            self.assertIn("start failed", installer.read_status(update_dir)["error"])
 
 
 if __name__ == "__main__":

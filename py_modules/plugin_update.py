@@ -1,17 +1,22 @@
 import json
 import os
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import shutil
 import ssl
-import stat
 import subprocess
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
 import decky
 from release_versions import normalize_version, parse_version
+from plugin_update_install import (
+    BUSY_PHASES, INSTALL_UNIT, clear_owner, current_owner, empty_status, operation_lock,
+    process_identity, public_status, read_status, remove_tree, validate_paths,
+    validate_staged_plugin, write_status,
+)
 
 
 PACKAGE_NAME = "DeckyZone"
@@ -21,6 +26,7 @@ RELEASE_DOWNLOAD_TIMEOUT_SECONDS = 60
 RELEASE_NOTES_LIMIT = 10
 TARBALL_ASSET_NAME = f"{PACKAGE_NAME}.tar.gz"
 UPDATE_CHANNELS = ("stable", "prerelease")
+UPDATE_DIRECTORY = "/home/.deckyzone-updates"
 
 
 def get_env():
@@ -175,14 +181,29 @@ def _verify_selected_release(channel, target):
     return _tarball_asset(release)
 
 
-def _download_build(asset):
+def _download_build(asset, on_progress=None):
     file_descriptor, archive_path = tempfile.mkstemp(prefix=f"{PACKAGE_NAME}-", suffix=".tar.gz")
     os.close(file_descriptor)
     try:
         request = urllib.request.Request(asset["browser_download_url"], headers={"User-Agent": PACKAGE_NAME})
         with urllib.request.urlopen(request, context=_release_notes_ssl_context(),
                                     timeout=RELEASE_DOWNLOAD_TIMEOUT_SECONDS) as response, open(archive_path, "wb") as output_file:
-            shutil.copyfileobj(response, output_file)
+            length = response.headers.get("Content-Length")
+            total = int(length) if length and length.isdecimal() and int(length) > 0 else None
+            downloaded, last_notification = 0, 0
+            if on_progress:
+                on_progress(downloaded, total)
+            while chunk := response.read(256 * 1024):
+                output_file.write(chunk)
+                downloaded += len(chunk)
+                now = time.monotonic()
+                if on_progress and now - last_notification >= 0.2:
+                    on_progress(downloaded, total)
+                    last_notification = now
+            if total is not None and downloaded != total:
+                raise RuntimeError("The update download was incomplete. Try again.")
+            if on_progress:
+                on_progress(downloaded, total)
         return archive_path
     except BaseException:
         os.remove(archive_path)
@@ -211,56 +232,150 @@ def _stage_build(archive_path, staging_dir, expected_version):
     return staged_plugin_dir
 
 
-def _recursive_chmod(path, perms):
-    if not os.path.exists(path):
-        return
-    for dirpath, _, filenames in os.walk(path):
-        current_dir_perms = os.stat(dirpath).st_mode
-        os.chmod(dirpath, current_dir_perms | perms)
-        for filename in filenames:
-            file_path = os.path.join(dirpath, filename)
-            current_file_perms = os.stat(file_path).st_mode
-            os.chmod(file_path, current_file_perms | perms)
+def _update_paths():
+    plugin = getattr(decky, "DECKY_PLUGIN_DIR", "")
+    plugin = plugin or f"{decky.DECKY_USER_HOME}/homebrew/plugins/{PACKAGE_NAME}"
+    return validate_paths(UPDATE_DIRECTORY, plugin)
 
 
-def ota_update(channel, target, *, get_saved_channel):
+def _owner_running(state):
+    pid = state.get("ownerPid")
+    identity = state.get("ownerIdentity")
+    return (isinstance(pid, int) and pid > 0 and isinstance(identity, str)
+            and identity == process_identity(pid))
+
+
+def _notify(update_dir, state, on_progress):
+    state = write_status(update_dir, state)
+    if on_progress:
+        on_progress(public_status(state))
+    return state
+
+
+def _require_idle(state):
+    if state.get("phase") in BUSY_PHASES and _owner_running(state):
+        raise RuntimeError("Wait for the update operation to finish.")
+
+
+def get_update_status():
+    update_dir, _ = _update_paths()
+    state = read_status(update_dir)
+    if state.get("phase") in BUSY_PHASES and not _owner_running(state):
+        with operation_lock(update_dir):
+            state = read_status(update_dir)
+            if state.get("phase") in BUSY_PHASES and not _owner_running(state):
+                state.update(phase="ready" if (update_dir / "pending").exists() else "error",
+                             error="The update was interrupted. Try again.")
+                clear_owner(state)
+                state = write_status(update_dir, state)
+    return public_status(state)
+
+
+def discard_update(*, on_progress=None):
+    update_dir, _ = _update_paths()
+    with operation_lock(update_dir):
+        previous = read_status(update_dir)
+        _require_idle(previous)
+        remove_tree(update_dir / "pending")
+        state = empty_status()
+        if "installedVersion" in previous:
+            state["installedVersion"] = previous["installedVersion"]
+        return public_status(_notify(update_dir, state, on_progress))
+
+
+def prepare_update(channel, target, *, get_saved_channel, on_progress=None):
     validate_channel(channel)
     if get_saved_channel() != channel:
         raise RuntimeError("The update channel changed. Check for updates again.")
-    asset = _verify_selected_release(channel, target)
-    archive_path = _download_build(asset)
-    plugins_dir = f"{decky.DECKY_USER_HOME}/homebrew/plugins"
-    plugin_dir = f"{plugins_dir}/{PACKAGE_NAME}"
-    backup_dir = f"{plugins_dir}/.{PACKAGE_NAME}.backup"
-    try:
-        with tempfile.TemporaryDirectory(prefix=f"{PACKAGE_NAME}-staging-") as staging_dir:
-            staged_plugin_dir = _stage_build(archive_path, staging_dir, target["version"])
-            if get_saved_channel() != channel:
-                raise RuntimeError("The update channel changed. Check for updates again.")
-            os.makedirs(plugins_dir, exist_ok=True)
-            if os.path.exists(backup_dir):
-                _recursive_chmod(backup_dir, stat.S_IWUSR)
-                shutil.rmtree(backup_dir)
-            if os.path.exists(plugin_dir):
-                _recursive_chmod(plugin_dir, stat.S_IWUSR)
-                os.replace(plugin_dir, backup_dir)
-            try:
-                shutil.copytree(staged_plugin_dir, plugin_dir)
-            except Exception:
-                if os.path.exists(plugin_dir):
-                    _recursive_chmod(plugin_dir, stat.S_IWUSR)
-                    shutil.rmtree(plugin_dir)
-                if os.path.exists(backup_dir):
-                    os.replace(backup_dir, plugin_dir)
-                raise
-            if os.path.exists(backup_dir):
-                _recursive_chmod(backup_dir, stat.S_IWUSR)
-                shutil.rmtree(backup_dir)
-        subprocess.run(
-            ["systemctl", "restart", "plugin_loader.service"], check=True, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=get_env(),
-        )
-        return True
-    finally:
-        if os.path.exists(archive_path):
-            os.remove(archive_path)
+    update_dir, plugin_dir = _update_paths()
+    with operation_lock(update_dir):
+        previous = read_status(update_dir)
+        _require_idle(previous)
+        state = dict(empty_status(), phase="checking", channel=channel,
+                     release=target, **current_owner())
+        if "installedVersion" in previous:
+            state["installedVersion"] = previous["installedVersion"]
+        state = _notify(update_dir, state, on_progress)
+        archive_path = None
+        try:
+            asset = _verify_selected_release(channel, target)
+            state["phase"] = "downloading"
+            state = _notify(update_dir, state, on_progress)
+
+            def download_progress(downloaded, total):
+                nonlocal state
+                state.update(downloadedBytes=downloaded, totalBytes=total)
+                state = _notify(update_dir, state, on_progress)
+
+            archive_path = _download_build(asset, download_progress)
+            state["phase"] = "staging"
+            state = _notify(update_dir, state, on_progress)
+            with tempfile.TemporaryDirectory(prefix="staging-", dir=update_dir) as staging_dir:
+                staged = _stage_build(archive_path, staging_dir, target["version"])
+                validate_staged_plugin(staged, target["version"])
+                if get_saved_channel() != channel:
+                    raise RuntimeError("The update channel changed. Check for updates again.")
+                if update_dir.stat().st_dev != plugin_dir.parent.stat().st_dev:
+                    raise RuntimeError("The update must be staged on the same drive as Decky Loader.")
+                backup = update_dir / "backup"
+                if backup.exists():
+                    recovered = previous.get("installedVersion") or (previous.get("release") or {}).get("version")
+                    if not recovered or getattr(decky, "DECKY_PLUGIN_VERSION", None) != recovered:
+                        raise RuntimeError(f"A previous update backup needs recovery: {backup}")
+                    validate_staged_plugin(plugin_dir, recovered)
+                    remove_tree(backup)
+                remove_tree(update_dir / "pending")
+                os.replace(staged, update_dir / "pending")
+            # Use the currently running installer, never code from the downloaded build.
+            shutil.copyfile(Path(__file__).with_name("plugin_update_install.py"), update_dir / "install.py")
+            state.update(phase="ready", error=None)
+            clear_owner(state)
+            return public_status(_notify(update_dir, state, on_progress))
+        except BaseException as error:
+            state.update(phase="error", error=str(error) or type(error).__name__)
+            clear_owner(state)
+            _notify(update_dir, state, on_progress)
+            raise
+        finally:
+            if archive_path and os.path.exists(archive_path):
+                os.remove(archive_path)
+
+
+def activate_update(*, get_saved_channel, on_progress=None):
+    update_dir, plugin_dir = _update_paths()
+    with operation_lock(update_dir):
+        state = read_status(update_dir)
+        _require_idle(state)
+        if state.get("phase") != "ready":
+            raise RuntimeError("Download the update before restarting Decky Loader.")
+        if get_saved_channel() != state.get("channel"):
+            raise RuntimeError("The update channel changed. Check for updates again.")
+        try:
+            _verify_selected_release(state["channel"], state["release"])
+            validate_staged_plugin(update_dir / "pending", state["release"]["version"])
+            if not (update_dir / "install.py").is_file():
+                raise RuntimeError("The update installer is missing. Download the update again.")
+        except Exception as error:
+            state.update(phase="error", error=str(error) or type(error).__name__)
+            _notify(update_dir, state, on_progress)
+            raise
+        state.update(phase="restarting", error=None, **current_owner())
+        state = _notify(update_dir, state, on_progress)
+        try:
+            subprocess.run([
+                "systemd-run", "--quiet", "--collect", f"--unit={INSTALL_UNIT}",
+                "--property=Type=exec", "/usr/bin/python3", str(update_dir / "install.py"),
+                str(update_dir), str(plugin_dir),
+            ], check=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=get_env())
+        except BaseException as error:
+            state.update(phase="ready", error=str(error) or type(error).__name__)
+            clear_owner(state)
+            _notify(update_dir, state, on_progress)
+            raise
+        return public_status(state)
+
+
+def ota_update(channel, target, *, get_saved_channel, on_progress=None):
+    prepare_update(channel, target, get_saved_channel=get_saved_channel, on_progress=on_progress)
+    activate_update(get_saved_channel=get_saved_channel, on_progress=on_progress)
+    return True

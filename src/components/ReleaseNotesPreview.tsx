@@ -10,10 +10,9 @@ import { releaseNotesHeadings } from './releaseNotesHeadings'
 type Props = {
   target: ReleaseTarget
   channel: UpdateChannel
-  installedVersionNum: string
 }
 
-const ReleaseNotesPreview = ({ target, channel, installedVersionNum }: Props) => {
+const ReleaseNotesPreview = ({ target, channel }: Props) => {
   const [release, setRelease] = useState<PluginRelease | null>(null)
 
   useEffect(() => {
@@ -42,7 +41,7 @@ const ReleaseNotesPreview = ({ target, channel, installedVersionNum }: Props) =>
   return (
     <Focusable
       className={updaterFieldClasses.PatchNotes}
-      onActivate={() => showReleaseNotesModal(installedVersionNum, channel)}
+      onActivate={() => showReleaseNotesModal(channel)}
       onOKActionDescription="View Changelog"
     >
       <div className={updaterFieldClasses.PostedTime}>{date}</div>
