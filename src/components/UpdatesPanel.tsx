@@ -297,7 +297,7 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
             description={updateStatusText}
             childrenLayout={itemLayout}
             childrenContainerWidth={surface === 'settings' ? 'fixed' : 'max'}
-            onOptionsButton={() => showReleaseNotesModal(installedVersionNum, savedChannel)}
+            onOptionsButton={() => showReleaseNotesModal(savedChannel)}
             onOptionsActionDescription="View Changelog"
           >
             {isUpdating ? <PluginUpdateProgress />
@@ -316,7 +316,7 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
         )}
         {updateButtonText && release && (
           <SettingsRow>
-            <ReleaseNotesPreview target={release} channel={savedChannel} installedVersionNum={installedVersionNum} />
+            <ReleaseNotesPreview target={release} channel={savedChannel} />
           </SettingsRow>
         )}
       </SettingsSection>
