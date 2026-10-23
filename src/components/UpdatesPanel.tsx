@@ -1,6 +1,6 @@
 import { callable } from '@decky/api'
-import { DialogButton, Field, IconsModule } from '@decky/ui'
-import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { DialogButton, Field, IconsModule, ToggleField } from '@decky/ui'
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType } from 'react'
 import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import type { PluginSettings, ReleaseTarget, UpdateChannel } from '../types/plugin'
 import {
@@ -14,16 +14,26 @@ import {
   type VersionCache,
 } from '../utils/pluginUpdates'
 import { resetReleaseNotesCache } from '../utils/releaseNotes'
+import {
+  isPluginUpdateBusy,
+  needsPluginUpdateStatusRefresh,
+  refreshPluginUpdateStatus,
+  setAutomaticPluginRestart,
+  showPreparedPluginUpdateDialog,
+  startPluginUpdate,
+  usePluginUpdateState,
+} from '../utils/pluginUpdateStatus'
 import { beginUpdateOperation, useUpdateOperationBusy } from '../utils/updateOperations'
 import { useDeckyToastNotice } from '../utils/toasts'
 import { showReleaseNotesModal } from './ReleaseNotesModal'
 import ReleaseNotesPreview from './ReleaseNotesPreview'
+import PluginUpdateProgress from './PluginUpdateProgress'
 import { SettingsRow, SettingsSection, useSettingsItemLayout, useSettingsSurface } from './SettingsSurface'
 import { SteamExplainerDropdownItem } from './SteamExplainer'
 
-const otaUpdate = callable<[UpdateChannel, ReleaseTarget], boolean>('ota_update')
 const setUpdateChannel = callable<[UpdateChannel], PluginSettings>('set_update_channel')
 const UpdateAvailableIcon = IconsModule?.FieldYellowExclamation as ComponentType | undefined
+const ControlledToggleField = ToggleField as ComponentType<ComponentProps<typeof ToggleField> & { controlled: boolean }>
 const CHANNEL_OPTIONS = [
   { data: 'stable' as const, label: 'Stable' },
   { data: 'prerelease' as const, label: 'Pre-release' },
@@ -43,16 +53,19 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
   const itemLayout = useSettingsItemLayout()
   const surface = useSettingsSurface()
   const operationBusy = useUpdateOperationBusy()
+  const updateState = usePluginUpdateState()
+  const updateStatus = updateState.status
+  const isUpdating = isPluginUpdateBusy(updateState)
+  const needsStatusRefresh = needsPluginUpdateStatusRefresh(updateState)
+  const updateReady = updateStatus?.phase === 'ready'
   const [channelValue, setChannelValue] = useState(() => normalizeChannel(settings.updateChannel))
   const [savedChannel, setSavedChannel] = useState(channelValue)
   const [release, setRelease] = useState<ReleaseTarget | null>(null)
   const [lastCheckTime, setLastCheckTime] = useState<number | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
-  const [updateError, setUpdateError] = useState<string | null>(null)
   const [channelError, setChannelError] = useState<string | null>(null)
   const [isChecking, setIsChecking] = useState(false)
   const [isSavingChannel, setIsSavingChannel] = useState(false)
-  const [isUpdating, setIsUpdating] = useState(false)
   const [checkRevision, setCheckRevision] = useState(0)
   const [relativeTimeTick, setRelativeTimeTick] = useState(0)
   const mounted = useRef(true)
@@ -116,9 +129,6 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
   useDeckyToastNotice(versionError ? {
     activeKey: `updates-version:${savedChannel}:${versionError}`, title: 'Updates', body: versionError, severity: 'error',
   } : null)
-  useDeckyToastNotice(updateError ? {
-    activeKey: `updates-install:${updateError}`, title: 'Updates', body: updateError, severity: 'error',
-  } : null)
   useDeckyToastNotice(channelError ? {
     activeKey: `updates-channel:${channelError}`, title: 'Updates', body: channelError, severity: 'error',
   } : null)
@@ -133,6 +143,10 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
   }, [])
 
   useEffect(() => {
+    refs.current.onBusyChange?.(isSavingChannel || isUpdating)
+  }, [isSavingChannel, isUpdating])
+
+  useEffect(() => {
     if (saving.current) return
     const next = normalizeChannel(settings.updateChannel)
     if (channelRef.current !== next) {
@@ -144,7 +158,7 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
   }, [settings.updateChannel])
 
   useEffect(() => {
-    if (operationBusy || isSavingChannel || savedChannel !== channelRef.current
+    if (operationBusy || updateReady || isSavingChannel || savedChannel !== channelRef.current
       || savedChannel !== normalizeChannel(settings.updateChannel) || !isValidVersion(installedVersionNum)) return
     clearRelease(savedChannel)
     const token = requestVersion.current
@@ -152,7 +166,7 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
     if (cached) applyRelease(cached, token)
     void loadRelease(savedChannel, installedVersionNum)
     return () => { requestVersion.current += 1 }
-  }, [installedVersionNum, savedChannel, isSavingChannel, operationBusy, checkRevision])
+  }, [installedVersionNum, savedChannel, isSavingChannel, operationBusy, checkRevision, updateReady])
 
   useEffect(() => {
     if (lastCheckTime === null) return
@@ -172,7 +186,6 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
       setChannelValue(next)
       setIsSavingChannel(true)
       setChannelError(null)
-      setUpdateError(null)
       clearRelease(next)
       publishChannel(next)
       const authoritative = await setUpdateChannel(next)
@@ -215,32 +228,27 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
 
   const handleUpdate = async () => {
     if (!release || saving.current || installing.current || checking.current !== null || refs.current.disabled) return
-    const releaseOperation = beginUpdateOperation()
-    if (!releaseOperation) return
     const target = release
     const channel = savedChannel
     try {
       installing.current = true
-      refs.current.onBusyChange?.(true)
-      setIsUpdating(true)
-      setUpdateError(null)
-      if (!(await otaUpdate(channel, target))) throw new Error('Installation failed')
+      await startPluginUpdate(channel, target)
     } catch {
       if (mounted.current) {
         clearRelease(channelRef.current)
         resetStartupCheck()
-        setUpdateError('Couldn’t install this release. Check for updates and try again.')
       }
     } finally {
       installing.current = false
-      releaseOperation()
-      refs.current.onBusyChange?.(false)
-      if (mounted.current) setIsUpdating(false)
     }
   }
 
   const updateStatusText = useMemo(() => {
     if (isSavingChannel) return 'Saving update channel…'
+    if (updateReady && updateStatus.release) return `${updateStatus.release.version} ready to install`
+    if (isUpdating) return undefined
+    if (needsStatusRefresh) return updateState.error?.replace(/\.$/, '')
+    if (updateState.error || updateStatus?.error) return 'Update failed'
     if (isChecking) return 'Checking for updates…'
     if (versionError) return 'Couldn’t check for updates'
     if (updateButtonText) return undefined
@@ -248,16 +256,24 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
     if (!release) return 'No releases available for this channel'
     if (compareVersions(release.version, installedVersionNum) < 0) return 'Newer than the latest release'
     return `Up to date: last checked ${getLastCheckText(lastCheckTime)}`
-  }, [isSavingChannel, isChecking, lastCheckTime, release, installedVersionNum, relativeTimeTick, updateButtonText, versionError])
+  }, [isSavingChannel, isChecking, lastCheckTime, release, installedVersionNum, relativeTimeTick, updateButtonText, versionError,
+    updateReady, updateStatus, isUpdating, updateState.error, needsStatusRefresh])
 
-  const actionText = isUpdating ? 'Installing…' : isSavingChannel ? 'Saving…' : isChecking ? 'Checking…'
+  const actionText = needsStatusRefresh ? 'Check Status' : updateReady ? 'Install and Restart' : isSavingChannel ? 'Saving…' : isChecking ? 'Checking…'
     : updateButtonText ?? 'Check for Updates'
-  const actionDisabled = disabled || operationBusy || isChecking || isUpdating || isSavingChannel || !isValidVersion(installedVersionNum)
+  const actionDisabled = disabled || operationBusy || isUpdating || isSavingChannel
+    || (!updateReady && !needsStatusRefresh && (isChecking || !isValidVersion(installedVersionNum)))
   const handleAction = () => {
-    if (saving.current || installing.current || checking.current !== null || refs.current.disabled) return
-    if (updateButtonText && !versionError) void handleUpdate()
+    if (saving.current || installing.current || refs.current.disabled) return
+    if (needsStatusRefresh) void refreshPluginUpdateStatus()
+    else if (updateReady) showPreparedPluginUpdateDialog()
+    else if (checking.current !== null) return
+    else if (updateButtonText && !versionError) void handleUpdate()
     else void loadRelease(savedChannel, installedVersionNum, true)
   }
+
+  const showAutomaticRestart = !needsStatusRefresh && (updateState.action === 'prepare'
+    || ['checking', 'downloading', 'staging'].includes(updateStatus?.phase ?? ''))
 
   return (
     <>
@@ -272,9 +288,20 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
             onOptionsButton={() => showReleaseNotesModal(installedVersionNum, savedChannel)}
             onOptionsActionDescription="View Changelog"
           >
-            <DialogButton disabled={actionDisabled} onClick={handleAction}>{actionText}</DialogButton>
+            {isUpdating ? <PluginUpdateProgress />
+              : <DialogButton disabled={actionDisabled} onClick={handleAction}>{actionText}</DialogButton>}
           </Field>
         </SettingsRow>
+        {showAutomaticRestart && (
+          <SettingsRow>
+            <ControlledToggleField
+              controlled
+              label="Automatically restart when complete"
+              checked={updateState.automaticRestart}
+              onChange={setAutomaticPluginRestart}
+            />
+          </SettingsRow>
+        )}
         {updateButtonText && release && (
           <SettingsRow>
             <ReleaseNotesPreview target={release} channel={savedChannel} installedVersionNum={installedVersionNum} />

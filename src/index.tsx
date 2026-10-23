@@ -37,6 +37,7 @@ import {
 } from './state/DeckyZoneState'
 import type { ActiveGame, InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult, PluginSettings, PluginStatus, ReleaseTarget, UpdateChannel } from "./types/plugin"
 import { checkLatestVersion, compareVersions, isValidVersion, resetStartupCheck } from './utils/pluginUpdates'
+import { initializePluginUpdateStatus } from './utils/pluginUpdateStatus'
 import { showDeckyToast } from './utils/toasts'
 
 type BrightnessDialDirection = 'up' | 'down'
@@ -638,6 +639,7 @@ function Content() {
 }
 
 export default definePlugin(() => {
+  const cleanupPluginUpdateStatus = initializePluginUpdateStatus()
   const mappingRoute = `${DECKYZONE_MAPPING_ROUTE}/:appId/:section?/:sourceId?`
   const MappingRoute = () => {
     const { appId, sourceId } = useParams<{ appId: string; sourceId?: string }>()
@@ -704,6 +706,7 @@ export default definePlugin(() => {
     ),
     icon: <ZotacIcon />,
     onDismount() {
+      cleanupPluginUpdateStatus()
       routerHook.removeRoute(DECKYZONE_ROUTE)
       routerHook.removeRoute(mappingRoute)
       updateNoticeGeneration += 1

@@ -617,6 +617,12 @@ class DeckyZoneService:
         if self._plugin_update_lock.locked():
             raise RuntimeError("Wait for the update operation to finish.")
         async with self._plugin_update_lock:
+            if self.settings_store.get_update_channel() != channel:
+                status = await asyncio.to_thread(plugin_update.discard_update)
+                try:
+                    await decky.emit("plugin_update_status", status)
+                except Exception as error:
+                    self.logger.warning(f"Could not publish update progress: {error}")
             self.settings_store.set_update_channel(channel)
             return self._current_settings()
 
@@ -628,17 +634,31 @@ class DeckyZoneService:
             self.logger.error(f"Failed to fetch DeckyZone release notes: {error}")
             raise RuntimeError("Failed to fetch DeckyZone release notes.") from error
 
-    async def ota_update(self, channel, target):
-        plugin_update.validate_channel(channel)
+    async def get_plugin_update_status(self):
+        return await asyncio.to_thread(plugin_update.get_update_status)
+
+    async def _run_plugin_update(self, operation, *args):
         if self._plugin_update_lock.locked():
             raise RuntimeError("Wait for the update operation to finish.")
         async with self._plugin_update_lock:
+            loop = asyncio.get_running_loop()
+
+            def publish_progress(status):
+                async def emit_progress():
+                    try:
+                        await decky.emit("plugin_update_status", status)
+                    except Exception as error:
+                        self.logger.warning(f"Could not publish update progress: {error}")
+
+                asyncio.run_coroutine_threadsafe(emit_progress(), loop)
+
             task = asyncio.create_task(asyncio.to_thread(
-                plugin_update.ota_update, channel, target,
+                operation, *args,
                 get_saved_channel=self.settings_store.get_update_channel,
+                on_progress=publish_progress,
             ))
             try:
-                return bool(await asyncio.shield(task))
+                return await asyncio.shield(task)
             except asyncio.CancelledError:
                 # Keep the gate held until the installer thread has stopped.
                 try:
@@ -649,6 +669,17 @@ class DeckyZoneService:
             except Exception as error:
                 self.logger.error(f"Failed to update DeckyZone: {error}")
                 raise RuntimeError(str(error)) from error
+
+    async def prepare_plugin_update(self, channel, target):
+        plugin_update.validate_channel(channel)
+        return await self._run_plugin_update(plugin_update.prepare_update, channel, target)
+
+    async def activate_plugin_update(self):
+        return await self._run_plugin_update(plugin_update.activate_update)
+
+    async def ota_update(self, channel, target):
+        plugin_update.validate_channel(channel)
+        return bool(await self._run_plugin_update(plugin_update.ota_update, channel, target))
 
     def _set_status(self, state, message):
         self._status = {"state": state, "message": message}
@@ -5013,6 +5044,15 @@ class Plugin:
 
     async def ota_update(self, channel, target):
         return await self._controller_operation(self.service.ota_update, channel, target)
+
+    async def get_plugin_update_status(self):
+        return await self.service.get_plugin_update_status()
+
+    async def prepare_plugin_update(self, channel, target):
+        return await self._controller_operation(self.service.prepare_plugin_update, channel, target)
+
+    async def activate_plugin_update(self):
+        return await self._controller_operation(self.service.activate_plugin_update)
 
     async def _main(self):
         self._controller_initializing = True

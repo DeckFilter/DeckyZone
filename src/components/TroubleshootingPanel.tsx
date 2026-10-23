@@ -1,14 +1,15 @@
-import { callable } from '@decky/api'
-import { ButtonItem, ConfirmModal, Navigation, Spinner, showModal } from '@decky/ui'
+import { ButtonItem, ConfirmModal, DialogButton, Field, Navigation, Spinner, showModal } from '@decky/ui'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { openDeckyZoneSettings } from '../routes'
 import type { InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult, ReleaseTarget, UpdateChannel } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
+import { isPluginUpdateBusy, needsPluginUpdateStatusRefresh, refreshPluginUpdateStatus, showPreparedPluginUpdateDialog, startPluginUpdate, usePluginUpdateState } from '../utils/pluginUpdateStatus'
 import { beginUpdateOperation, useUpdateOperationBusy } from '../utils/updateOperations'
 import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
 import InputPlumberUpdateControls from './InputPlumberUpdateControls'
+import PluginUpdateProgress from './PluginUpdateProgress'
 
-type TroubleshootingOperation = 'reapply' | 'reinstall' | 'reset' | 'inputplumber'
+type TroubleshootingOperation = 'reapply' | 'reset' | 'inputplumber'
 
 type Props = {
   onResetPlugin: () => Promise<ResetPluginOutcome>
@@ -35,10 +36,8 @@ export type ResetPluginOutcome = {
 
 const RESET_FAILED_NOTICE = 'Reset failed.'
 const RESET_COMPLETE_NOTICE = 'Plugin reset complete.'
-const REINSTALL_FAILED_NOTICE = 'Reinstall failed.'
 const REAPPLY_FAILED_NOTICE = 'Could not reapply the controller profile.'
 const REAPPLY_PROFILE_EXPLAINER = 'Reloads your dial, trackpad and Home button settings. Uses global settings when no game is running, and includes enabled game overrides when a game is running. Saved settings are kept.'
-const otaUpdate = callable<[UpdateChannel, ReleaseTarget], boolean>('ota_update')
 
 const titleStyle = {
   display: 'flex',
@@ -156,6 +155,10 @@ const TroubleshootingPanel = ({
 }: Props) => {
   const itemLayout = useSettingsItemLayout()
   const sharedUpdateBusy = useUpdateOperationBusy()
+  const pluginUpdateState = usePluginUpdateState()
+  const pluginUpdateBusy = isPluginUpdateBusy(pluginUpdateState)
+  const needsStatusRefresh = needsPluginUpdateStatusRefresh(pluginUpdateState)
+  const updateReady = pluginUpdateState.status?.phase === 'ready'
   const [operation, setOperation] = useState<TroubleshootingOperation | null>(null)
   const [inputPlumberBusy, setInputPlumberBusy] = useState(false)
   const operationRef = useRef<TroubleshootingOperation | null>(null)
@@ -210,29 +213,24 @@ const TroubleshootingPanel = ({
     }
   }, [])
 
-  const busy = sharedUpdateBusy || updatesBusy || operation !== null || inputPlumberBusy
+  const busy = sharedUpdateBusy || pluginUpdateBusy || updatesBusy || operation !== null || inputPlumberBusy
 
   const handleReinstall = async () => {
-    if (!releaseTarget || !beginOperation('reinstall')) {
+    if (!releaseTarget || busy) {
+      return
+    }
+    if (needsStatusRefresh) {
+      await refreshPluginUpdateStatus()
+      return
+    }
+    if (updateReady) {
+      showPreparedPluginUpdateDialog()
       return
     }
     try {
-      const success = await otaUpdate(updateChannel, releaseTarget)
-      if (!success) {
-        showDeckyToast({
-          title: 'DeckyZone',
-          body: REINSTALL_FAILED_NOTICE,
-          severity: 'error',
-        })
-      }
+      await startPluginUpdate(updateChannel, releaseTarget)
     } catch {
-      showDeckyToast({
-        title: 'DeckyZone',
-        body: REINSTALL_FAILED_NOTICE,
-        severity: 'error',
-      })
-    } finally {
-      endOperation('reinstall')
+      // The shared updater reports failures even if this panel has been closed.
     }
   }
 
@@ -294,14 +292,17 @@ const TroubleshootingPanel = ({
       />
       {showReinstallPlugin && (
         <SettingsRow>
-          <ButtonItem
-            layout={itemLayout}
+          <Field
+            childrenLayout={itemLayout}
+            childrenContainerWidth="fixed"
             label="Reinstall Plugin"
-            disabled={busy}
-            onClick={() => void handleReinstall()}
           >
-            {operation === 'reinstall' ? 'Reinstalling...' : 'Reinstall Plugin'}
-          </ButtonItem>
+            {pluginUpdateBusy ? <PluginUpdateProgress /> : (
+              <DialogButton disabled={busy} onClick={() => void handleReinstall()}>
+                {needsStatusRefresh ? 'Check Status' : updateReady ? 'Install and Restart' : 'Reinstall Plugin'}
+              </DialogButton>
+            )}
+          </Field>
         </SettingsRow>
       )}
       <SettingsRow>
