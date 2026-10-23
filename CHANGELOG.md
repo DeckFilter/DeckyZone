@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.7.0-pre.3] - 2026-10-23
+
+
+### Features
+
+- Updater progress and restart prompts (#60) by @felixhirschfeld
+- Install and repair native performance controls
+- Add fan modes and a separate curve manager
+- Allow 30 W custom TDP with a 20 W default
+- Add CPU boost control
+- Add performance and fan diagnostics to support reports
+
+
+
+### Fixes
+
+- Prevent duplicate controllers after sleep/wake (#59) by @felixhirschfeld
+- Restore native TDP after performance profile changes
+- Disable native controls when power plugins are active
+- Allow compatible SteamOS Manager versions
+- Show temperature in a separate fan status row
+- Remove GNU download dependency from packaging
+- Preserve performance and fan settings across updates
+
+
+
+### Documentation
+
+- Simplify README
+- Clarify native performance platform support
+- Keep README concise
+
+
+
+### Maintenance
+
+- Fan controls
+- Use events for native performance checks
+- Remove redundant bridge coverage
+
+
 ## [0.6.5] - 2026-10-22
 
 
