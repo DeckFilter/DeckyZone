@@ -34,6 +34,7 @@ import { SteamExplainerDropdownItem } from './SteamExplainer'
 const setUpdateChannel = callable<[UpdateChannel], PluginSettings>('set_update_channel')
 const UpdateAvailableIcon = IconsModule?.FieldYellowExclamation as ComponentType | undefined
 const ControlledToggleField = ToggleField as ComponentType<ComponentProps<typeof ToggleField> & { controlled: boolean }>
+const CHECK_FEEDBACK_DURATION_MS = 4000
 const CHANNEL_OPTIONS = [
   { data: 'stable' as const, label: 'Stable' },
   { data: 'prerelease' as const, label: 'Pre-release' },
@@ -174,6 +175,14 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
     return () => clearInterval(timer)
   }, [lastCheckTime])
 
+  useEffect(() => {
+    if (lastCheckTime === null) return
+    const remaining = lastCheckTime + CHECK_FEEDBACK_DURATION_MS - Date.now()
+    if (remaining <= 0) return
+    const timer = setTimeout(() => setRelativeTimeTick((value) => value + 1), remaining)
+    return () => clearTimeout(timer)
+  }, [lastCheckTime])
+
   const handleChannelChange = async (next: UpdateChannel) => {
     if (saving.current || installing.current || refs.current.disabled || next === channelRef.current) return
     const releaseOperation = beginUpdateOperation()
@@ -247,9 +256,9 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
     if (isSavingChannel) return 'Saving update channel…'
     if (updateReady && updateStatus.release) return `${updateStatus.release.version} ready to install`
     if (isUpdating) return undefined
+    if (isChecking) return undefined
     if (needsStatusRefresh) return updateState.error?.replace(/\.$/, '')
     if (updateState.error || updateStatus?.error) return 'Update failed'
-    if (isChecking) return 'Checking for updates…'
     if (versionError) return 'Couldn’t check for updates'
     if (updateButtonText) return undefined
     if (!lastCheckTime) return 'Not checked yet'
@@ -259,15 +268,18 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
   }, [isSavingChannel, isChecking, lastCheckTime, release, installedVersionNum, relativeTimeTick, updateButtonText, versionError,
     updateReady, updateStatus, isUpdating, updateState.error, needsStatusRefresh])
 
-  const actionText = needsStatusRefresh ? 'Check Status' : updateReady ? 'Install and Restart' : isSavingChannel ? 'Saving…' : isChecking ? 'Checking…'
-    : updateButtonText ?? 'Check for Updates'
+  const recentlyChecked = !isChecking && !versionError && release !== null && lastCheckTime !== null
+    && Date.now() - lastCheckTime < CHECK_FEEDBACK_DURATION_MS
+  const showUpToDate = recentlyChecked && !updateButtonText
+  const actionText = needsStatusRefresh ? 'Check Status' : updateReady ? 'Install and Restart' : isSavingChannel ? 'Saving…' : isChecking ? 'Checking'
+    : updateButtonText ?? (showUpToDate ? 'Up-to-date' : 'Check For Updates')
   const actionDisabled = disabled || operationBusy || isUpdating || isSavingChannel
-    || (!updateReady && !needsStatusRefresh && (isChecking || !isValidVersion(installedVersionNum)))
+    || (!updateReady && !needsStatusRefresh && (isChecking || showUpToDate || !isValidVersion(installedVersionNum)))
   const handleAction = () => {
     if (saving.current || installing.current || refs.current.disabled) return
     if (needsStatusRefresh) void refreshPluginUpdateStatus()
     else if (updateReady) showPreparedPluginUpdateDialog()
-    else if (checking.current !== null) return
+    else if (checking.current !== null || showUpToDate) return
     else if (updateButtonText && !versionError) void handleUpdate()
     else void loadRelease(savedChannel, installedVersionNum, true)
   }
