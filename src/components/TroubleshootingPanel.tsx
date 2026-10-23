@@ -1,5 +1,5 @@
 import { ButtonItem, ConfirmModal, DialogButton, Field, Navigation, Spinner, showModal } from '@decky/ui'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type ComponentType } from 'react'
 import { openDeckyZoneSettings } from '../routes'
 import type { InputPlumberUpdateResult, PluginReapplyResult, PluginResetResult, ReleaseTarget, UpdateChannel } from '../types/plugin'
 import { showDeckyToast } from '../utils/toasts'
@@ -8,6 +8,8 @@ import { beginUpdateOperation, useUpdateOperationBusy } from '../utils/updateOpe
 import { SettingsRow, SettingsSection, useSettingsItemLayout } from './SettingsSurface'
 import InputPlumberUpdateControls from './InputPlumberUpdateControls'
 import PluginUpdateProgress from './PluginUpdateProgress'
+
+const UpdaterField = Field as ComponentType<ComponentProps<typeof Field> & { focusableIfEmpty: boolean }>
 
 type TroubleshootingOperation = 'reapply' | 'reset' | 'inputplumber'
 
@@ -292,7 +294,8 @@ const TroubleshootingPanel = ({
       />
       {showReinstallPlugin && (
         <SettingsRow>
-          <Field
+          <UpdaterField
+            focusableIfEmpty
             childrenLayout={itemLayout}
             childrenContainerWidth="fixed"
             label="Reinstall Plugin"
@@ -302,7 +305,7 @@ const TroubleshootingPanel = ({
                 {needsStatusRefresh ? 'Check Status' : updateReady ? 'Restart' : 'Reinstall Plugin'}
               </DialogButton>
             )}
-          </Field>
+          </UpdaterField>
         </SettingsRow>
       )}
       <SettingsRow>

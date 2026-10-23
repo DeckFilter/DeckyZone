@@ -9,7 +9,7 @@ const getStatus = callable<[], PluginUpdateStatus>('get_plugin_update_status')
 const prepareUpdate = callable<[UpdateChannel, ReleaseTarget], PluginUpdateStatus>('prepare_plugin_update')
 const activateUpdate = callable<[], PluginUpdateStatus>('activate_plugin_update')
 
-export const MINIMUM_APPLY_DURATION_MS = 30000
+export const MINIMUM_APPLY_DURATION_MS = 15000
 
 type UpdateState = {
   status: PluginUpdateStatus | null

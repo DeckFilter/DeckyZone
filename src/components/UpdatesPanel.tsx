@@ -34,6 +34,8 @@ import { SteamExplainerDropdownItem } from './SteamExplainer'
 const setUpdateChannel = callable<[UpdateChannel], PluginSettings>('set_update_channel')
 const UpdateAvailableIcon = IconsModule?.FieldYellowExclamation as ComponentType | undefined
 const ControlledToggleField = ToggleField as ComponentType<ComponentProps<typeof ToggleField> & { controlled: boolean }>
+// Steam retains the row's focus while its action is replaced by progress.
+const UpdaterField = Field as ComponentType<ComponentProps<typeof Field> & { focusableIfEmpty: boolean }>
 const CHECK_FEEDBACK_DURATION_MS = 4000
 const CHANNEL_OPTIONS = [
   { data: 'stable' as const, label: 'Stable' },
@@ -291,7 +293,8 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
     <>
       <SettingsSection title="Updates">
         <SettingsRow>
-          <Field
+          <UpdaterField
+            focusableIfEmpty
             label="Software Updates"
             icon={updateButtonText && UpdateAvailableIcon ? <UpdateAvailableIcon /> : undefined}
             description={updateStatusText}
@@ -302,7 +305,7 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
           >
             {isUpdating ? <PluginUpdateProgress />
               : <DialogButton disabled={actionDisabled} onClick={handleAction}>{actionText}</DialogButton>}
-          </Field>
+          </UpdaterField>
         </SettingsRow>
         {showAutomaticRestart && (
           <SettingsRow>
