@@ -112,30 +112,14 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           export RELEASE_VERSION="$version"
           python3 - <<'PY'
-          import os, subprocess, sys
+          import os, sys
           sys.path.insert(0, "py_modules")
-          from release_versions import is_prerelease_version, parse_version, require_version
+          from release_versions import is_prerelease_version, require_version
           version = os.environ["RELEASE_VERSION"]
           require_version(version)
           prerelease = os.environ["RELEASE_CHANNEL"] == "prerelease"
           if is_prerelease_version(version) != prerelease:
               raise SystemExit("Prepared version does not match the selected release channel")
-          if prerelease:
-              source = os.environ["GITHUB_SHA"]
-              tags = subprocess.check_output(["git", "tag", "--merged", source], text=True).splitlines()
-              stable_tags = [tag for tag in tags if tag.startswith("v")
-                             and parse_version(tag, allow_tag=True) is not None
-                             and not is_prerelease_version(tag, allow_tag=True)]
-              # Supplying only valid stable tags keeps earlier prereleases out of the range boundary.
-              if stable_tags:
-                  args = ["git", "describe", "--tags", "--abbrev=0"]
-                  args.extend("--match=" + tag for tag in stable_tags)
-                  base = subprocess.check_output([*args, source], text=True).strip()
-                  notes_range = f"{base}..{source}"
-              else:
-                  notes_range = source
-              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-                  output.write(f"notes_range={notes_range}\n")
           PY
           if git show-ref --verify --quiet "refs/tags/v${version}"; then
             echo '::error::This version is already tagged. Re-run failed jobs to reuse the original artifacts.'
@@ -143,16 +127,41 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
+      - name: Select incremental pre-release notes
+        if: inputs.channel == 'prerelease'
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/published-releases.json"
+          python3 scripts/release-notes.py select \
+            --version "$RELEASE_VERSION" --source "$GITHUB_SHA" \
+            --releases "$RUNNER_TEMP/published-releases.json" \
+            --output "$RUNNER_TEMP/release-notes-selection.json" \
+            --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+
       - name: Generate release notes
+        if: inputs.channel != 'prerelease' || steps.notes.outputs.count != '0'
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
         with:
           version: v2.14.2
           config: cliff.toml
-          args: --use-branch-tags --strip all --unreleased --tag v${{ steps.version.outputs.version }} ${{ steps.version.outputs.notes_range }}
+          args: --use-branch-tags --strip all --unreleased --tag v${{ steps.version.outputs.version }} ${{ steps.notes.outputs.range }} ${{ steps.notes.outputs.skip_args }}
           github_token: ${{ github.token }}
         env:
           OUTPUT: CHANGES.md
           GITHUB_REPO: ${{ github.repository }}
+
+      - name: Write notes for an unchanged preview
+        if: inputs.channel == 'prerelease' && steps.notes.outputs.count == '0'
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          printf '## [%s]\n\nNo new user-facing changes.\n' "$RELEASE_VERSION" > CHANGES.md
+
+      - name: Remove release-note PR numbers and author credits
+        run: python3 scripts/release-notes.py clean CHANGES.md
 
       - name: Generate full changelog
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
