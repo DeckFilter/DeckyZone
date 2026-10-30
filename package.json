@@ -33,7 +33,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.1.11",
     "@types/webpack": "^5.28.5",
-    "rollup": "^4.63.4",
+    "rollup": "^4.65.1",
     "typescript": "^5.9.3"
   },
   "dependencies": {
