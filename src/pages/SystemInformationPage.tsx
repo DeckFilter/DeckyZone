@@ -38,6 +38,7 @@ import CustomizationPanel from '../components/CustomizationPanel'
 import LayoutPanel from '../components/LayoutPanel'
 import PerformancePanel from '../components/PerformancePanel'
 import FanControlPanel from '../components/FanControlPanel'
+import RetryField from '../components/RetryField'
 import ProductSpecificationsPage from './ProductSpecificationsPage'
 import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
 import TroubleshootingPanel, { type ResetPluginOutcome } from '../components/TroubleshootingPanel'
@@ -55,7 +56,7 @@ import {
 import { useDeckyZoneState } from '../state/DeckyZoneState'
 import type { DebugInfoSnapshot, InputPlumberUpdateResult, PluginReapplyResult, ReleaseTarget, SystemReport, UpdateChannel } from '../types/plugin'
 import { compareVersions, isValidVersion } from '../utils/pluginUpdates'
-import { showDeckyToast } from '../utils/toasts'
+import { showDeckyToast, useDeckyToastNotice } from '../utils/toasts'
 
 const getDebugInfo = callable<[], DebugInfoSnapshot>('get_debug_info')
 const getSystemReport = callable<[], SystemReport>('get_support_report')
@@ -77,7 +78,6 @@ type SnapshotRowProps = {
 
 type SnapshotPageProps = {
   snapshot: DebugInfoSnapshot | null
-  error: string | null
   isLoading: boolean
   children: (snapshot: DebugInfoSnapshot) => ReactNode
 }
@@ -131,16 +131,6 @@ const SnapshotRow = ({
         {value}
       </span>
     </Field>
-  )
-}
-
-const ErrorField = ({ message }: { message: string }) => {
-  return (
-    <DialogControlsSection>
-      <Field focusable label="Error">
-        <span style={{ color: 'red' }}>{message}</span>
-      </Field>
-    </DialogControlsSection>
   )
 }
 
@@ -377,7 +367,6 @@ const SystemReportModal = ({ closeModal, reportText }: SystemReportModalProps) =
 
 const SnapshotSection = ({
   snapshot,
-  error,
   isLoading,
   title,
   children,
@@ -390,7 +379,6 @@ const SnapshotSection = ({
           <SteamSpinner />
         </DialogControlsSection>
       )}
-      {error && <ErrorField message={error} />}
       {snapshot && (
         <DialogControlsSection>
           <SettingsDialogSubHeader>{title}</SettingsDialogSubHeader>
@@ -403,11 +391,9 @@ const SnapshotSection = ({
 
 const GeneralInformationSection = ({
   snapshot,
-  error: snapshotError,
   isLoading: isSnapshotLoading,
   pluginVersion,
 }: Omit<SnapshotPageProps, 'children'> & { pluginVersion: string }) => {
-  const [reportError, setReportError] = useState<string | null>(null)
   const [isGeneratingReport, setIsGeneratingReport] = useState(false)
   const reportInFlightRef = useRef(false)
   const isMountedRef = useRef(true)
@@ -426,7 +412,6 @@ const GeneralInformationSection = ({
 
     reportInFlightRef.current = true
     setIsGeneratingReport(true)
-    setReportError(null)
 
     try {
       const report = await getSystemReport()
@@ -436,7 +421,11 @@ const GeneralInformationSection = ({
     } catch (error) {
       if (isMountedRef.current) {
         console.error('[DeckyZone:SystemReport] Failed to create report', error)
-        setReportError("DeckyZone couldn't create the system report.")
+        showDeckyToast({
+          title: 'Could Not Create Report',
+          body: "DeckyZone couldn't create the system report.",
+          severity: 'error',
+        })
       }
     } finally {
       reportInFlightRef.current = false
@@ -454,7 +443,6 @@ const GeneralInformationSection = ({
           <SteamSpinner />
         </DialogControlsSection>
       )}
-      {snapshotError && <ErrorField message={snapshotError} />}
       {snapshot && (
         <>
           <DialogControlsSection>
@@ -484,8 +472,6 @@ const GeneralInformationSection = ({
           </DialogControlsSection>
         </>
       )}
-
-      {reportError && <ErrorField message={reportError} />}
 
       <DialogControlsSection>
         <SettingsDialogSubHeader>Support</SettingsDialogSubHeader>
@@ -540,17 +526,24 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
   const isMountedRef = useRef(true)
   const requestGenerationRef = useRef(0)
 
+  useDeckyToastNotice(error ? {
+    activeKey: `system-information:${error}`,
+    title: 'System Information',
+    body: error,
+    severity: 'error',
+  } : null)
+
   useEffect(() => {
     isMountedRef.current = true
     const generation = ++requestGenerationRef.current
     const delay = snapshot ? 250 : 0
     const timeoutId = setTimeout(() => {
       setIsLoading(true)
-      setError(null)
       void getDebugInfo()
         .then((nextSnapshot) => {
           if (isMountedRef.current && generation === requestGenerationRef.current) {
             setSnapshot(nextSnapshot)
+            setError(null)
           }
         })
         .catch((error) => {
@@ -559,7 +552,7 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
           }
 
           console.error('[DeckyZone:SystemInformation] Failed to load information', error)
-          setError("DeckyZone couldn't load system information.")
+          setError("Couldn't load system information")
         })
         .finally(() => {
           if (isMountedRef.current && generation === requestGenerationRef.current) {
@@ -592,12 +585,7 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
     return (
       <DialogBody>
         <DialogControlsSection>
-          <Field label="Error">
-            <span style={{ color: 'red' }}>{bootstrap.message}</span>
-          </Field>
-          <ButtonItem layout="inline" onClick={onRetryBootstrap}>
-            Retry
-          </ButtonItem>
+          <RetryField message="Couldn't load DeckyZone" onRetry={onRetryBootstrap} />
         </DialogControlsSection>
       </DialogBody>
     )
@@ -609,7 +597,7 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
   const showReinstallPlugin = releaseTarget !== null && isValidVersion(installedVersionNum)
     && compareVersions(releaseTarget.version, installedVersionNum) === 0
 
-  const snapshotPageProps = { snapshot, error, isLoading }
+  const snapshotPageProps = { snapshot, isLoading }
   const applySettingsUpdate = (update: Parameters<typeof store.updateSettings>[0]) => {
     store.updateSettings(update)
   }
@@ -705,7 +693,6 @@ const SystemInformationPage = ({ onResetPlugin, onReapplyControllerProfile, onUp
           content: (
             <DialogBody>
               <ErrorBoundary title="Performance">
-                {error && <ErrorField message={error} />}
                 <PerformancePanel
                   settings={settings}
                   onSettingsChange={applySettingsUpdate}

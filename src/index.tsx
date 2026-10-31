@@ -1,5 +1,4 @@
 import {
-  ButtonItem,
   Navigation,
   Router,
   SteamSpinner,
@@ -19,6 +18,7 @@ import LayoutPanel from './components/LayoutPanel'
 import PerformancePanel from "./components/PerformancePanel"
 import FanControlPanel from './components/FanControlPanel'
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
+import RetryField from './components/RetryField'
 import { SettingsRow, SettingsSection, SettingsSurfaceProvider } from './components/SettingsSurface'
 import TroubleshootingPanel from "./components/TroubleshootingPanel"
 import UpdatesPanel from "./components/UpdatesPanel"
@@ -459,15 +459,8 @@ function Content() {
 
   if (bootstrap.state === 'error') {
     return (
-      <SettingsSection title="Controller">
-        <SettingsRow>
-          <div style={{ color: 'red' }}>{bootstrap.message}</div>
-        </SettingsRow>
-        <SettingsRow>
-          <ButtonItem layout="below" onClick={handleRetryBootstrap}>
-            Retry
-          </ButtonItem>
-        </SettingsRow>
+      <SettingsSection title="DeckyZone">
+        <RetryField message="Couldn't load DeckyZone" onRetry={handleRetryBootstrap} />
       </SettingsSection>
     )
   }
@@ -663,9 +656,13 @@ export default definePlugin(() => {
   const MappingRoute = () => {
     const { appId, sourceId } = useParams<{ appId: string; sourceId?: string }>()
     return (
-      <ErrorBoundary title="Controller Settings">
-        <DeckyZoneStateProvider store={deckyZoneState}><ControllerMappingPage key={appId} appId={appId} sourceId={sourceId} /></DeckyZoneStateProvider>
-      </ErrorBoundary>
+      <SettingsSurfaceProvider surface="settings">
+        <ErrorBoundary title="Controller Settings">
+          <DeckyZoneStateProvider store={deckyZoneState}>
+            <ControllerMappingPage key={appId} appId={appId} sourceId={sourceId} onRetryBootstrap={handleRetryBootstrap} />
+          </DeckyZoneStateProvider>
+        </ErrorBoundary>
+      </SettingsSurfaceProvider>
     )
   }
   const SettingsRoute = () => (

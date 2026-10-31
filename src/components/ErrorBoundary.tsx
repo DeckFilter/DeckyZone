@@ -1,6 +1,7 @@
-import { Field } from '@decky/ui'
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
+import RetryField from './RetryField'
+import { SettingsSection } from './SettingsSurface'
 
 type Props = {
   title?: string
@@ -26,11 +27,12 @@ class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <Field disabled label="Error">
-          {this.props.title
-            ? `Error while trying to render ${this.props.title}`
-            : 'Error while trying to render this panel'}
-        </Field>
+        <SettingsSection title={this.props.title ?? 'DeckyZone'}>
+          <RetryField
+            message={this.props.title ? `Couldn't load ${this.props.title.toLowerCase()}` : "Couldn't load this panel"}
+            onRetry={() => this.setState({ hasError: false })}
+          />
+        </SettingsSection>
       )
     }
 

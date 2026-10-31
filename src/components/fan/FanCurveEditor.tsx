@@ -44,12 +44,10 @@ export default function FanCurveEditor({
   const selected = useRef<FanPosition | null>(points.current[0] ?? null)
   const pointer = useRef<{ id: number; x: number; y: number; time: number; target: FanPosition | null; moved: boolean } | null>(null)
   const [revision, redraw] = useState(0)
-  const [error, setError] = useState('')
   const refresh = (changed = false) => {
     points.current.sort((a, b) => a.temperature! - b.temperature!)
     redraw(value => value + 1)
     if (changed) {
-      setError('')
       onChange?.(points.current.map(p => ({ temperature: p.temperature!, fanRPMpercent: p.fanRPMpercent! })))
     }
   }
@@ -149,10 +147,9 @@ export default function FanCurveEditor({
     if (selected.current && !disabled) { selected.current[key] = value; refresh(true) }
   }
   const save = async () => {
-    setError('')
     try {
       await onSave(points.current.map(p => ({ temperature: p.temperature!, fanRPMpercent: p.fanRPMpercent! })))
-    } catch (failure) { setError(failure instanceof Error ? failure.message : String(failure)) }
+    } catch { /* The shared fan transaction reports save failures. Keep the draft for retry. */ }
   }
 
   return (
@@ -222,7 +219,6 @@ export default function FanCurveEditor({
           </Focusable>
         </Focusable>
       </Focusable>
-      {error && <Field label={error} />}
     </div>
   )
 }
