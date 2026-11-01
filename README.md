@@ -1,14 +1,5 @@
 # DeckyZone
 
-
-  <a href="https://github.com/sponsors/DeckFilter"><img src="https://img.shields.io/badge/GitHub_Sponsors-Donate-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors"></a>
-  <a href="https://www.patreon.com/DeckFilter"><img src="https://img.shields.io/badge/Patreon-Support_me-FF424D?style=for-the-badge&logo=patreon&logoColor=white" alt="Patreon"></a>
-  <a href="https://ko-fi.com/deckfilter"><img src="https://img.shields.io/badge/Ko--fi-Buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
-  <a href="https://www.buymeacoffee.com/deckfilter"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-Donate-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
-  <a href="https://discord.gg/dyMMQNKdMH"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
-  <a href="https://www.youtube.com/@DeckFilter"><img src="https://img.shields.io/badge/YouTube-Subscribe-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
-
-
 [![](https://img.shields.io/github/downloads/DeckFilter/DeckyZone/total)](https://github.com/DeckFilter/DeckyZone/releases)
 [![](https://img.shields.io/github/downloads/DeckFilter/DeckyZone/latest/total)](https://github.com/DeckFilter/DeckyZone/releases/latest)
 [![](https://img.shields.io/github/v/release/DeckFilter/DeckyZone)](https://github.com/DeckFilter/DeckyZone/releases/latest)
@@ -16,6 +7,13 @@
 DeckyZone is a Decky Loader plugin for the Zotac Gaming Zone. It adds custom controller mappings, display fixes and hardware settings.
 
 ![DeckyZone settings](./img/DeckyZone.jpg)
+
+  <a href="https://github.com/sponsors/DeckFilter"><img src="https://img.shields.io/badge/GitHub_Sponsors-Donate-EA4AAA?style=for-the-badge&logo=githubsponsors&logoColor=white" alt="GitHub Sponsors"></a>
+  <a href="https://www.patreon.com/DeckFilter"><img src="https://img.shields.io/badge/Patreon-Support_me-FF424D?style=for-the-badge&logo=patreon&logoColor=white" alt="Patreon"></a>
+  <a href="https://ko-fi.com/deckfilter"><img src="https://img.shields.io/badge/Ko--fi-Buy_me_a_coffee-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi"></a>
+  <a href="https://www.buymeacoffee.com/deckfilter"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-Donate-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"></a>
+  <a href="https://discord.gg/dyMMQNKdMH"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://www.youtube.com/@DeckFilter"><img src="https://img.shields.io/badge/YouTube-Subscribe-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="YouTube"></a>
 
 ## Features
 
