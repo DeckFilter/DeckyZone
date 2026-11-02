@@ -1,8 +1,4 @@
 :root {
-    --controller-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller.svg");
-    --controller-left-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller-left.png");
-    --controller-right-image: url("/__deckyzone_glyph_assets__/zotac/zone/controller-right.png");
-
     --button-guide-image: url("/__deckyzone_glyph_assets__/zotac/zone/guide.svg");
     /* Keep HOME artwork in the bundle without assigning it to Guide/Menu/View
        until the device's Steam glyph mapping is confirmed. */

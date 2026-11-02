@@ -205,6 +205,8 @@ export type PluginSettings = {
   gyroMountMatrixFix: GyroMountMatrixFixState
   trackpadMode: TrackpadMode
   zotacGlyphsEnabled: boolean
+  zotacLaunchAnimationsEnabled: boolean
+  zotacDeviceArtworkEnabled: boolean
   hideUnsupportedButtonsEnabled: boolean
   remainingBatteryTimeFixEnabled: boolean
   remainingBatteryTimeFixAvailable: boolean

@@ -16,6 +16,8 @@ HOME_BUTTON_ENABLED_KEY = "homeButtonEnabled"
 TRACKPAD_MODE_KEY = "trackpadMode"
 LEGACY_TRACKPADS_DISABLED_KEY = "trackpadsDisabled"
 ZOTAC_GLYPHS_ENABLED_KEY = "zotacGlyphsEnabled"
+ZOTAC_LAUNCH_ANIMATIONS_ENABLED_KEY = "zotacLaunchAnimationsEnabled"
+ZOTAC_DEVICE_ARTWORK_ENABLED_KEY = "zotacDeviceArtworkEnabled"
 HIDE_UNSUPPORTED_BUTTONS_ENABLED_KEY = "hideUnsupportedButtonsEnabled"
 REMAINING_BATTERY_TIME_FIX_ENABLED_KEY = "remainingBatteryTimeFixEnabled"
 LEGACY_LAYOUT_ENABLED_KEY = "legacyLayoutEnabled"
@@ -34,6 +36,8 @@ M2_REMAP_TARGET_KEY = "m2RemapTarget"
 DEFAULT_HOME_BUTTON_ENABLED = False
 DEFAULT_TRACKPAD_MODE = trackpad_modes.DEFAULT_TRACKPAD_MODE
 DEFAULT_ZOTAC_GLYPHS_ENABLED = False
+DEFAULT_ZOTAC_LAUNCH_ANIMATIONS_ENABLED = False
+DEFAULT_ZOTAC_DEVICE_ARTWORK_ENABLED = False
 DEFAULT_HIDE_UNSUPPORTED_BUTTONS_ENABLED = False
 DEFAULT_REMAINING_BATTERY_TIME_FIX_ENABLED = False
 DEFAULT_LEGACY_LAYOUT_ENABLED = False
@@ -280,8 +284,66 @@ def get_zotac_glyphs_enabled():
 
 
 def set_zotac_glyphs_enabled(enabled):
+    migrate_zotac_artwork_settings()
     _write_setting(ZOTAC_GLYPHS_ENABLED_KEY, bool(enabled))
     return get_zotac_glyphs_enabled()
+
+
+def get_zotac_launch_animations_enabled():
+    settings = _read_settings()
+    return bool(
+        settings.get(
+            ZOTAC_LAUNCH_ANIMATIONS_ENABLED_KEY,
+            DEFAULT_ZOTAC_LAUNCH_ANIMATIONS_ENABLED,
+        )
+    )
+
+
+def set_zotac_launch_animations_enabled(enabled):
+    _write_setting(ZOTAC_LAUNCH_ANIMATIONS_ENABLED_KEY, bool(enabled))
+    return get_zotac_launch_animations_enabled()
+
+
+def get_zotac_device_artwork_enabled():
+    settings = _read_settings()
+    return bool(
+        settings.get(
+            ZOTAC_DEVICE_ARTWORK_ENABLED_KEY,
+            DEFAULT_ZOTAC_DEVICE_ARTWORK_ENABLED,
+        )
+    )
+
+
+def set_zotac_device_artwork_enabled(enabled):
+    _write_setting(ZOTAC_DEVICE_ARTWORK_ENABLED_KEY, bool(enabled))
+    return get_zotac_device_artwork_enabled()
+
+
+def migrate_zotac_artwork_settings():
+    settings = _read_settings()
+    missing_keys = [
+        key
+        for key in (
+            ZOTAC_LAUNCH_ANIMATIONS_ENABLED_KEY,
+            ZOTAC_DEVICE_ARTWORK_ENABLED_KEY,
+        )
+        if key not in settings
+    ]
+    if not missing_keys:
+        return False
+
+    # The old glyph switch also controlled launch animations and device art.
+    # Freeze its value once so later glyph changes leave those choices alone.
+    enabled = bool(settings.get(ZOTAC_GLYPHS_ENABLED_KEY, DEFAULT_ZOTAC_GLYPHS_ENABLED))
+    for key in missing_keys:
+        setting_file.settings[key] = enabled
+    try:
+        setting_file.commit()
+    except Exception:
+        for key in missing_keys:
+            setting_file.settings.pop(key, None)
+        raise
+    return True
 
 
 def get_hide_unsupported_buttons_enabled():

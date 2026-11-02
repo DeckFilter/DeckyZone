@@ -26,7 +26,9 @@ import ZotacIcon from "./components/ZotacIcon"
 import {
   cleanupZotacUiRuntime,
   syncStoredHideUnsupportedButtonsRuntimeEnabled,
+  syncStoredZotacDeviceArtworkRuntimeEnabled,
   syncStoredZotacGlyphsRuntimeEnabled,
+  syncStoredZotacLaunchAnimationsRuntimeEnabled,
 } from "./glyphs/zotacGlyphRuntime"
 import { DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE, openDeckyZoneSettings } from './routes'
 import ControllerMappingPage from './controllerMapping/ControllerMappingPage'
@@ -94,6 +96,8 @@ function clampBrightnessPercent(value: number) {
 
 function applySettingsRuntime(settings: PluginSettings) {
   syncStoredZotacGlyphsRuntimeEnabled(settings.zotacGlyphsEnabled)
+  syncStoredZotacLaunchAnimationsRuntimeEnabled(settings.zotacLaunchAnimationsEnabled)
+  syncStoredZotacDeviceArtworkRuntimeEnabled(settings.zotacDeviceArtworkEnabled)
   syncStoredHideUnsupportedButtonsRuntimeEnabled(settings.hideUnsupportedButtonsEnabled)
 }
 

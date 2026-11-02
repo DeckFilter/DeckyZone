@@ -914,6 +914,12 @@ class DeckyZoneService:
             "gyroMountMatrixFix": self._get_gyro_mount_matrix_fix_state(),
             "trackpadMode": self.settings_store.get_trackpad_mode(),
             "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
+            "zotacLaunchAnimationsEnabled": (
+                self.settings_store.get_zotac_launch_animations_enabled()
+            ),
+            "zotacDeviceArtworkEnabled": (
+                self.settings_store.get_zotac_device_artwork_enabled()
+            ),
             "hideUnsupportedButtonsEnabled": (
                 self.settings_store.get_hide_unsupported_buttons_enabled()
             ),
@@ -3901,6 +3907,14 @@ class DeckyZoneService:
         self.settings_store.set_zotac_glyphs_enabled(enabled)
         return self._current_settings()
 
+    async def set_zotac_launch_animations_enabled(self, enabled):
+        self.settings_store.set_zotac_launch_animations_enabled(enabled)
+        return self._current_settings()
+
+    async def set_zotac_device_artwork_enabled(self, enabled):
+        self.settings_store.set_zotac_device_artwork_enabled(enabled)
+        return self._current_settings()
+
     async def set_hide_unsupported_buttons_enabled(self, enabled):
         self.settings_store.set_hide_unsupported_buttons_enabled(enabled)
         return self._current_settings()
@@ -5009,6 +5023,12 @@ class Plugin:
     async def set_zotac_glyphs_enabled(self, enabled):
         return await self.service.set_zotac_glyphs_enabled(enabled)
 
+    async def set_zotac_launch_animations_enabled(self, enabled):
+        return await self.service.set_zotac_launch_animations_enabled(enabled)
+
+    async def set_zotac_device_artwork_enabled(self, enabled):
+        return await self.service.set_zotac_device_artwork_enabled(enabled)
+
     async def set_hide_unsupported_buttons_enabled(self, enabled):
         return await self.service.set_hide_unsupported_buttons_enabled(enabled)
 
@@ -5290,6 +5310,7 @@ class Plugin:
         )
         plugin_settings.migrate_startup_apply_setting()
         plugin_settings.migrate_hide_unsupported_buttons_setting()
+        plugin_settings.migrate_zotac_artwork_settings()
         decky.migrate_runtime(
             os.path.join(decky.DECKY_HOME, "deckyzone"),
             os.path.join(decky.DECKY_USER_HOME, ".local", "share", "deckyzone"),
