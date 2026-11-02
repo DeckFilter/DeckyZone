@@ -2,12 +2,11 @@ import {
   Navigation,
   Router,
   SteamSpinner,
-  Tabs,
   useParams,
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener, routerHook } from '@decky/api'
 import { Fragment, type ReactNode, useState } from 'react'
-import { FaDesktop, FaEllipsisH, FaFan, FaGamepad, FaHeart, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
+import { FaFan, FaGamepad, FaHeart, FaPalette, FaTachometerAlt, FaWrench } from 'react-icons/fa'
 import ControllerPanel from "./components/ControllerPanel"
 import SystemInformationPage from "./pages/SystemInformationPage"
 import DisplayPanel from "./components/DisplayPanel"
@@ -18,6 +17,7 @@ import LayoutPanel from './components/LayoutPanel'
 import PerformancePanel from "./components/PerformancePanel"
 import FanControlPanel from './components/FanControlPanel'
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
+import QuickAccessTabs from './components/QuickAccessTabs'
 import RetryField from './components/RetryField'
 import { SettingsRow, SettingsSection, SettingsSurfaceProvider } from './components/SettingsSurface'
 import TroubleshootingPanel from "./components/TroubleshootingPanel"
@@ -69,11 +69,11 @@ let notifiedUpdateVersion: string | null = null
 let currentMainTab = 'controller'
 
 const mainTabsStyle = {
+  bottom: 0,
   contain: 'layout style paint',
-  height: '95%',
-  marginTop: '-12px',
   maxWidth: '100%',
   position: 'absolute' as const,
+  top: '44px',
   width: 'calc(100vw - 50px)',
 }
 
@@ -569,7 +569,7 @@ function Content() {
   return (
     <Fragment key={`deckyzone-ui:${uiRevision}`}>
       <div style={mainTabsStyle}>
-        <Tabs
+        <QuickAccessTabs
           activeTab={activeTab}
           autoFocusContents
           onShowTab={(tabId: string) => {
@@ -583,24 +583,6 @@ function Content() {
               content: (
                 <div style={tabContentStyle}>
                   {controllerPanel}
-                </div>
-              ),
-            },
-            {
-              id: 'customization',
-              title: <TabIcon label="Customization"><FaSlidersH size={20} /></TabIcon>,
-              content: (
-                <div style={tabContentStyle}>
-                  {customizationPanel}
-                </div>
-              ),
-            },
-            {
-              id: 'display',
-              title: <TabIcon label="Display"><FaDesktop size={20} /></TabIcon>,
-              content: (
-                <div style={tabContentStyle}>
-                  {displayPanel}
                 </div>
               ),
             },
@@ -623,8 +605,18 @@ function Content() {
               ),
             },
             {
+              id: 'customization',
+              title: <TabIcon label="Appearance"><FaPalette size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {customizationPanel}
+                  {displayPanel}
+                </div>
+              ),
+            },
+            {
               id: 'more',
-              title: <TabIcon label="More"><FaEllipsisH size={20} /></TabIcon>,
+              title: <TabIcon label="Tools"><FaWrench size={20} /></TabIcon>,
               content: (
                 <div style={tabContentStyle}>
                   {updatesPanel}
