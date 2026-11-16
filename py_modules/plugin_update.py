@@ -1,4 +1,6 @@
+from email.utils import parsedate_to_datetime
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import shutil
@@ -6,6 +8,7 @@ import ssl
 import subprocess
 import tarfile
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -24,9 +27,22 @@ RELEASE_API_URL = "https://api.github.com/repos/DeckFilter/DeckyZone/releases"
 RELEASE_CHECK_TIMEOUT_SECONDS = 5
 RELEASE_DOWNLOAD_TIMEOUT_SECONDS = 60
 RELEASE_NOTES_LIMIT = 10
+RELEASE_CACHE_SECONDS = 5 * 60
+RATE_LIMIT_MESSAGE = "GitHub update limit reached. Please try again later."
 TARBALL_ASSET_NAME = f"{PACKAGE_NAME}.tar.gz"
 UPDATE_CHANNELS = ("stable", "prerelease")
 UPDATE_DIRECTORY = "/home/.deckyzone-updates"
+_release_lock = threading.RLock()
+_release_cache = None
+_release_cache_time = 0.0
+_release_cache_generation = 0
+_release_retry_at = 0.0
+
+
+class ReleaseCheckError(RuntimeError):
+    def __init__(self, retry_at):
+        super().__init__(RATE_LIMIT_MESSAGE)
+        self.retry_at = retry_at
 
 
 def get_env():
@@ -55,26 +71,85 @@ def _release_notes_ssl_context():
     return context
 
 
+def _rate_limit_retry_at(error):
+    if error.code not in (403, 429):
+        return None
+    headers = {key.lower(): value for key, value in (error.headers or {}).items()}
+    body = error.read(8192).decode("utf-8", errors="replace").lower()
+    exhausted = headers.get("x-ratelimit-remaining") == "0"
+    if not (error.code == 429 or exhausted or "retry-after" in headers or "rate limit" in body):
+        return None
+    now = time.time()
+    deadlines = []
+    retry_after = headers.get("retry-after")
+    if retry_after:
+        try:
+            seconds = float(retry_after)
+            if math.isfinite(seconds) and seconds >= 0:
+                deadlines.append(now + seconds)
+        except ValueError:
+            try:
+                deadlines.append(parsedate_to_datetime(retry_after).timestamp())
+            except (TypeError, ValueError, OverflowError):
+                pass
+    if exhausted:
+        try:
+            reset = float(headers.get("x-ratelimit-reset", ""))
+            if math.isfinite(reset):
+                deadlines.append(reset)
+        except ValueError:
+            pass
+    return max(now + 1, max(deadlines) + 1) if deadlines else now + 60
+
+
 def _fetch_json(url):
-    request = urllib.request.Request(url, headers={
-        "Accept": "application/vnd.github+json", "User-Agent": PACKAGE_NAME,
-    })
-    with urllib.request.urlopen(request, context=_release_notes_ssl_context(),
-                                timeout=RELEASE_CHECK_TIMEOUT_SECONDS) as response:
-        return json.load(response)
+    global _release_retry_at
+    with _release_lock:
+        if time.time() < _release_retry_at:
+            raise ReleaseCheckError(_release_retry_at)
+        request = urllib.request.Request(url, headers={
+            "Accept": "application/vnd.github+json", "User-Agent": PACKAGE_NAME,
+        })
+        try:
+            with urllib.request.urlopen(request, context=_release_notes_ssl_context(),
+                                        timeout=RELEASE_CHECK_TIMEOUT_SECONDS) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as error:
+            try:
+                retry_at = _rate_limit_retry_at(error)
+            finally:
+                error.close()
+            if retry_at is None:
+                raise
+            _release_retry_at = retry_at
+            raise ReleaseCheckError(retry_at) from error
 
 
-def _fetch_releases():
-    releases = []
-    page = 1
-    while True:
-        batch = _fetch_json(f"{RELEASE_API_URL}?per_page=100&page={page}")
-        if not isinstance(batch, list):
-            raise RuntimeError("DeckyZone release history was not returned as a list.")
-        releases.extend(batch)
-        if len(batch) < 100:
-            return releases
-        page += 1
+def _fetch_releases(force=False):
+    global _release_cache, _release_cache_time, _release_cache_generation
+    generation = _release_cache_generation
+    with _release_lock:
+        if time.time() < _release_retry_at:
+            raise ReleaseCheckError(_release_retry_at)
+        if _release_cache is not None and (
+            _release_cache_generation != generation
+            or (not force and time.monotonic() - _release_cache_time < RELEASE_CACHE_SECONDS)
+        ):
+            return _release_cache
+        _release_cache = None
+        releases = []
+        page = 1
+        while True:
+            batch = _fetch_json(f"{RELEASE_API_URL}?per_page=100&page={page}")
+            if not isinstance(batch, list):
+                raise RuntimeError("DeckyZone release history was not returned as a list.")
+            releases.extend(batch)
+            if len(batch) < 100:
+                _release_cache = releases
+                _release_cache_time = time.monotonic()
+                _release_cache_generation += 1
+                return releases
+            page += 1
 
 
 def _positive_id(value):
@@ -126,8 +201,11 @@ def _release_target(release):
     }
 
 
-def get_update_release(channel="stable"):
-    releases = _eligible_releases(_fetch_releases(), channel)
+def get_update_release(channel="stable", force=False):
+    validate_channel(channel)
+    if type(force) is not bool:
+        raise ValueError("Force must be a boolean.")
+    releases = _eligible_releases(_fetch_releases(force=force), channel)
     # A broken newest release must remain visible as an error, not offer an older build.
     return _release_target(releases[0]) if releases else None
 

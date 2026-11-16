@@ -2,14 +2,17 @@
 """Focused release-selection and installation safety checks; no network/device writes."""
 
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 import io
 import json
 from pathlib import Path
 import sys
 import tarfile
 import tempfile
+import threading
 import types
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 
@@ -59,6 +62,10 @@ class VersionTests(unittest.TestCase):
 
 
 class ReleaseTests(unittest.TestCase):
+    def setUp(self):
+        updater._release_cache = None
+        updater._release_retry_at = 0.0
+
     def test_channel_selection_and_flag_consistency(self):
         releases = [release("0.7.0-pre.2"), release("0.7.0-pre.10", release_id=2),
                     release("0.6.9", release_id=3), release("0.7.0", release_id=4)]
@@ -107,6 +114,108 @@ class ReleaseTests(unittest.TestCase):
             updater.validate_channel("beta")
         with patch.object(updater, "_fetch_releases", return_value=[]):
             self.assertIsNone(updater.get_update_release("stable"))
+
+
+class ReleaseRequestTests(unittest.TestCase):
+    def setUp(self):
+        for name, value in (("_release_cache", None), ("_release_cache_time", 0.0),
+                            ("_release_cache_generation", 0), ("_release_retry_at", 0.0)):
+            self.enterContext(patch.object(updater, name, value))
+
+    def test_updates_and_notes_share_history_but_manual_refresh_is_fresh(self):
+        first, second = release("0.7.0"), release("0.7.1", release_id=2)
+        with patch.object(updater, "_fetch_json", side_effect=[[first], [second], second]) as fetch:
+            self.assertEqual(updater.get_update_release()["id"], 1)
+            self.assertEqual(updater.get_release_notes()[0]["id"], 1)
+            self.assertEqual(fetch.call_count, 1)
+            self.assertEqual(updater.get_update_release(force=True)["id"], 2)
+            updater._verify_selected_release("stable", updater._release_target(second))
+            self.assertEqual(fetch.call_count, 3)
+            self.assertEqual(fetch.call_args.args[0], updater.RELEASE_API_URL + "/2")
+
+    def test_concurrent_updates_and_notes_fetch_once(self):
+        entered, finish = threading.Event(), threading.Event()
+
+        def fetch(url):
+            entered.set()
+            self.assertTrue(finish.wait(2))
+            return [release()]
+
+        with patch.object(updater, "_fetch_json", side_effect=fetch) as request, ThreadPoolExecutor(2) as pool:
+            update = pool.submit(updater.get_update_release)
+            self.assertTrue(entered.wait(2))
+            notes = pool.submit(updater.get_release_notes)
+            finish.set()
+            self.assertEqual(update.result(2)["id"], 1)
+            self.assertEqual(notes.result(2)[0]["id"], 1)
+            self.assertEqual(request.call_count, 1)
+
+    def test_history_cache_expires(self):
+        clock = [1000.0]
+        with patch.object(updater.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch.object(updater, "_fetch_json", side_effect=[[release()], [release("0.7.1", release_id=2)]]) as fetch:
+            self.assertEqual(updater.get_update_release()["id"], 1)
+            clock[0] += updater.RELEASE_CACHE_SECONDS + 1
+            self.assertEqual(updater.get_update_release()["id"], 2)
+            self.assertEqual(fetch.call_count, 2)
+
+    def test_rate_limit_covers_all_api_reads_and_expires(self):
+        clock = [1000.0]
+        body = io.BytesIO(b'{"message":"API rate limit exceeded"}')
+        error = urllib.error.HTTPError(updater.RELEASE_API_URL, 403, "Forbidden",
+                                       {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "2000"}, body)
+        response = io.BytesIO(json.dumps([release()]).encode())
+        with patch.object(updater.time, "time", side_effect=lambda: clock[0]), \
+                patch.object(updater, "_release_notes_ssl_context", return_value=None), \
+                patch.object(updater.urllib.request, "urlopen", side_effect=[error, response]) as request:
+            for operation in (updater.get_update_release, updater.get_release_notes,
+                              lambda: updater.get_update_release(force=True),
+                              lambda: updater._verify_selected_release("stable", updater._release_target(release()))):
+                with self.assertRaisesRegex(updater.ReleaseCheckError, "GitHub update limit reached"):
+                    operation()
+            self.assertTrue(body.closed)
+            self.assertEqual(request.call_count, 1)
+            clock[0] = 2002.0
+            self.assertEqual(updater.get_update_release()["id"], 1)
+            self.assertEqual(request.call_count, 2)
+
+    def test_retry_after_and_headerless_secondary_limits(self):
+        for code, headers, message, deadline in (
+            (403, {"Retry-After": "120"}, "secondary rate limit", 1121.0),
+            (403, {}, "secondary rate limit", 1060.0),
+            (403, {"Retry-After": "invalid"}, "secondary rate limit", 1060.0),
+            (429, {"Retry-After": "120"}, "Too many requests", 1121.0),
+            (429, {"Retry-After": "Thu, 01 Jan 1970 00:20:00 GMT"}, "Too many requests", 1201.0),
+            (403, {"Retry-After": "120", "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1100"},
+             "rate limit", 1121.0),
+        ):
+            with self.subTest(headers=headers):
+                error = urllib.error.HTTPError("https://api.github.com/", code, "Forbidden", headers,
+                                               io.BytesIO(message.encode()))
+                try:
+                    with patch.object(updater.time, "time", return_value=1000.0):
+                        self.assertEqual(updater._rate_limit_retry_at(error), deadline)
+                finally:
+                    error.close()
+
+    def test_failed_forced_refresh_cannot_reuse_old_success(self):
+        with patch.object(updater, "_fetch_json", side_effect=[[release()], OSError("offline"), OSError("offline")]) as fetch:
+            updater.get_update_release()
+            with self.assertRaises(OSError):
+                updater.get_update_release(force=True)
+            with self.assertRaises(OSError):
+                updater.get_update_release()
+            self.assertEqual(fetch.call_count, 3)
+
+    def test_other_forbidden_responses_are_not_reported_as_rate_limits(self):
+        body = io.BytesIO(b'{"message":"Resource not accessible"}')
+        error = urllib.error.HTTPError(updater.RELEASE_API_URL, 403, "Forbidden", {}, body)
+        with patch.object(updater, "_release_notes_ssl_context", return_value=None), \
+                patch.object(updater.urllib.request, "urlopen", side_effect=error):
+            with self.assertRaises(urllib.error.HTTPError):
+                updater._fetch_json(updater.RELEASE_API_URL)
+        self.assertTrue(body.closed)
+        self.assertEqual(updater._release_retry_at, 0.0)
 
 
 class InstallTests(unittest.TestCase):

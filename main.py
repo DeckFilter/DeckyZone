@@ -615,10 +615,15 @@ class DeckyZoneService:
             raise RuntimeError("No published stable DeckyZone release was found.")
         return target["version"]
 
-    async def get_update_release(self, channel):
+    async def get_update_release(self, channel, force=False):
         plugin_update.validate_channel(channel)
+        if type(force) is not bool:
+            raise ValueError("Refresh must be a boolean.")
         try:
-            return await asyncio.to_thread(plugin_update.get_update_release, channel)
+            return await asyncio.to_thread(plugin_update.get_update_release, channel, force)
+        except plugin_update.ReleaseCheckError as error:
+            self.logger.warning(f"Could not check for DeckyZone updates: {error}")
+            raise RuntimeError(str(error)) from error
         except Exception as error:
             self.logger.error(f"Failed to fetch DeckyZone update: {error}")
             raise RuntimeError("Failed to check for updates. Try again.") from error
@@ -641,6 +646,9 @@ class DeckyZoneService:
         plugin_update.validate_channel(channel)
         try:
             return await asyncio.to_thread(plugin_update.get_release_notes, channel)
+        except plugin_update.ReleaseCheckError as error:
+            self.logger.warning(f"Could not fetch DeckyZone release notes: {error}")
+            raise RuntimeError(str(error)) from error
         except Exception as error:
             self.logger.error(f"Failed to fetch DeckyZone release notes: {error}")
             raise RuntimeError("Failed to fetch DeckyZone release notes.") from error
@@ -5140,8 +5148,8 @@ class Plugin:
     async def get_latest_version_num(self):
         return await self.service.get_latest_version_num()
 
-    async def get_update_release(self, channel):
-        return await self.service.get_update_release(channel)
+    async def get_update_release(self, channel, force=False):
+        return await self.service.get_update_release(channel, force)
 
     async def set_update_channel(self, channel):
         return await self.service.set_update_channel(channel)
