@@ -693,12 +693,13 @@ export default definePlugin(() => {
     Navigation.Navigate('/library/home')
     Navigation.CloseSideMenus()
   })
-  const remainingBatteryTimeAutoDisabledListener = addEventListener(
+  const remainingBatteryTimeAutoDisabledListener = addEventListener<[available?: boolean]>(
     REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
-    () => {
+    (available) => {
       deckyZoneState.updateSettings((currentSettings) => ({
         ...currentSettings,
         remainingBatteryTimeFixEnabled: false,
+        remainingBatteryTimeFixAvailable: available ?? currentSettings.remainingBatteryTimeFixAvailable,
       }))
     },
   )

@@ -3,6 +3,7 @@ import inspect
 import json
 import math
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -34,12 +35,52 @@ DEFAULT_STATE_REFRESH_INTERVAL_SECONDS = 1.0
 NATIVE_TIME_RATIO_MIN = 0.2
 NATIVE_TIME_RATIO_MAX = 5.0
 NATIVE_CONFIRMATION_UPDATES = 2
+VPOWER_NATIVE_ESTIMATES_VERSION = (1, 6, 4)
+VPOWER_PACKAGE_DATABASES = (
+    "usr/lib/holo/pacmandb/local",
+    "usr/lib/sysimage/pacman/local",
+    "var/lib/pacman/local",
+)
 
 UPOWER_STATE_TO_VPOWER_STATUS = {
     UPOWER_STATE_CHARGING: "Charging",
     UPOWER_STATE_DISCHARGING: "Discharging",
     UPOWER_STATE_FULLY_CHARGED: "Full",
 }
+
+
+def installed_vpower_version(root=Path("/")):
+    """Read installed package metadata; vpower has no safe version-only CLI."""
+    try:
+        records = {}
+        for database in VPOWER_PACKAGE_DATABASES:
+            for path in (root / database).glob("vpower-*/desc"):
+                fields = {}
+                for section in path.read_text(encoding="utf-8").strip().split("\n\n"):
+                    lines = section.splitlines()
+                    if len(lines) == 2:
+                        fields[lines[0]] = lines[1]
+                if fields.get("%NAME%") == "vpower":
+                    records[path.resolve()] = fields.get("%VERSION%")
+        if len(records) == 1:
+            return next(iter(records.values()))
+    except (OSError, UnicodeError):
+        pass
+    return None
+
+
+def vpower_has_native_battery_estimates(root=Path("/")):
+    version = installed_vpower_version(root)
+    match = re.fullmatch(
+        r"(?:[0-9]+:)?([0-9]+)\.([0-9]+)\.([0-9]+)(?:-[0-9]+(?:\.[0-9]+)*)?",
+        version or "",
+    )
+    if match is None:
+        return False
+    try:
+        return tuple(map(int, match.groups())) >= VPOWER_NATIVE_ESTIMATES_VERSION
+    except ValueError:
+        return False
 
 
 def parse_busctl_int64(output):
@@ -649,10 +690,12 @@ class RemainingBatteryTimeController:
         poll_interval_seconds=DEFAULT_POLL_INTERVAL_SECONDS,
         refresh_interval_seconds=DEFAULT_REFRESH_INTERVAL_SECONDS,
         state_refresh_interval_seconds=DEFAULT_STATE_REFRESH_INTERVAL_SECONDS,
+        native_support_available=None,
     ):
         self.bridge = bridge
         self.ensure_vpower_running = ensure_vpower_running
         self.on_native_support = on_native_support
+        self.native_support_available = native_support_available or (lambda: False)
         self.sleep = sleep
         self.logger = logger
         self.monotonic = monotonic
@@ -690,6 +733,10 @@ class RemainingBatteryTimeController:
             await self.task
 
         try:
+            if self.native_support_available():
+                await self._handle_native_support()
+                return False
+
             await asyncio.to_thread(self.ensure_vpower_running)
             time_to_empty, time_to_full = await self._read_remaining_times()
             self.battery_state = None
@@ -907,6 +954,9 @@ class RemainingBatteryTimeController:
                 self.last_state_error = error_message
 
     def _reconcile(self):
+        if self.native_support_available():
+            return {"state": RECONCILE_NATIVE}
+
         if (
             callable(getattr(self.bridge, "read_battery_state", None))
             and self._bridge_accepts_battery_state

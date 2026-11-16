@@ -55,7 +55,7 @@ CPU Boost separately requires Manager's CPU boost interface.
 
 Disable PowerControl and SimpleDeckyTDP in Decky settings before using native controls, CPU boost or Manual/Curve fan mode.
 
-- The battery time estimate fix is available only on SteamOS.
+- The battery time estimate fix is available only on SteamOS. It is hidden and automatically disabled when installed vpower 1.6.4 or newer includes the native fix.
 - Green Tint Compensation may not correct green tint at low brightness.
 
 If controller input stops responding, try **Troubleshooting > Reapply Controller Profile**. It reloads the controller configuration without deleting saved settings.

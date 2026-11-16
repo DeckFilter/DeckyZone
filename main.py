@@ -290,6 +290,9 @@ class DeckyZoneService:
                 on_native_support=(
                     self._disable_remaining_battery_time_fix_for_native_support
                 ),
+                native_support_available=(
+                    remaining_battery_time.vpower_has_native_battery_estimates
+                ),
                 sleep=sleep,
                 logger=logger,
             )
@@ -904,7 +907,10 @@ class DeckyZoneService:
     def _current_settings(self):
         display_profile_settings = self._get_display_profile_settings()
         controller_mode_snapshot = self._get_controller_mode_snapshot()
-        remaining_battery_time_fix_available = self._is_steamos()
+        remaining_battery_time_fix_available = (
+            self._is_steamos()
+            and not remaining_battery_time.vpower_has_native_battery_estimates()
+        )
         return {
             "legacyLayoutEnabled": self.settings_store.get_legacy_layout_enabled(),
             "controllerMode": controller_mode_snapshot["mode"],
@@ -3923,15 +3929,29 @@ class DeckyZoneService:
         self.settings_store.set_remaining_battery_time_fix_enabled(False)
         self.logger.info(
             "Disabled remaining battery time fix because vpower now provides "
-            "a valid estimate."
+            "native battery estimates."
         )
         try:
-            await decky.emit(REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT)
+            await decky.emit(
+                REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
+                self._is_steamos()
+                and not remaining_battery_time.vpower_has_native_battery_estimates(),
+            )
         except Exception as error:
             self.logger.warning(
                 "Failed to notify frontend about remaining battery time "
                 f"auto-disable: {error}"
             )
+
+    async def reconcile_remaining_battery_time_fix(self):
+        if not remaining_battery_time.vpower_has_native_battery_estimates():
+            return False
+
+        async with self._remaining_battery_time_transition_lock:
+            await self.stop_remaining_battery_time_bridge()
+            if self.settings_store.get_remaining_battery_time_fix_enabled():
+                await self._disable_remaining_battery_time_fix_for_native_support()
+        return True
 
     async def start_remaining_battery_time_bridge(self, retry_on_error=False):
         if not self._is_steamos():
@@ -5208,6 +5228,7 @@ class Plugin:
             return
         await self.fan_control.startup()
         await self.cpu_boost.startup()
+        await self.service.reconcile_remaining_battery_time_fix()
         settings = self.service.get_settings()
         if not self._controller_startup_deferred:
             await self.service.start_controller_mode_monitor()
