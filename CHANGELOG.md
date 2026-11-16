@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.6] - 2026-10-23
+
+
+### Features
+
+- Updater progress and restart prompts (#60) by @felixhirschfeld
+
+
+
+### Fixes
+
+- Prevent duplicate controllers after sleep/wake (#59) by @felixhirschfeld
+
+
 ## [0.6.5] - 2026-10-22
 
 
