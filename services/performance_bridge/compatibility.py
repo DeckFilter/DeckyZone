@@ -1,5 +1,6 @@
-"""Read-only version and interface checks for the SteamOS Manager bridge."""
+"""Read-only capability and interface checks for the SteamOS Manager bridge."""
 
+from functools import lru_cache
 from pathlib import Path
 import re
 import shlex
@@ -10,8 +11,7 @@ import xml.etree.ElementTree as ET
 from .sysfs import Unavailable
 
 
-# 26.4.0 added --device-config and fixed remote TDP registration at startup.
-MINIMUM_MANAGER_VERSION = (26, 4, 0)
+MANAGER_BINARY = "usr/lib/steamos-manager"
 MANAGER_SCHEMA = "usr/share/dbus-1/interfaces/com.steampowered.SteamOSManager1.xml"
 DEVICE_CONFIG = "usr/share/steamos-manager/devices/zotac-gaming-zone.toml"
 INTERFACE_PREFIX = "com.steampowered.SteamOSManager1."
@@ -28,21 +28,6 @@ REQUIRED_PROPERTIES = {
     },
     "RemoteInterface1": {"RemoteInterfaces": ("as", "read")},
 }
-# SteamOS's package database, followed by the standard Arch locations.
-PACKAGE_DATABASES = (
-    "usr/lib/holo/pacmandb/local",
-    "usr/lib/sysimage/pacman/local",
-    "var/lib/pacman/local",
-)
-
-
-def manager_release(version):
-    """Compare the upstream release, not Arch's epoch or package revision.
-
-    Reject development/prerelease labels instead of guessing their ordering.
-    """
-    match = re.fullmatch(r"(?:[0-9]+:)?([0-9]+)\.([0-9]+)\.([0-9]+)(?:-[0-9]+(?:\.[0-9]+)*)?", version or "")
-    return tuple(map(int, match.groups())) if match else None
 
 
 def check_interface_schema(xml, *, require_tdp=True):
@@ -66,8 +51,17 @@ def check_interface_schema(xml, *, require_tdp=True):
 def adapted_device_config(original):
     """Keep stock settings except the two power interfaces owned by the bridge."""
     config = tomllib.loads(original)
+    profile = config.get("performance_profile", {})
+    legacy_driver = (
+        profile.get("platform_profile_name") == "zotac_zone_platform"
+        and "driver" not in profile
+    )
+    acpi_driver = (
+        profile.get("driver") == {"acpi": {"name": "zotac_zone_platform"}}
+        and "platform_profile_name" not in profile
+    )
     if (
-        config.get("performance_profile", {}).get("platform_profile_name") != "zotac_zone_platform"
+        not (legacy_driver or acpi_driver)
         or config.get("tdp_limit", {}).get("method") != "firmware_attribute"
         or config["tdp_limit"].get("firmware_attribute", {}).get("attribute") != "zotac_zone_platform"
     ):
@@ -89,21 +83,35 @@ def adapted_device_config(original):
     return adapted
 
 
-def check_manager_options():
-    """Run only on setup; never spawn Manager from the hardware monitor."""
+@lru_cache(maxsize=4)
+def _check_manager_options(binary, identity):
+    """Cache successful probes until the installed executable changes."""
     try:
         result = subprocess.run(
-            ["/usr/lib/steamos-manager", "--help"], capture_output=True,
+            [binary, "--help"], capture_output=True,
             text=True, check=True, timeout=3,
         )
-    except (OSError, subprocess.SubprocessError) as error:
+    except (OSError, UnicodeError, subprocess.SubprocessError) as error:
         raise Unavailable("Cannot verify SteamOS Manager's configuration options") from error
     if not re.search(r"(?:^|\s)--device-config(?:\s|=|$)", result.stdout):
         raise Unavailable("SteamOS Manager does not support device configuration overrides")
+    if not re.search(r"(?:^|\s)--root(?:\s|=|$)", result.stdout):
+        raise Unavailable("SteamOS Manager does not support the root daemon")
+
+
+def check_manager_options(root=Path("/")):
+    """Probe installed CLI capabilities; never run from the hardware monitor."""
+    binary = root / MANAGER_BINARY
+    try:
+        info = binary.stat()
+    except OSError as error:
+        raise Unavailable("Cannot verify installed SteamOS Manager executable") from error
+    identity = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    _check_manager_options(str(binary), identity)
 
 
 def environment_status(root=Path("/")):
-    status = {"os_id": None, "os_version": None, "manager_version": None}
+    status = {"os_id": None, "os_version": None}
     blockers = []
     try:
         release = root / "etc/os-release"
@@ -119,34 +127,11 @@ def environment_status(root=Path("/")):
                 values[key] = parts[0]
         status.update(os_id=values.get("ID"), os_version=values.get("VERSION_ID"))
     except (OSError, ValueError, UnicodeError):
-        blockers.append("Cannot verify operating system identity")
-    if status["os_id"] not in ("steamos", "cachyos"):
-        blockers.append("Native performance controls require SteamOS or CachyOS")
-
-    # Read installed package metadata, not a cached query or a release-channel
-    # label. The normal one-second monitor sees upgrades without spawning pacman.
+        pass  # OS identity is diagnostic information, not a compatibility gate.
     try:
-        records = {}
-        for database in PACKAGE_DATABASES:
-            for path in (root / database).glob("steamos-manager-*/desc"):
-                fields = {}
-                for section in path.read_text().strip().split("\n\n"):
-                    lines = section.splitlines()
-                    if len(lines) == 2:
-                        fields[lines[0]] = lines[1]
-                if fields.get("%NAME%") == "steamos-manager":
-                    records[path.resolve()] = fields.get("%VERSION%")
-        if len(records) != 1:
-            raise ValueError("Missing or ambiguous Manager package metadata")
-        status["manager_version"] = next(iter(records.values()))
-    except (OSError, ValueError, UnicodeError):
-        blockers.append("Cannot verify installed SteamOS Manager package")
-    release = manager_release(status["manager_version"])
-    if release is None or release < MINIMUM_MANAGER_VERSION:
-        blockers.append(
-            "Requires SteamOS Manager 26.4.0 or newer; "
-            f"found {status['manager_version'] or 'unknown'}"
-        )
+        check_manager_options(root)
+    except Unavailable as error:
+        blockers.append(str(error))
     # These are installed contracts, not proof of a live relay. Enablement also
     # checks the session bus after Manager has registered our provider.
     try:

@@ -14,7 +14,7 @@ from xml.sax.saxutils import quoteattr
 from .ryzenadj import BINARY_SHA256, INSTALL, check_device, check_ownership
 from .compatibility import (
     DEVICE_CONFIG, INTERFACE_PREFIX, adapted_device_config, check_environment,
-    check_interface_schema, check_manager_options,
+    check_interface_schema,
 )
 from .sysfs import PROFILES, Unavailable
 from .context import CONTEXT, decky_context, installed_context
@@ -177,7 +177,6 @@ def preflight(payload):
     decky_context().account()
     check_device()
     check_ownership()
-    check_manager_options()
     payload_manifest(payload)
     check_existing()
 

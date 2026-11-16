@@ -70,8 +70,9 @@ def inspect(root: Path = Path("/")) -> dict:
     try:
         config = tomllib.loads(config_path.read_text())
         report["manager_tdp_method"] = config.get("tdp_limit", {}).get("method")
-        report["manager_profile_driver"] = config.get("performance_profile", {}).get(
-            "platform_profile_name"
+        profile = config.get("performance_profile", {})
+        report["manager_profile_driver"] = profile.get("platform_profile_name") or (
+            profile.get("driver", {}).get("acpi", {}).get("name")
         )
         if (
             report["manager_profile_driver"] == DRIVER

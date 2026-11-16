@@ -7,7 +7,7 @@ import pytest
 
 from services.performance_bridge.controller import Controller
 from services.performance_bridge.compatibility import (
-    DEVICE_CONFIG, MANAGER_SCHEMA, adapted_device_config, check_environment,
+    DEVICE_CONFIG, MANAGER_BINARY, MANAGER_SCHEMA, adapted_device_config, check_environment,
 )
 from services.performance_bridge.ryzenadj import RyzenAdjBackend, check_ownership
 from services.performance_bridge.sysfs import Unavailable
@@ -128,9 +128,10 @@ def environment(tmp_path):
     release = tmp_path / "etc/os-release"
     release.parent.mkdir()
     release.write_text('ID=steamos\nVERSION_ID="3.9.1"\n')
-    package = tmp_path / "usr/lib/holo/pacmandb/local/steamos-manager-26.4.1-2/desc"
-    package.parent.mkdir(parents=True)
-    package.write_text("%NAME%\nsteamos-manager\n\n%VERSION%\n26.4.1-2\n")
+    manager = tmp_path / MANAGER_BINARY
+    manager.parent.mkdir(parents=True)
+    manager.write_text("#!/bin/sh\nprintf '%s\\n' '--device-config <PATH>' '--root'\n")
+    manager.chmod(0o755)
     schema = tmp_path / MANAGER_SCHEMA
     schema.parent.mkdir(parents=True)
     schema.write_text('''<node>
@@ -171,22 +172,20 @@ driver = "amdgpu"
     return tmp_path
 
 
-def test_os_identity_is_not_inferred_from_display_name(environment):
-    (environment / "etc/os-release").write_text(
-        'ID=arch\nID_LIKE=steamos\nPRETTY_NAME="SteamOS"\n'
-    )
-    with pytest.raises(Unavailable, match="require SteamOS or CachyOS"):
-        check_environment(environment)
+@pytest.mark.parametrize("os_id", ("steamos", "cachyos", "bazzite", "nobara", "other"))
+def test_manager_capabilities_allow_any_distro_without_package_metadata(environment, os_id):
+    (environment / "etc/os-release").write_text(f'ID={os_id}\n')
+    assert check_environment(environment)["os_id"] == os_id
 
 
-def test_cachyos_manager_uses_arch_package_database(environment):
-    (environment / "etc/os-release").write_text('ID=cachyos\n')
-    stock = next(environment.glob("usr/lib/holo/pacmandb/local/*/desc"))
-    package = environment / "var/lib/pacman/local/steamos-manager-26.4.1-3/desc"
-    package.parent.mkdir(parents=True)
-    package.write_text("%NAME%\nsteamos-manager\n\n%VERSION%\n26.4.1-3\n")
-    stock.unlink()
-    assert check_environment(environment)["os_id"] == "cachyos"
+@pytest.mark.parametrize("contents", (None, 'ID="unterminated\n'))
+def test_unavailable_os_identity_does_not_block_manager(environment, contents):
+    release = environment / "etc/os-release"
+    if contents is None:
+        release.unlink()
+    else:
+        release.write_text(contents)
+    assert check_environment(environment)["os_id"] is None
 
 
 @pytest.mark.parametrize("plugin", ("PowerControl", "SimpleDeckyTDP"))
@@ -276,18 +275,47 @@ def test_session_commands_use_actual_decky_account(monkeypatch):
     assert calls[0][1]["group"] == 1002
 
 
-@pytest.mark.parametrize("version", ("26.4.0-1", "1:26.10.0-1"))
-def test_compatible_manager_releases_ignore_package_revision(environment, version):
-    package = next(environment.glob("usr/lib/holo/pacmandb/local/*/desc"))
-    package.write_text(f"%NAME%\nsteamos-manager\n\n%VERSION%\n{version}\n")
-    assert check_environment(environment)["manager_version"] == version
+@pytest.mark.parametrize("help_text,reason", (
+    ("--root", "device configuration overrides"),
+    ("--device-config <PATH>", "root daemon"),
+))
+def test_missing_manager_capabilities_are_rejected(environment, help_text, reason):
+    manager = environment / MANAGER_BINARY
+    manager.write_text(f"#!/bin/sh\nprintf '%s\\n' '{help_text}'\n")
+    with pytest.raises(Unavailable, match=reason):
+        check_environment(environment)
 
 
-@pytest.mark.parametrize("version", ("26.3.0-1", "26.4.0rc1-1", "unknown"))
-def test_old_or_unrecognized_manager_is_rejected(environment, version):
-    package = next(environment.glob("usr/lib/holo/pacmandb/local/*/desc"))
-    package.write_text(f"%NAME%\nsteamos-manager\n\n%VERSION%\n{version}\n")
-    with pytest.raises(Unavailable, match="Requires SteamOS Manager 26.4.0 or newer"):
+def test_manager_probe_cache_invalidates_after_executable_replacement(environment):
+    from services.performance_bridge.compatibility import _check_manager_options
+
+    before = _check_manager_options.cache_info()
+    check_environment(environment)
+    check_environment(environment)
+    cached = _check_manager_options.cache_info()
+    assert cached.misses == before.misses + 1
+    assert cached.hits == before.hits + 1
+    manager = environment / MANAGER_BINARY
+    replacement = manager.with_suffix(".new")
+    replacement.write_text("#!/bin/sh\nprintf '%s\\n' '--root'\n")
+    replacement.chmod(0o755)
+    replacement.replace(manager)
+    with pytest.raises(Unavailable, match="device configuration overrides"):
+        check_environment(environment)
+
+
+@pytest.mark.parametrize("failure", ("timeout", "exit"))
+def test_manager_probe_failure_blocks_setup(environment, monkeypatch, failure):
+    import subprocess
+    from services.performance_bridge import compatibility
+
+    def fail(command, **kwargs):
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(command, 3)
+        raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(compatibility.subprocess, "run", fail)
+    with pytest.raises(Unavailable, match="Cannot verify SteamOS Manager's configuration options"):
         check_environment(environment)
 
 
@@ -317,6 +345,29 @@ def test_adapting_commented_headers_preserves_unrelated_device_settings(environm
     assert adapted["gpu_performance"] == {"driver": "amdgpu"}
 
 
+def test_adapting_acpi_profile_config_preserves_unrelated_device_settings(environment):
+    import tomllib
+
+    original = (environment / DEVICE_CONFIG).read_text().replace(
+        'platform_profile_name = "zotac_zone_platform"',
+        'suggested_default = "custom"\n[performance_profile.driver.acpi]\nname = "zotac_zone_platform"',
+    )
+    adapted = tomllib.loads(adapted_device_config(original))
+    assert "performance_profile" not in adapted
+    assert adapted["tdp_limit"] == {"method": "remote_interface"}
+    assert adapted["device"] == tomllib.loads(original)["device"]
+    assert adapted["gpu_performance"] == {"driver": "amdgpu"}
+
+
+def test_ambiguous_profile_driver_requires_revalidation(environment):
+    original = (environment / DEVICE_CONFIG).read_text().replace(
+        '[tdp_limit]',
+        '[performance_profile.driver.acpi]\nname = "zotac_zone_platform"\n[tdp_limit]',
+    )
+    with pytest.raises(Unavailable, match="power configuration changed"):
+        adapted_device_config(original)
+
+
 def test_new_stock_power_backend_requires_revalidation(environment):
     config = environment / DEVICE_CONFIG
     config.write_text(config.read_text().replace('method = "firmware_attribute"', 'method = "amdgpu_hwmon"'))
@@ -325,7 +376,7 @@ def test_new_stock_power_backend_requires_revalidation(environment):
 
 
 def test_missing_manager_blocks_setup(environment):
-    next(environment.glob("usr/lib/holo/pacmandb/local/*/desc")).unlink()
+    (environment / MANAGER_BINARY).unlink()
     with pytest.raises(Unavailable, match="Cannot verify installed"):
         check_environment(environment)
 
@@ -341,6 +392,17 @@ def test_enabling_either_power_plugin_stops_before_power_write(
     controller = Controller(backend, lambda: check_ownership(environment))
     loader.write_text('{"disabled_plugins": []}')
     with pytest.raises(Unavailable, match=f"Disable {plugin}"):
+        controller.change(watts=12)
+    assert not backend.calls
+
+
+@pytest.mark.parametrize("process", ("powerstation", "tuned", "tuned-ppd"))
+def test_other_power_daemons_block_before_power_write(environment, backend, process):
+    comm = environment / "proc/123/comm"
+    comm.parent.mkdir(parents=True)
+    controller = Controller(backend, lambda: check_ownership(environment))
+    comm.write_text(process + "\n")
+    with pytest.raises(Unavailable, match=f"Another power writer is running: {process}"):
         controller.change(watts=12)
     assert not backend.calls
 

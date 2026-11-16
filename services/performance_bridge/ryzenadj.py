@@ -81,7 +81,10 @@ def check_ownership(root=Path("/")):
             name = path.read_text().strip()
         except FileNotFoundError:
             continue
-        if name in ("hhd", "adjustor", "power-profiles-d", "ryzenadj"):
+        if name in (
+            "hhd", "adjustor", "power-profiles-d", "ryzenadj",
+            "powerstation", "tuned", "tuned-ppd",
+        ):
             raise Unavailable(f"Another power writer is running: {name}")
 
 
