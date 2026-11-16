@@ -1,5 +1,3 @@
-// Adapted from PowerControl (BSD-3-Clause), copyright (c) 2023 Gawah.
-// Original: src/util/position.ts. Full notice is included in LICENSE.
 export class FanPosition {
   temperature?: number;
   fanRPMpercent?: number;

@@ -1,6 +1,4 @@
-// Adapted from PowerControl's fan.tsx/fanCanvas.tsx (BSD-3-Clause).
-// Copyright (c) 2023 Gawah. Full notice in LICENSE.
-import { DialogButton, Field, Focusable, gamepadDialogClasses, SliderField } from '@decky/ui'
+import { DialogButton, Field, Focusable, PanelSection, SliderField } from '@decky/ui'
 import { type ReactNode, type PointerEvent, useEffect, useRef, useState } from 'react'
 import { FiArrowLeft, FiArrowRight, FiPlus, FiTrash2 } from 'react-icons/fi'
 import type { FanPoint } from '../../types/plugin'
@@ -29,7 +27,7 @@ function CurveControlButton({ children, action, onClick, disabled }: {
   return (
     <DialogButton
       style={{ height: '32px', flex: '1', minWidth: 0, padding: '10px 12px',
-        display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 4px' }}
+        display: 'flex', justifyContent: 'center', alignItems: 'center' }}
       disabled={disabled} onOKActionDescription={action} onClick={onClick} aria-label={action}
     >{children}</DialogButton>
   )
@@ -96,7 +94,7 @@ export default function FanCurveEditor({
       const label = `(${Math.trunc(point.temperature!)}°C,${Math.trunc(point.fanRPMpercent!)}%)`
       const [tx, ty] = getTextPosByCanvasPos(x, y, WIDTH, HEIGHT, ctx.measureText(label).width)
       ctx.beginPath()
-      ctx.fillStyle = point === selected.current ? '#FF0000' : '#1A9FFF'
+      ctx.fillStyle = point === selected.current ? '#FFFFFF' : '#1A9FFF'
       ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill()
       ctx.fillStyle = '#FFFFFF'
       if (point === selected.current) ctx.fillText(label, tx, ty)
@@ -154,70 +152,71 @@ export default function FanCurveEditor({
 
   return (
     <div aria-label="Fan curve editor">
-      <style>{`.dz-fan-curve-slider .${gamepadDialogClasses.FieldLabelValue} { white-space: nowrap; flex-shrink: 0; }`}</style>
-      <Focusable flow-children="row" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px', padding: '12px 0 8px' }}>
-        <div style={{ minWidth: 0 }}>
-          <Field childrenLayout="below" padding="none">
-            <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} aria-label="Fan curve: temperature and fan speed"
-              style={{ display: 'block', width: '100%', height: 'auto', padding: 0, backgroundColor: '#1a1f2c', touchAction: 'none' }}
-              onPointerDown={event => {
-                if (disabled || pointer.current) return
-                const point = position(event)
-                pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY, time: Date.now(), target: near(point), moved: false }
-                event.currentTarget.setPointerCapture(event.pointerId)
-              }}
-              onPointerMove={event => {
-                const drag = pointer.current
-                if (disabled || !drag || drag.id !== event.pointerId) return
-                if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 3) drag.moved = true
-                if (drag.moved && drag.target) {
-                  const point = position(event)
-                  drag.target.temperature = Math.round(point.temperature!)
-                  drag.target.fanRPMpercent = Math.round(point.fanRPMpercent!)
-                  selected.current = drag.target; refresh(true)
-                }
-              }}
-              onPointerUp={event => {
-                const drag = pointer.current
-                if (!drag || drag.id !== event.pointerId) return
-                pointer.current = null
-                event.currentTarget.releasePointerCapture(event.pointerId)
-                if (disabled || drag.moved) return
-                const point = position(event)
-                const hit = near(point)
-                if (Date.now() - drag.time > 1000) {
-                  selected.current = hit
-                } else if (hit) {
-                  selected.current = hit; remove()
-                } else if (points.current.length < 16) {
-                  const added = new FanPosition(Math.round(point.temperature!), Math.round(point.fanRPMpercent!))
-                  points.current.push(added); selected.current = added
-                }
-                refresh(true)
-              }}
-              onPointerCancel={() => { pointer.current = null }}
-              onLostPointerCapture={() => { pointer.current = null }}
-            />
-          </Field>
+      <style>{`.dz-fan-curve-controls > div { padding-right: 0; }`}</style>
+      <div style={{ marginBlockEnd: '20px', marginBlockStart: 0,
+        display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', padding: '8px 0' }}>
+        <canvas ref={canvasRef} width={WIDTH} height={HEIGHT} aria-label="Fan curve: temperature and fan speed"
+              style={{ width: '300px', height: '300px', padding: 0, boxSizing: 'border-box',
+            border: '1px solid #1a9fff', borderRadius: '4px', backgroundColor: '#1a1f2c', touchAction: 'none' }}
+          onPointerDown={event => {
+            if (disabled || pointer.current) return
+            const point = position(event)
+            pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY, time: Date.now(), target: near(point), moved: false }
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }}
+          onPointerMove={event => {
+            const drag = pointer.current
+            if (disabled || !drag || drag.id !== event.pointerId) return
+            if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 3) drag.moved = true
+            if (drag.moved && drag.target) {
+              const point = position(event)
+              drag.target.temperature = Math.round(point.temperature!)
+              drag.target.fanRPMpercent = Math.round(point.fanRPMpercent!)
+              selected.current = drag.target; refresh(true)
+            }
+          }}
+          onPointerUp={event => {
+            const drag = pointer.current
+            if (!drag || drag.id !== event.pointerId) return
+            pointer.current = null
+            event.currentTarget.releasePointerCapture(event.pointerId)
+            if (disabled || drag.moved) return
+            const point = position(event)
+            const hit = near(point)
+            if (Date.now() - drag.time > 1000) {
+              selected.current = hit
+            } else if (hit) {
+              selected.current = hit; remove()
+            } else if (points.current.length < 16) {
+              const added = new FanPosition(Math.round(point.temperature!), Math.round(point.fanRPMpercent!))
+              points.current.push(added); selected.current = added
+            }
+            refresh(true)
+          }}
+          onPointerCancel={() => { pointer.current = null }}
+          onLostPointerCapture={() => { pointer.current = null }}
+        />
+        <div className="dz-fan-curve-controls" style={{ width: '100%', minWidth: 0, height: '300px', overflowX: 'hidden', overflowY: 'scroll' }}>
+          <PanelSection>
+          <Field childrenLayout="below" padding="standard" highlightOnFocus={false}>
+            <Focusable style={{ width: '100%', display: 'flex', gap: '8px' }}>
+                <CurveControlButton action="Add point" onClick={add} disabled={disabled || points.current.length >= 16}><FiPlus /></CurveControlButton>
+                <CurveControlButton action="Previous point" onClick={() => select(-1)} disabled={disabled}><FiArrowLeft /></CurveControlButton>
+                <CurveControlButton action="Next point" onClick={() => select(1)} disabled={disabled}><FiArrowRight /></CurveControlButton>
+                <CurveControlButton action="Delete point" onClick={remove} disabled={disabled || !selected.current || points.current.length <= 2}><FiTrash2 /></CurveControlButton>
+              </Focusable>
+            </Field>
+          <SliderField label="Temperature" value={selected.current?.temperature ?? 0} valueSuffix="°C" showValue layout="below"
+              disabled={disabled || !selected.current} step={1} min={0} max={100} onChange={v => update('temperature', v)} />
+          <SliderField label="Fan speed" value={selected.current?.fanRPMpercent ?? 0} valueSuffix="%" showValue layout="below"
+              disabled={disabled || !selected.current} step={1} min={0} max={100} onChange={v => update('fanRPMpercent', v)} />
+          </PanelSection>
         </div>
-        <Focusable flow-children="column" style={{ minWidth: 0 }}>
-          <Field childrenLayout="below" padding="none" highlightOnFocus={false}>
-            <Focusable flow-children="row" style={{ display: 'flex', width: '100%', minWidth: 0 }}>
-              <CurveControlButton action="Add point" onClick={add} disabled={disabled || points.current.length >= 16}><FiPlus /></CurveControlButton>
-              <CurveControlButton action="Previous point" onClick={() => select(-1)} disabled={disabled}><FiArrowLeft /></CurveControlButton>
-              <CurveControlButton action="Next point" onClick={() => select(1)} disabled={disabled}><FiArrowRight /></CurveControlButton>
-              <CurveControlButton action="Delete point" onClick={remove} disabled={disabled || !selected.current || points.current.length <= 2}><FiTrash2 /></CurveControlButton>
-            </Focusable>
-          </Field>
-          <SliderField className="dz-fan-curve-slider" label="Temperature" value={selected.current?.temperature ?? 0} valueSuffix="°C" showValue layout="below"
-            disabled={disabled || !selected.current} step={1} min={0} max={100} onChange={v => update('temperature', v)} />
-          <SliderField className="dz-fan-curve-slider" label="Fan speed" value={selected.current?.fanRPMpercent ?? 0} valueSuffix="%" showValue layout="below"
-            disabled={disabled || !selected.current} step={1} min={0} max={100} onChange={v => update('fanRPMpercent', v)} />
-          <Focusable flow-children="column" style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px' }}>
-            <DialogButton style={{ minWidth: 0 }} disabled={disabled || saveDisabled} onClick={() => void save()}>{saveLabel}</DialogButton>
-            <DialogButton style={{ minWidth: 0 }} disabled={disabled || cancelDisabled} onClick={onCancel}>{cancelLabel}</DialogButton>
-          </Focusable>
-        </Focusable>
+      </div>
+      <Focusable style={{ marginBlockEnd: '-25px', marginBlockStart: '-5px',
+        display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gridTemplateRows: 'repeat(1, 1fr)', gridGap: '0.5rem', padding: '8px 0' }}>
+        <DialogButton disabled={disabled || saveDisabled} onClick={() => void save()}>{saveLabel}</DialogButton>
+        <DialogButton disabled={cancelDisabled} onClick={onCancel}>{cancelLabel}</DialogButton>
       </Focusable>
     </div>
   )

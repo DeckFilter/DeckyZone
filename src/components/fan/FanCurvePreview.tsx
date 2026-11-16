@@ -1,5 +1,3 @@
-// Adapted from PowerControl's FANDisplayComponent (BSD-3-Clause).
-// Copyright (c) 2023 Gawah. Full notice in LICENSE.
 import { useEffect, useRef } from 'react'
 import type { FanPoint } from '../../types/plugin'
 import { FanPosition, getTextPosByCanvasPos } from './position'
