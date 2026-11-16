@@ -3,22 +3,16 @@ import {
   GamepadButton,
   NavEntryPositionPreferences,
   ScrollPanel,
-  Tabs,
-  getGamepadNavigationTrees,
-  getReactInstance,
+  findModuleExport,
   type FocusableProps,
   type GamepadEvent,
 } from '@decky/ui'
 import {
-  Children,
   Fragment,
   createRef,
-  isValidElement,
-  useEffect,
   useId,
   useLayoutEffect,
   useRef,
-  useState,
   type ComponentType,
   type HTMLAttributes,
   type ReactNode,
@@ -39,27 +33,9 @@ type NavigationProps = FocusableProps & {
   fnScrollIntoViewHandler?: () => null
 }
 
-type NativeTabProps = NavigationProps & {
-  tab: string
-  activeTab: string
-  fnSetActiveTab: (id: string) => void
-}
-
-type NativeTabType = ComponentType<NativeTabProps>
 type BumperDisplayProps = {
   className?: string
-  actionButton: string | number
-}
-type Bumper = {
-  Glyph: ComponentType<BumperDisplayProps>
-  actionButton: string | number
-  className?: string
-  glyphClassName?: string
-}
-type Fiber = {
-  type?: { render?: unknown }
-  memoizedProps?: { className?: string; children?: ReactNode }
-  return?: Fiber
+  actionButton: number
 }
 
 type Props = {
@@ -73,123 +49,20 @@ const QamFocusable = Focusable as ComponentType<NavigationProps>
 const QamScrollPanel = ScrollPanel as ComponentType<HTMLAttributes<HTMLDivElement> & {
   scrollDirection: 'y'
 } & RefAttributes<HTMLDivElement>>
-const FallbackTabs = Tabs as ComponentType<Props>
-let nativeTabType: NativeTabType | null = null
-let nativeBumpers: Bumper[] = []
-
-function findNativeBumpers(document: Document) {
-  const row = document.querySelector('.FriendsListSteamDeckTabs')
-  let fiber = row ? getReactInstance(row) as Fiber | undefined : undefined
-  for (let depth = 0; fiber && depth < 24; depth++, fiber = fiber.return) {
-    if (!fiber.memoizedProps?.className?.includes('FriendsListSteamDeckTabs')) continue
-    const bumpers: Bumper[] = []
-    for (const element of Children.toArray(fiber.memoizedProps.children)) {
-      if (!isValidElement<{ className?: string; focusable?: boolean; children?: ReactNode }>(element)
-        || element.props.focusable !== false) continue
-      const glyph = element.props.children
-      if (!isValidElement<BumperDisplayProps>(glyph)
-        || !['string', 'number'].includes(typeof glyph.props.actionButton)
-        || !['function', 'object'].includes(typeof glyph.type)) continue
-      // Copy display-only fields. In particular, never retain Steam's original
-      // bumper onActivate handler, which selects tabs in the Friends store.
-      bumpers.push({
-        Glyph: glyph.type as ComponentType<BumperDisplayProps>,
-        actionButton: glyph.props.actionButton,
-        className: element.props.className,
-        glyphClassName: glyph.props.className,
-      })
-    }
-    if (bumpers.length === 2) return bumpers
-  }
-  return []
-}
-
-function findNativeTab(document: Document) {
-  // Reuse only the button component from the mounted Friends tree.
-  for (const element of document.querySelectorAll('.FriendsListSteamDeckTabs .FriendsListTab')) {
-    let fiber = getReactInstance(element) as Fiber | undefined
-    for (let depth = 0; fiber && depth < 24; depth++, fiber = fiber.return) {
-      const render = fiber.type?.render
-      if (typeof render !== 'function') continue
-      const source = Function.prototype.toString.call(render)
-      if (source.includes('FriendsListTab') && source.includes('fnSetActiveTab')) {
-        return fiber.type as NativeTabType
-      }
-    }
-  }
-  return null
-}
-
-function useNativeTab(root: RefObject) {
-  const [component, setComponent] = useState<NativeTabType | null>(() => nativeTabType)
-
-  useEffect(() => {
-    if (component) return
-    const observers = new Map<Document, MutationObserver>()
-    let interval: ReturnType<typeof setInterval> | undefined
-    let attempts = 0
-    let stopped = false
-    const stop = () => {
-      stopped = true
-      if (interval) clearInterval(interval)
-      for (const observer of observers.values()) observer.disconnect()
-      observers.clear()
-    }
-    const discover = () => {
-      if (stopped) return
-      const documents = new Set<Document>()
-      if (root.current) documents.add(root.current.ownerDocument)
-      try {
-        for (const tree of getGamepadNavigationTrees() ?? []) {
-          const document = tree.Root?.Element?.ownerDocument
-          if (document) documents.add(document)
-        }
-      } catch {
-        // Steam can recreate its navigation trees while the QAM is opening.
-      }
-      for (const document of documents) {
-        const found = findNativeTab(document)
-        if (found) {
-          nativeTabType = found
-          nativeBumpers = findNativeBumpers(document)
-          stop()
-          setComponent(() => found)
-          return
-        }
-        if (!observers.has(document) && document.documentElement) {
-          const observer = new MutationObserver((records) => {
-            if (records.some((record) => Array.from(record.addedNodes).some((node) => (
-              node.nodeType === 1 && (
-                (node as Element).matches('.FriendsListTab, .FriendsListSteamDeckTabs')
-                || (node as Element).querySelector('.FriendsListSteamDeckTabs')
-              )
-            )))) discover()
-          })
-          observer.observe(document.documentElement, { childList: true, subtree: true })
-          observers.set(document, observer)
-        }
-      }
-    }
-    discover()
-    if (!stopped) {
-      // Bound navigation-tree discovery; existing documents remain watched for
-      // Friends mounting later, and every observer is removed on unmount.
-      interval = setInterval(() => {
-        discover()
-        if (++attempts >= 30 && interval) clearInterval(interval)
-      }, 1000)
-    }
-    return stop
-  }, [component, root])
-
-  return component
-}
-
-type RefObject = { current: HTMLDivElement | null }
+const BumperGlyph = findModuleExport(value => {
+  if (typeof value !== 'function') return false
+  const source = Function.prototype.toString.call(value)
+  return source.includes('actionButton')
+    && source.includes('NavigationSourceGlyphInfo.GetValue')
+    && source.includes('Client controller glyph used outside of client')
+}) as ComponentType<BumperDisplayProps> | undefined
+const glyphActions = findModuleExport(value => value && typeof value === 'object'
+  && ['LeftBumper', 'RightBumper', 'HomeMenu', 'QuickMenu'].every(key => typeof value[key] === 'number')) as {
+  LeftBumper: number
+  RightBumper: number
+} | undefined
 
 export default function QuickAccessTabs({ tabs, activeTab, onShowTab, autoFocusContents }: Props) {
-  const root = useRef<HTMLDivElement>(null)
-  const NativeTab = useNativeTab(root)
   const contentRef = useRef<NavHandle | null>(null)
   const rowRef = useRef<NavHandle | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -211,7 +84,7 @@ export default function QuickAccessTabs({ tabs, activeTab, onShowTab, autoFocusC
     if (pendingFocus.current === 'contents') contentRef.current?.TakeFocus()
     else if (pendingFocus.current === 'tab') tabRefs.current.get(activeTab)?.current?.TakeFocus()
     pendingFocus.current = null
-  }, [activeTab, NativeTab])
+  }, [activeTab])
 
   const selectTab = (tab: string) => {
     if (tab === activeTab) return
@@ -239,38 +112,38 @@ export default function QuickAccessTabs({ tabs, activeTab, onShowTab, autoFocusC
     if (selected && tabRefs.current.get(selected.id)?.current?.TakeFocus()) event.stopPropagation()
   }
 
-  const bumper = (index: number, direction: number) => {
-    const display = nativeBumpers[index]
-    if (!display) return null
-    const { Glyph, actionButton, className, glyphClassName } = display
+  const bumper = (direction: number) => {
+    if (!BumperGlyph || !glyphActions) return null
+    const actionButton = direction < 0 ? glyphActions.LeftBumper : glyphActions.RightBumper
     return (
-      <QamFocusable className={`${className ?? ''} dz-qam-tab-bumper`} focusable={false}
+      <QamFocusable className="dz-qam-tab-bumper" focusable={false}
         onActivate={() => switchSibling(direction)} aria-hidden>
-        <Glyph actionButton={actionButton} className={glyphClassName} />
+        <BumperGlyph actionButton={actionButton} />
       </QamFocusable>
     )
   }
 
   return (
-    <div ref={root} className="dz-qam-tabs" data-native-tabs={Boolean(NativeTab)}>
+    <div className="dz-qam-tabs">
       <style>{quickAccessTabsStyles}</style>
-      {NativeTab && selected ? (
+      {selected && (
         <QamFocusable className="dz-qam-tabs-layout" flow-children="column" onButtonDown={onButtonDown}
           navEntryPreferPosition={NavEntryPositionPreferences.PREFERRED_CHILD}>
           <QamFocusable className="FriendsListSteamDeckTabs dz-qam-tab-row" role="tablist"
             aria-label="DeckyZone settings" aria-orientation="horizontal" flow-children="row"
             navRef={rowRef} navEntryPreferPosition={NavEntryPositionPreferences.PREFERRED_CHILD}>
-            {bumper(0, -1)}
+            {bumper(-1)}
             {tabs.map((tab) => (
-              <NativeTab key={tab.id} tab={tab.id} activeTab={selected.id}
-                fnSetActiveTab={selectTab} onFocus={() => selectTab(tab.id)}
+              <QamFocusable key={tab.id} focusable
+                className={`FriendsListTab${tab.id === selected.id ? ' Active' : ''}`}
+                onActivate={() => selectTab(tab.id)} onFocus={() => selectTab(tab.id)}
                 preferredFocus={tab.id === selected.id} navRef={tabRefs.current.get(tab.id)}
                 id={`${id}-${tab.id}`} role="tab" aria-selected={tab.id === selected.id}
                 aria-controls={`${id}-contents`} onOKActionDescription="Select">
                 {tab.title}
-              </NativeTab>
+              </QamFocusable>
             ))}
-            {bumper(1, 1)}
+            {bumper(1)}
           </QamFocusable>
           <QamFocusable className="dz-qam-tab-panel" navRef={contentRef}
             preferredFocus={autoFocusContents} autoFocus={autoFocusContents}
@@ -281,8 +154,6 @@ export default function QuickAccessTabs({ tabs, activeTab, onShowTab, autoFocusC
             </QamScrollPanel>
           </QamFocusable>
         </QamFocusable>
-      ) : (
-        <FallbackTabs tabs={tabs} activeTab={activeTab} onShowTab={onShowTab} autoFocusContents={autoFocusContents} />
       )}
     </div>
   )
