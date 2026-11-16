@@ -119,9 +119,9 @@ def environment_status(root=Path("/")):
                 values[key] = parts[0]
         status.update(os_id=values.get("ID"), os_version=values.get("VERSION_ID"))
     except (OSError, ValueError, UnicodeError):
-        blockers.append("Cannot verify SteamOS identity")
-    if status["os_id"] != "steamos":
-        blockers.append("Native performance bridge requires SteamOS (ID=steamos)")
+        blockers.append("Cannot verify operating system identity")
+    if status["os_id"] not in ("steamos", "cachyos"):
+        blockers.append("Native performance controls require SteamOS or CachyOS")
 
     # Read installed package metadata, not a cached query or a release-channel
     # label. The normal one-second monitor sees upgrades without spawning pacman.

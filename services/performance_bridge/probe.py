@@ -6,6 +6,7 @@ import tomllib
 
 from .sysfs import DRIVER, SysfsBackend, Unavailable
 from .compatibility import check_environment, environment_status
+from .context import decky_context
 
 
 WMI_GUID = "1f72b0f1-bfea-4472-9877-6e62937ab616"
@@ -82,14 +83,15 @@ def inspect(root: Path = Path("/")) -> dict:
         blockers.append("manager_configuration_unverified")
 
     # Presence is only a warning. Absence cannot prove that no writer is running.
-    report["potential_decky_writers"] = [
-        name
-        for name in ("PowerControl", "SimpleDeckyTDP")
-        if (root / "home/deck/homebrew/plugins" / name).exists()
-    ]
+    report["potential_decky_writers"] = []
     try:
         from .ryzenadj import power_plugin_status
 
+        homebrew = decky_context(root).path(root)
+        report["potential_decky_writers"] = [
+            name for name in ("PowerControl", "SimpleDeckyTDP")
+            if (homebrew / "plugins" / name).exists()
+        ]
         report["decky_power_plugins"] = power_plugin_status(root)
         report["powercontrol_disabled_in_decky"] = report["decky_power_plugins"][
             "PowerControl"

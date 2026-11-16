@@ -7,11 +7,11 @@ not restart Steam and never writes power limits itself.
 
 import os
 from pathlib import Path
-import pwd
 import socket
 import subprocess
 
 from .ryzenadj import active_power_plugins, power_plugin_status
+from .context import decky_context
 from .sysfs import Unavailable
 
 
@@ -72,7 +72,7 @@ def reconnect_manager():
     if not manager_accepts_reconnect():
         print("Skipping Manager reconnect: system is stopping or unavailable.")
         return
-    user = pwd.getpwnam("deck")
+    user = decky_context().account()
     runtime = Path(f"/run/user/{user.pw_uid}")
     if not (runtime / "bus").exists():
         return  # At boot, the later session starts with the provider present.

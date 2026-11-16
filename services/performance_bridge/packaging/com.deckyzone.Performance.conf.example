@@ -1,5 +1,4 @@
-<!-- Review template for /etc/dbus-1/system.d/com.deckyzone.Performance.conf.
-     The session manager runs as deck on the inspected SteamOS installation. -->
+<!-- The installer replaces the default session user with Decky's actual user. -->
 <!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>

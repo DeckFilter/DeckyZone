@@ -14,6 +14,7 @@ import subprocess
 import time
 
 from .sysfs import PROFILES, Snapshot, Unavailable
+from .context import decky_context
 
 
 LOG = logging.getLogger(__name__)
@@ -36,13 +37,14 @@ def check_device(root=Path("/")):
 
 
 def power_plugin_status(root=Path("/")):
+    homebrew = decky_context(root).path(root)
     # Loader rewrites this file in place. Wait briefly for a complete fresh
     # config; never reuse an earlier ownership decision while it is unreadable.
     for attempt, delay in enumerate((0, 0.1, 0.25, 0.5)):
         if delay:
             time.sleep(delay)
         try:
-            loader = json.loads((root / "home/deck/homebrew/settings/loader.json").read_text())
+            loader = json.loads((homebrew / "settings/loader.json").read_text())
             break
         except (json.JSONDecodeError, FileNotFoundError):
             if attempt == 3:
@@ -56,7 +58,7 @@ def power_plugin_status(root=Path("/")):
         raise Unavailable("Cannot verify disabled Decky power plugins")
     return {
         name: {
-            "installed": (root / "home/deck/homebrew/plugins" / name).exists(),
+            "installed": (homebrew / "plugins" / name).exists(),
             "disabled_in_decky": name in disabled,
         }
         for name in POWER_PLUGINS

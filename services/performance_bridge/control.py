@@ -9,6 +9,7 @@ import subprocess
 
 from .install import INSTALL, SERVICE, UNIT, install, installation_error, preflight, verify_manager_relay
 from .ryzenadj import active_power_plugins, power_plugin_status
+from .compatibility import check_environment
 from .sysfs import Unavailable
 
 PAYLOAD = Path(__file__).resolve().parents[2]
@@ -40,6 +41,7 @@ def status():
     reason = None
     conflicts = []
     try:
+        check_environment()
         conflicts = active_power_plugins(power_plugin_status())
         preflight(PAYLOAD)
     except (OSError, ValueError, Unavailable) as error:

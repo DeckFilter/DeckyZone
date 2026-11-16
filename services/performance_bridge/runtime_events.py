@@ -10,6 +10,7 @@ import struct
 from dbus_next import Message, MessageType
 
 from .ryzenadj import POWER_PLUGINS
+from .context import decky_context
 from .sysfs import Unavailable
 
 
@@ -143,7 +144,7 @@ class RuntimeEvents:
             self.watches = {}
             mask = 0x8 | 0x40 | 0x80 | 0x100 | 0x200 | 0x400 | 0x800
             for kind, suffix in (("settings", "settings"), ("plugins", "plugins")):
-                path = self.root / "home/deck/homebrew" / suffix
+                path = decky_context(self.root).path(self.root) / suffix
                 watch = library.inotify_add_watch(descriptor, os.fsencode(path), mask)
                 if watch < 0:
                     raise OSError(ctypes.get_errno(), "inotify_add_watch")

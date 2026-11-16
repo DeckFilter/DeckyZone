@@ -5,11 +5,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import pwd
 import shutil
 import subprocess
 import tempfile
 import time
+from xml.sax.saxutils import quoteattr
 
 from .ryzenadj import BINARY_SHA256, INSTALL, check_device, check_ownership
 from .compatibility import (
@@ -17,6 +17,7 @@ from .compatibility import (
     check_interface_schema, check_manager_options,
 )
 from .sysfs import PROFILES, Unavailable
+from .context import CONTEXT, decky_context, installed_context
 
 CONFIG = Path("/etc/deckyzone/zone-performance.toml")
 UNIT = "deckyzone-performance.service"
@@ -28,25 +29,26 @@ POLICY = Path("/etc/dbus-1/system.d/com.deckyzone.Performance.conf")
 REMOTE = Path("/etc/steamos-manager/remotes.d/deckyzone-performance.toml")
 MARKER = Path("/etc/deckyzone/performance-enabled")
 KEEP_LIST = Path("/etc/atomic-update.conf.d/90-deckyzone-performance.conf")
-FILES = (CONFIG, ROOT_DROPIN, USER_DROPIN, SERVICE, POLICY, REMOTE, MARKER, KEEP_LIST)
+FILES = (CONFIG, ROOT_DROPIN, USER_DROPIN, SERVICE, POLICY, REMOTE, MARKER, KEEP_LIST, CONTEXT)
 
 
 def run(*args, timeout=65):
     return subprocess.run(args, text=True, capture_output=True, check=True, timeout=timeout)
 
 
-def user_command(*args, timeout=65):
-    user = pwd.getpwnam("deck")
+def user_command(*args, timeout=65, context=None):
+    context = context or decky_context()
+    user = context.account()
     return run(
-        "/usr/sbin/runuser", "-u", "deck", "--", "/usr/bin/env",
+        "/usr/sbin/runuser", "-u", context.user, "--", "/usr/bin/env",
         f"XDG_RUNTIME_DIR=/run/user/{user.pw_uid}",
         f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{user.pw_uid}/bus",
         *args, timeout=timeout,
     )
 
 
-def user_systemctl(*args, timeout=65):
-    return user_command("/usr/bin/systemctl", "--user", *args, timeout=timeout)
+def user_systemctl(*args, timeout=65, context=None):
+    return user_command("/usr/bin/systemctl", "--user", *args, timeout=timeout, context=context)
 
 
 def verify_manager_relay():
@@ -79,15 +81,15 @@ def verify_manager_relay():
             time.sleep(0.25)  # Read-only discovery can lag behind service startup.
 
 
-def reload_managers():
+def reload_managers(context=None):
     run("/usr/bin/systemctl", "daemon-reload")
-    user_systemctl("daemon-reload")
+    user_systemctl("daemon-reload", context=context)
     run("/usr/bin/systemctl", "reset-failed", MANAGER)
     run("/usr/bin/systemctl", "restart", MANAGER)
-    user_systemctl("reset-failed", MANAGER)
+    user_systemctl("reset-failed", MANAGER, context=context)
     # A user Manager stranded by a missing device config can take systemd's
     # full 90-second stop timeout. Allow both that stop and the next startup.
-    user_systemctl("restart", MANAGER, timeout=200)
+    user_systemctl("restart", MANAGER, timeout=200, context=context)
 
 
 def atomic_write(path, data, mode=0o644):
@@ -131,7 +133,8 @@ def check_existing():
 
 def payload_manifest(payload):
     manifest = json.loads((payload / "payload.json").read_text())
-    required = {"bin/ryzenadj", "vendor/dbus_next/__init__.py", "services/performance_bridge/control.py"}
+    required = {"bin/ryzenadj", "vendor/dbus_next/__init__.py",
+                "services/performance_bridge/control.py", "services/performance_bridge/context.py"}
     if not isinstance(manifest, dict) or not required.issubset(manifest):
         raise Unavailable("Native performance payload is incomplete; reinstall DeckyZone")
     for raw, expected in manifest.items():
@@ -155,6 +158,8 @@ def installation_error(payload=None):
                 return "Bridge installation is incomplete"
             if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != manifest[str(path)]:
                 return "Bridge files have changed"
+        if installed_context() != decky_context():
+            return "Decky's user or installation path changed"
         if payload is not None:
             for raw, expected in payload_manifest(payload).items():
                 path = INSTALL / raw
@@ -169,6 +174,7 @@ def installation_error(payload=None):
 
 def preflight(payload):
     check_environment()
+    decky_context().account()
     check_device()
     check_ownership()
     check_manager_options()
@@ -176,7 +182,8 @@ def preflight(payload):
     check_existing()
 
 
-def integration_contents(payload):
+def integration_contents(payload, context=None):
+    context = context or decky_context()
     original = (Path("/") / DEVICE_CONFIG).read_text()
     adapted = adapted_device_config(original)
     packaging = payload / "services/performance_bridge/packaging"
@@ -185,22 +192,26 @@ def integration_contents(payload):
         ROOT_DROPIN: f"[Service]\nExecStart=\nExecStart=/usr/lib/steamos-manager -r --device-config {CONFIG}\n",
         USER_DROPIN: f"[Service]\nExecStart=\nExecStart=/usr/lib/steamos-manager --device-config {CONFIG}\n",
         SERVICE: (packaging / "deckyzone-performance.service").read_text(),
-        POLICY: (packaging / "com.deckyzone.Performance.conf.example").read_text(),
+        POLICY: (packaging / "com.deckyzone.Performance.conf.example").read_text().replace(
+            'user="deck"', f'user={quoteattr(context.user)}',
+        ),
         REMOTE: (packaging / "deckyzone-performance.toml.example").read_text(),
         MARKER: "Explicitly enabled for the validated ZOTAC G0A1W BIOS 1.20.\n",
         KEEP_LIST: "# Preserve the native performance bridge across SteamOS updates.\n"
         + "".join(f"{path}\n" for path in FILES),
+        CONTEXT: context.serialize(),
     }
 
 
 def rollback():
     manifest = check_existing()
+    context = decky_context()
     run("/usr/bin/systemctl", "disable", "--now", UNIT)
     for path in FILES:
         if str(path) in manifest:
             path.unlink(missing_ok=True)
     run("/usr/bin/systemctl", "reload", "dbus.service")
-    reload_managers()
+    reload_managers(context)
 
 
 def install(payload):
@@ -208,7 +219,8 @@ def install(payload):
     preflight(payload)
     if installation_error(payload) is None:
         return
-    original, contents = integration_contents(payload)
+    context = decky_context()
+    original, contents = integration_contents(payload, context)
     runtime = payload_manifest(payload)
     previous = installed_manifest()
     # Keep the prior files and user-selected limits outside the live installation.
@@ -237,7 +249,7 @@ def install(payload):
             atomic_write(path, content.encode())
         run("/usr/bin/systemctl", "daemon-reload")
         run("/usr/bin/systemctl", "reload", "dbus.service")
-        reload_managers()
+        reload_managers(context)
     except Exception:
         # Never leave Manager referencing an absent configuration after failure.
         # Files can still belong to the previous version if copying was partial.
@@ -253,7 +265,7 @@ def install(payload):
         for path in FILES:
             path.unlink(missing_ok=True)
         run("/usr/bin/systemctl", "reload", "dbus.service")
-        reload_managers()
+        reload_managers(context)
         raise
 
 

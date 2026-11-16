@@ -29,6 +29,7 @@ def test_shutdown_never_restarts_manager(monkeypatch):
 
 def test_user_shutdown_does_not_restart_manager(monkeypatch):
     from services.performance_bridge import lifecycle
+    from services.performance_bridge import context
 
     states = iter(("running", "stopping"))
     calls = []
@@ -38,7 +39,7 @@ def test_user_shutdown_does_not_restart_manager(monkeypatch):
         return SimpleNamespace(stdout=next(states) + "\n", returncode=1)
 
     monkeypatch.setattr(lifecycle.subprocess, "run", run)
-    monkeypatch.setattr(lifecycle.pwd, "getpwnam", lambda name: SimpleNamespace(pw_uid=1000, pw_gid=1000))
+    monkeypatch.setattr(context.pwd, "getpwnam", lambda name: SimpleNamespace(pw_uid=1000, pw_gid=1000))
     monkeypatch.setattr(lifecycle.Path, "exists", lambda path: True)
     lifecycle.reconnect_manager()
     assert all("try-restart" not in command for command in calls)
@@ -170,12 +171,109 @@ driver = "amdgpu"
     return tmp_path
 
 
-def test_only_actual_steamos_identity_is_accepted(environment):
+def test_os_identity_is_not_inferred_from_display_name(environment):
     (environment / "etc/os-release").write_text(
-        'ID=cachyos\nID_LIKE=steamos\nPRETTY_NAME="SteamOS"\n'
+        'ID=arch\nID_LIKE=steamos\nPRETTY_NAME="SteamOS"\n'
     )
-    with pytest.raises(Unavailable, match="requires SteamOS"):
+    with pytest.raises(Unavailable, match="require SteamOS or CachyOS"):
         check_environment(environment)
+
+
+def test_cachyos_manager_uses_arch_package_database(environment):
+    (environment / "etc/os-release").write_text('ID=cachyos\n')
+    stock = next(environment.glob("usr/lib/holo/pacmandb/local/*/desc"))
+    package = environment / "var/lib/pacman/local/steamos-manager-26.4.1-3/desc"
+    package.parent.mkdir(parents=True)
+    package.write_text("%NAME%\nsteamos-manager\n\n%VERSION%\n26.4.1-3\n")
+    stock.unlink()
+    assert check_environment(environment)["os_id"] == "cachyos"
+
+
+@pytest.mark.parametrize("plugin", ("PowerControl", "SimpleDeckyTDP"))
+def test_ownership_uses_explicit_decky_installation(environment, monkeypatch, plugin):
+    monkeypatch.setenv("DECKYZONE_USER", "zone-owner")
+    monkeypatch.setenv("DECKYZONE_HOME", "/opt/decky zone")
+    homebrew = environment / "opt/decky zone"
+    (homebrew / "settings").mkdir(parents=True)
+    (homebrew / "plugins" / plugin).mkdir(parents=True)
+    loader = homebrew / "settings/loader.json"
+    loader.write_text('{"disabled_plugins": ["' + plugin + '"]}')
+    check_ownership(environment)
+    loader.write_text('{"disabled_plugins": []}')
+    with pytest.raises(Unavailable, match=f"Disable {plugin}"):
+        check_ownership(environment)
+    loader.unlink()
+    with pytest.raises(FileNotFoundError):
+        check_ownership(environment)
+
+
+def test_service_loads_saved_non_deck_context_and_rejects_context_loss(tmp_path, monkeypatch):
+    from services.performance_bridge import context
+
+    monkeypatch.delenv("DECKYZONE_USER", raising=False)
+    monkeypatch.delenv("DECKYZONE_HOME", raising=False)
+    saved = context.DeckyContext("zone-owner", Path("/opt/decky zone"))
+    config = tmp_path / context.CONTEXT.relative_to("/")
+    config.parent.mkdir(parents=True)
+    config.write_text(saved.serialize())
+    original_fstat = context.os.fstat
+
+    def root_owned(fd):
+        fields = list(original_fstat(fd))
+        fields[4] = 0
+        return context.os.stat_result(fields)
+
+    monkeypatch.setattr(context.os, "fstat", root_owned)
+    assert context.decky_context(tmp_path) == saved
+    manifest = tmp_path / "var/lib/deckyzone-performance/manifest.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('{"' + str(context.CONTEXT) + '": "hash"}')
+    config.unlink()
+    with pytest.raises(Unavailable, match="saved installation path is missing"):
+        context.decky_context(tmp_path)
+
+
+def test_generated_integration_persists_actual_decky_identity(environment, monkeypatch):
+    import json
+    import xml.etree.ElementTree as ET
+    from services.performance_bridge import install
+    from services.performance_bridge.context import CONTEXT, DeckyContext
+
+    monkeypatch.setattr(install, "DEVICE_CONFIG", str(environment / DEVICE_CONFIG))
+    context = DeckyContext("zone-owner", Path("/opt/decky zone"))
+    payload = Path(__file__).resolve().parents[3]
+    _, contents = install.integration_contents(payload, context)
+    assert json.loads(contents[CONTEXT]) == {"user": "zone-owner", "homebrew": "/opt/decky zone"}
+    policy = ET.fromstring(contents[install.POLICY])
+    assert {item.get("user") for item in policy.findall("policy")} == {None, "root", "zone-owner"}
+    assert str(CONTEXT) in contents[install.KEEP_LIST]
+
+
+def test_session_commands_use_actual_decky_account(monkeypatch):
+    from services.performance_bridge import context, install, lifecycle
+
+    monkeypatch.setenv("DECKYZONE_USER", "zone-owner")
+    monkeypatch.setenv("DECKYZONE_HOME", "/opt/decky zone")
+    accounts = []
+
+    def account(name):
+        accounts.append(name)
+        return SimpleNamespace(pw_uid=1001, pw_gid=1002)
+
+    monkeypatch.setattr(context.pwd, "getpwnam", account)
+    commands = []
+    monkeypatch.setattr(install, "run", lambda *args, **kwargs: commands.append(args))
+    install.user_command("/usr/bin/true")
+    assert commands[0][:3] == ("/usr/sbin/runuser", "-u", "zone-owner")
+    assert "XDG_RUNTIME_DIR=/run/user/1001" in commands[0]
+    monkeypatch.setattr(lifecycle, "manager_accepts_reconnect", lambda *args: True)
+    monkeypatch.setattr(lifecycle.Path, "exists", lambda path: True)
+    calls = []
+    monkeypatch.setattr(lifecycle.subprocess, "run", lambda args, **kwargs: calls.append((args, kwargs)))
+    lifecycle.reconnect_manager()
+    assert accounts == ["zone-owner", "zone-owner"]
+    assert calls[0][1]["user"] == 1001
+    assert calls[0][1]["group"] == 1002
 
 
 @pytest.mark.parametrize("version", ("26.4.0-1", "1:26.10.0-1"))

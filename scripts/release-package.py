@@ -43,6 +43,7 @@ NATIVE_REQUIRED_FILES = frozenset({
     "services/performance_bridge/__init__.py",
     "services/performance_bridge/__main__.py",
     "services/performance_bridge/compatibility.py",
+    "services/performance_bridge/context.py",
     "services/performance_bridge/control.py",
     "services/performance_bridge/controller.py",
     "services/performance_bridge/dbus_service.py",

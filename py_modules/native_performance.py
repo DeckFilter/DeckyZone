@@ -32,10 +32,13 @@ def request(action):
             "state": unavailable("Native performance files are missing; reinstall DeckyZone"),
             "error": "Native performance files are missing; reinstall DeckyZone",
         }
+    import decky
+
     result = subprocess.run(
         ["/usr/bin/python3", "-m", "services.performance_bridge.control", action],
         cwd=PAYLOAD,
-        env={"PATH": "/usr/bin", "PYTHONPATH": str(PAYLOAD / "vendor")},
+        env={"PATH": "/usr/bin", "PYTHONPATH": str(PAYLOAD / "vendor"),
+             "DECKYZONE_USER": decky.DECKY_USER, "DECKYZONE_HOME": str(decky.DECKY_HOME)},
         capture_output=True,
         text=True,
         # Include Manager recovery and failure cleanup after an interrupted OS
