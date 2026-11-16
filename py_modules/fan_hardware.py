@@ -1,4 +1,4 @@
-"""Existing ZONE hwmon API only; no direct EC access or kernel changes."""
+"""Fan control through the ZONE hwmon interface."""
 
 import json
 from pathlib import Path

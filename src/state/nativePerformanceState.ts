@@ -26,7 +26,7 @@ const publish = (next: Snapshot) => {
   listeners.forEach(listener => listener())
 }
 
-// The saved value survives settings/QAM remounts, including failed refreshes.
+// Keep the last state across settings/QAM remounts.
 export const getNativePerformanceSnapshot = () => snapshot
 export const subscribeNativePerformance = (listener: () => void) => {
   listeners.add(listener)

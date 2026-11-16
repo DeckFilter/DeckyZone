@@ -1,8 +1,7 @@
 """Bounded fallback for the tested G0A1W / BIOS 1.20 / Ryzen 8840U.
 
-Reads expose acknowledged requests, NOT measured firmware limits. The kernel
-blocks RyzenAdj's metrics table on this device. RAPL load tests independently
-verified the 8 W and 15 W commands before enabling this backend.
+Reads return acknowledged requests, not measured limits, because the kernel
+blocks RyzenAdj's metrics table on this device.
 """
 
 import hashlib

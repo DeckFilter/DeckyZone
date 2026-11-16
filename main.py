@@ -4066,10 +4066,6 @@ class DeckyZoneService:
             self.logger.warning(f"Failed to remove Gamescope display profiles: {error}")
         return self._current_settings()
 
-    # TODO: Keep using the current FF_GAIN path for now. Zotac may also support
-    # a native HID/sysfs method via save_config, vibration_intensity, and
-    # motor_test; a future change could evaluate that path or add a
-    # compatibility/testing switch between methods if needed.
     def _rumble_device_identity(self, device_path):
         if not device_path:
             return None

@@ -118,8 +118,6 @@ function applyBrightnessDialDelta(delta: number) {
   }
 
   currentBrightnessPercent = nextBrightness
-  // Prefer SteamClient for the SteamOS path. If this ever proves insufficient,
-  // a future fallback could use /sys/class/backlight or a gamescope-level path.
   window.SteamClient.System.Display.SetBrightness(nextBrightness / 100)
 }
 

@@ -70,11 +70,7 @@ class TdpInterface(ServiceInterface):
 
 
 class Bridge:
-    """Separate bus names let Manager discover TDP only while Custom is active.
-
-    The caller supplies connected buses: production uses the system bus; tests
-    use a private daemon. No test backend/address option exists in the CLI.
-    """
+    """Separate bus names let Manager discover TDP only while Custom is active."""
 
     def __init__(
         self, controller: Controller, profile_bus: MessageBus, tdp_bus: MessageBus,

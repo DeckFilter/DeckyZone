@@ -37,7 +37,6 @@ const ReleaseNotesPreview = ({ target, channel }: Props) => {
     numeric: 'auto',
   }).format(Math.ceil((publishedAt - Date.now()) / 86400000), 'day')
 
-  // Port Decky Loader's InlinePatchNotes wrapper and Steam's native preview styling.
   return (
     <Focusable
       className={updaterFieldClasses.PatchNotes}

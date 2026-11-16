@@ -8,7 +8,6 @@ type Props = {
   closeModal?: () => void
 }
 
-// Reuse ResetPluginConfirmModal's native modal and locked asynchronous action.
 export default function NativePerformanceProgressDialog({ operation, message, closeModal }: Props) {
   const [error, setError] = useState<string | null>(null)
   const busy = error === null

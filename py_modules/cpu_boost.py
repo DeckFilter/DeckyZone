@@ -32,8 +32,7 @@ class CpuBoost:
 
     @staticmethod
     def _sleep_elapsed():
-        # CLOCK_BOOTTIME includes suspend; MONOTONIC excludes it. No sleep
-        # inhibitor or shutdown service is needed for a CPU boost preference.
+        # CLOCK_BOOTTIME advances during suspend; MONOTONIC does not.
         return time.clock_gettime(time.CLOCK_BOOTTIME) - time.monotonic()
 
     def _command(self, action, *args):

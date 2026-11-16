@@ -1,4 +1,4 @@
-"""Global fan settings and PowerControl's curve-only import boundary."""
+"""Global fan settings and PowerControl curve imports."""
 
 from contextlib import contextmanager
 import fcntl
@@ -97,7 +97,7 @@ def validate_curve(points):
 
 
 def curve_speed(points, temperature):
-    """PowerControl's linear segments, including implicit (0,0)/(100,100)."""
+    """Linear interpolation with implicit (0,0) and (100,100) endpoints."""
     if not math.isfinite(temperature) or not 0 < temperature <= 115:
         raise ValueError("CPU temperature is unavailable or invalid")
     if temperature >= 95:

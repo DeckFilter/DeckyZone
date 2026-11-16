@@ -11,8 +11,7 @@ export const fanApi = {
   imports: callable<[], PowerControlFanProfile[]>('get_powercontrol_fan_profiles'),
 }
 
-// Polls must never overwrite an optimistic selection or reconcile an older
-// request after a settings write. Settings and QAM use the same transaction.
+// Do not let stale polls overwrite optimistic changes.
 export function useFanControl() {
   const [state, setState] = useState<FanControlState | null>(null)
   const current = useRef(state)

@@ -56,9 +56,6 @@ function getDisplayVerificationNotice(settings: PluginSettings) {
 
 const DisplayPanel = ({ settings, onSettingsChange }: Props) => {
   const surface = useSettingsSurface()
-  // TODO: If rapid toggling ever causes stale UI state, serialize these requests
-  // or ignore out-of-order responses instead of relying only on disabled toggles
-  // and backend file-state readback.
   const [savingZotacProfile, setSavingZotacProfile] = useState(false)
   const [savingGreenTintFix, setSavingGreenTintFix] = useState(false)
   const [displayNotice, setDisplayNotice] = useState<string | null>(null)

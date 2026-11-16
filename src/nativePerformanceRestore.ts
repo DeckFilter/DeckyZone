@@ -57,8 +57,7 @@ export class NativePerformanceRestore {
     this.pending ||= !previous || previous.profile !== 'custom' ||
       !previous.available || !next.available
     if (!this.pending || !next.available) return
-    // Accept the previous bridge until its installed payload is repaired.
-    // Never clamp malformed/stale values or invent a different user selection.
+    // Accept the legacy 28 W limit during repair; reject invalid saved values.
     if (next.minimum !== 8 || (next.maximum !== 28 && next.maximum !== 30) ||
       (next.enabled && (!Number.isInteger(next.watts) || next.watts < next.minimum || next.watts > next.maximum))) {
       this.pending = false

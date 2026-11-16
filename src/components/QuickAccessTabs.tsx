@@ -105,8 +105,7 @@ function findNativeBumpers(document: Document) {
 }
 
 function findNativeTab(document: Document) {
-  // Read the naturally mounted Friends tree. Only retain the independent button
-  // type; its parent's callbacks and props belong to Steam's actual Friends UI.
+  // Reuse only the button component from the mounted Friends tree.
   for (const element of document.querySelectorAll('.FriendsListSteamDeckTabs .FriendsListTab')) {
     let fiber = getReactInstance(element) as Fiber | undefined
     for (let depth = 0; fiber && depth < 24; depth++, fiber = fiber.return) {

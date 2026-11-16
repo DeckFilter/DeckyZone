@@ -30,7 +30,6 @@ const PluginUpdateProgress = () => {
     ? 'Restarting Decky Loader…'
     : `Applying${progress === null || progress === 0 ? '' : ` ${progress}%`}`
 
-  // Reuse Steam's System updater status child inside the existing settings Field.
   return (
     <div className={updaterFieldClasses.UpdateStatusContainer}>
       <FocusableUpdateStatus focusable noFocusRing className={updaterFieldClasses.UpdaterFieldStatusApplying}>

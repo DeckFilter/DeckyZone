@@ -1,4 +1,4 @@
-"""Decky RPC/lifecycle boundary for the global fan worker."""
+"""Manage the global fan worker."""
 
 import asyncio
 from copy import deepcopy

@@ -1,4 +1,3 @@
-// Friends' tab row rules, scoped to the switcher rather than the whole friendlist.
 export const quickAccessTabsStyles = `
 .dz-qam-tabs, .dz-qam-tabs-layout {
   height: 100%;

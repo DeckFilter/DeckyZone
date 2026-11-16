@@ -150,7 +150,7 @@ def payload_manifest(payload):
 
 
 def installation_error(payload=None):
-    """Report missing/changed integration files instead of unrelated WMI errors."""
+    """Return the reason an existing installation needs repair."""
     try:
         manifest = installed_manifest()
         for path in FILES:

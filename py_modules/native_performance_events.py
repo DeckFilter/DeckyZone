@@ -275,8 +275,7 @@ class NativePerformanceEvents:
                         self.changed()
                     elif (message.interface == MANAGER and message.path == SYSTEMD_PATH
                           and message.member == "UnitFilesChanged"):
-                        # This signal has no unit argument. It is rare and a full
-                        # status read remains event-driven, including uninstallation.
+                        # UnitFilesChanged has no unit argument, so refresh the full status.
                         self.changed()
 
                 bus.add_message_handler(signal_handler)

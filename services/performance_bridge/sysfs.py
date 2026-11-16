@@ -1,7 +1,7 @@
 """Conditional ZOTAC sysfs adapter. Reads are driver caches, not telemetry.
 
 ABI source: Neptune 5ab4af5e2eb9, drivers/platform/x86/zotac-zone-platform.c.
-That implementation is NOT approved for writes; see probe.py.
+Production writes are disabled for this ABI; see probe.py.
 """
 
 from dataclasses import dataclass
@@ -39,11 +39,7 @@ class Snapshot:
 
 
 class SysfsBackend:
-    """Use only through the production validation gate or isolated test fixtures.
-
-    There is deliberately no direct WMI, EC, RyzenAdj, or module-loading path.
-    Profile presets belong to the driver; this adapter invents no preset table.
-    """
+    """Use the driver's ranges and presets through the production validation gate."""
 
     def __init__(self, root: Path = Path("/sys")):
         self.root = root
@@ -123,7 +119,7 @@ class SysfsBackend:
     def set_tdp(self, watts: int) -> None:
         if any(not limit.accepts(watts) for limit in self.ranges):
             raise ValueError("TDP must be a whole watt within every attribute's range")
-        # Validate ALL values before the first write. A failure stops the sequence.
-        # Equal limits are the bridge's custom policy, not an OEM equivalence claim.
+        # Validate all limits before writing; a write failure stops the sequence.
+        # Custom mode applies the same limit to all three attributes.
         for name in ATTRIBUTES:
             self._write(self.attribute_dir / name / "current_value", str(watts))

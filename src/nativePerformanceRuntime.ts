@@ -74,7 +74,7 @@ export function startNativePerformanceRuntime(): () => void {
   const client = window.SteamClient?.Settings as unknown as {
     RegisterForSettingsChanges?: (callback: () => void) => Registration
   }
-  // Resolve by the inspected API contract, never by Steam's changing module IDs.
+  // Match the API shape because Steam's module IDs change.
   const manager = getManagerService()
   if (!settings?.GetClientSetting || !client?.RegisterForSettingsChanges || !manager) {
     console.warn('[deckyzone-native-tdp] Steam restoration API unavailable')
@@ -97,8 +97,7 @@ export function startNativePerformanceRuntime(): () => void {
       return state.active ? 'ready' : 'starting'
     },
     replay: async (value) => {
-      // The exact setter used by Steam's native QAM. It serializes only this
-      // field; no profile database, per-game flag, or other setting is replaced.
+      // Use Steam's setter to update only the selected TDP setting.
       await (value.enabled
         ? settings.GetClientSetting('steamos_tdp_limit')[1](value.watts)
         : settings.GetClientSetting('steamos_tdp_limit_enabled')[1](false))
