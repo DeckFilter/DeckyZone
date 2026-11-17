@@ -40,10 +40,14 @@ jobs:
           DECKY_BUILDER_DIGEST: sha256:03c1850fba3ed0f1f74828f64e8a103c11fbddc3273406affa893a977a10d28f
         run: |
           docker pull "${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}"
-          # Decky CLI 0.0.8 hardcodes :latest, so point that local tag at the pinned image.
-          docker tag \
-            "${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}" \
-            "${DECKY_BUILDER_IMAGE}:latest"
+          # Decky CLI uses :latest; add Python for native-performance packaging.
+          docker build \
+            --build-arg "BUILDER_IMAGE=${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}" \
+            --tag "${DECKY_BUILDER_IMAGE}:latest" - <<'DOCKERFILE'
+          ARG BUILDER_IMAGE
+          FROM ${BUILDER_IMAGE}
+          RUN apk add --no-cache python3
+          DOCKERFILE
           ./cli/decky plugin build .
 
       - name: Verify installable package
