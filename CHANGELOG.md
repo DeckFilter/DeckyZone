@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.7.0-pre.4] - 2026-11-17
+
+
+### Features
+
+- Install and repair native performance controls
+- Add fan modes and a separate curve manager
+- Allow 30 W custom TDP with a 20 W default
+- Add CPU boost control
+- Add performance and fan diagnostics to support reports
+- Update tabs to reflect Friends tab buttons
+- Split appearance customization settings
+- Support CachyOS for performance profiles
+- Detect SteamOS Manager capabilities
+
+
+
+### Fixes
+
+- Restore native TDP after performance profile changes
+- Disable native controls when power plugins are active
+- Allow compatible SteamOS Manager versions
+- Show temperature in a separate fan status row
+- Remove GNU download dependency from packaging
+- Preserve performance and fan settings across updates
+- Simplify error feedback and recovery
+- Retire battery workaround on vpower 1.6.4 and newer
+- Respect GitHub update check rate limits
+- Render quick access tabs
+- Restore Decky CI build compatibility
+- Clean up native performance on reset and unsupported updates
+
+
+
+### Documentation
+
+- Simplify README
+- Clarify native performance platform support
+- Keep README concise
+- Update readme
+
+
+
+### Maintenance
+
+- Fan controls
+- Use events for native performance checks
+- Remove redundant bridge coverage
+- Move fan curve editing into a modal
+- Simplify redundant comments
+- Remove tests and development tooling
+- *(ci)* Generate concise incremental release notes by @felixhirschfeld
+
+
 ## [0.6.6] - 2026-10-23
 
 
