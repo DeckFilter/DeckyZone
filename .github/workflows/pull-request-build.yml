@@ -50,12 +50,28 @@ jobs:
           DOCKERFILE
           ./cli/decky plugin build .
 
-      - name: Verify installable package
+      - name: Prepare and verify installable package
         run: |
           package="out/DeckyZone.zip"
           test -f "${package}"
           # Decky CLI includes these development files; keep the installable archive clean.
           zip -d "${package}" 'DeckyZone/dist/*.map' 'DeckyZone/py_modules/.keep' || test "$?" -eq 12
+          # Decky CLI 0.0.8 drops executable permissions from defaults/ assets.
+          python3 - <<'PY'
+          from pathlib import Path
+          import stat
+          import zipfile
+
+          package = Path("out/DeckyZone.zip")
+          prepared = package.with_suffix(".prepared.zip")
+          with zipfile.ZipFile(package) as source, zipfile.ZipFile(prepared, "w") as target:
+              for entry in source.infolist():
+                  if entry.filename == "DeckyZone/assets/native-performance/bin/ryzenadj":
+                      entry.create_system = 3
+                      entry.external_attr = (stat.S_IFREG | 0o755) << 16
+                  target.writestr(entry, source.read(entry))
+          prepared.replace(package)
+          PY
           python3 scripts/release-package.py --verify-zip "${package}"
 
       - name: Name pull request package
