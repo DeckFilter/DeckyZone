@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 
 import decky
+import native_performance
 from release_versions import normalize_version, parse_version
 from plugin_update_install import (
     BUSY_PHASES, INSTALL_UNIT, clear_owner, current_owner, empty_status, operation_lock,
@@ -433,6 +434,7 @@ def activate_update(*, get_saved_channel, on_progress=None):
             validate_staged_plugin(update_dir / "pending", state["release"]["version"])
             if not (update_dir / "install.py").is_file():
                 raise RuntimeError("The update installer is missing. Download the update again.")
+            native_performance.cleanup_for_update(update_dir / "pending")
         except Exception as error:
             state.update(phase="error", error=str(error) or type(error).__name__)
             _notify(update_dir, state, on_progress)

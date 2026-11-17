@@ -204,13 +204,20 @@ def integration_contents(payload, context=None):
 
 def rollback():
     manifest = check_existing()
+    if not manifest:
+        return False
     context = decky_context()
-    run("/usr/bin/systemctl", "disable", "--now", UNIT)
+    if SERVICE.exists():
+        run("/usr/bin/systemctl", "disable", "--now", UNIT)
     for path in FILES:
-        if str(path) in manifest:
+        if path != CONTEXT and str(path) in manifest:
             path.unlink(missing_ok=True)
     run("/usr/bin/systemctl", "reload", "dbus.service")
     reload_managers(context)
+    if str(CONTEXT) in manifest:
+        CONTEXT.unlink(missing_ok=True)
+    atomic_write(INSTALL / "manifest.json", b"{}\n")
+    return True
 
 
 def install(payload):

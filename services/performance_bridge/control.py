@@ -1,4 +1,4 @@
-"""Fixed status/enable/disable commands for the DeckyZone Performance panel."""
+"""Manage DeckyZone's native-performance integration."""
 
 import argparse
 import fcntl
@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 
-from .install import INSTALL, SERVICE, UNIT, install, installation_error, preflight, verify_manager_relay
+from .install import INSTALL, SERVICE, UNIT, install, installation_error, preflight, rollback, verify_manager_relay
 from .ryzenadj import active_power_plugins, power_plugin_status
 from .compatibility import check_environment
 from .sysfs import Unavailable
@@ -87,9 +87,17 @@ def set_enabled(enabled):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("status", "enable", "disable"))
+    parser.add_argument("action", choices=("status", "enable", "disable", "cleanup"))
     args = parser.parse_args()
     try:
+        if args.action == "cleanup":
+            if os.geteuid() != 0:
+                raise Unavailable("Removing native performance controls requires root")
+            with (INSTALL.parent / "deckyzone-performance.lock").open("a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                changed = rollback()
+            print(json.dumps({"ok": True, "changed": changed}))
+            return 0
         state = status() if args.action == "status" else set_enabled(args.action == "enable")
         print(json.dumps({"ok": True, "state": state}))
         return 0

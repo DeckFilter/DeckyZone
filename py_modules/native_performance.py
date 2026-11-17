@@ -24,7 +24,7 @@ def unavailable(reason):
 
 
 def request(action):
-    if action not in ("status", "enable", "disable"):
+    if action not in ("status", "enable", "disable", "cleanup"):
         raise ValueError("Unknown native performance action")
     if not (PAYLOAD / "services/performance_bridge/control.py").is_file():
         return {
@@ -93,6 +93,22 @@ def set_enabled(enabled):
     if type(enabled) is not bool:
         raise ValueError("Enabled must be a boolean")
     return request("enable" if enabled else "disable")
+
+
+def cleanup():
+    response = request("cleanup")
+    if not response["ok"]:
+        raise RuntimeError(response.get("error", "Could not remove native performance controls"))
+    return {"ok": True, "changed": response["changed"]}
+
+
+def cleanup_for_update(plugin_dir):
+    plugin_dir = Path(plugin_dir)
+    if not all((plugin_dir / relative).is_file() for relative in (
+        "py_modules/native_performance.py",
+        "assets/native-performance/services/performance_bridge/control.py",
+    )):
+        cleanup()
 
 
 def restore_enabled():

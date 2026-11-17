@@ -4896,6 +4896,9 @@ class Plugin:
         steps = []
         boost_step = await self._run_cleanup_step(steps, "stopCpuBoost", lambda: self.cpu_boost.shutdown(reset=True))
         fan_step = await self._run_cleanup_step(steps, "stopFanControl", lambda: self.fan_control.shutdown(reset=True))
+        native_step = await self._run_cleanup_step(
+            steps, "removeNativePerformance", lambda: asyncio.to_thread(native_performance.cleanup),
+        )
         startup_step = await self._run_cleanup_step(
             steps,
             "cancelStartupTask",
@@ -4922,9 +4925,12 @@ class Plugin:
                 "steps": [],
             }
 
-        steps = [boost_step, fan_step, startup_step, *result.get("steps", [])]
+        steps = [boost_step, fan_step, native_step, startup_step, *result.get("steps", [])]
         result["steps"] = steps
-        result["ok"] = bool(boost_step["ok"] and fan_step["ok"] and startup_step["ok"] and result.get("ok", True))
+        result["ok"] = bool(
+            boost_step["ok"] and fan_step["ok"] and native_step["ok"]
+            and startup_step["ok"] and result.get("ok", True)
+        )
         return result
 
     def _log_cleanup_result(self, action_name, result):
@@ -4980,10 +4986,26 @@ class Plugin:
             return {"ok": False, "error": str(error), "state": await self.cpu_boost.status()}
 
     async def set_native_performance_enabled(self, enabled):
-        try:
-            return await asyncio.to_thread(native_performance.set_enabled, enabled)
-        finally:
-            self.native_performance_events.changed()
+        if self._closing:
+            raise RuntimeError("DeckyZone is stopping.")
+        await self._controller_initialized.wait()
+        async with self._controller_operation_lock:
+            if self._closing:
+                raise RuntimeError("DeckyZone is stopping.")
+            update = await self.service.get_plugin_update_status()
+            if update.get("phase") == "restarting":
+                raise RuntimeError("Wait for the plugin update to finish.")
+            task = asyncio.create_task(asyncio.to_thread(native_performance.set_enabled, enabled))
+            try:
+                return await asyncio.shield(task)
+            except asyncio.CancelledError:
+                try:
+                    await asyncio.shield(task)
+                except Exception:
+                    pass
+                raise
+            finally:
+                self.native_performance_events.changed()
 
     async def get_debug_info(self):
         return self.service.get_debug_info()
