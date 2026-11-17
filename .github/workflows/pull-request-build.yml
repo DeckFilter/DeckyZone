@@ -40,18 +40,38 @@ jobs:
           DECKY_BUILDER_DIGEST: sha256:03c1850fba3ed0f1f74828f64e8a103c11fbddc3273406affa893a977a10d28f
         run: |
           docker pull "${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}"
-          # Decky CLI 0.0.8 hardcodes :latest, so point that local tag at the pinned image.
-          docker tag \
-            "${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}" \
-            "${DECKY_BUILDER_IMAGE}:latest"
+          # Decky CLI uses :latest; add Python for native-performance packaging.
+          docker build \
+            --build-arg "BUILDER_IMAGE=${DECKY_BUILDER_IMAGE}@${DECKY_BUILDER_DIGEST}" \
+            --tag "${DECKY_BUILDER_IMAGE}:latest" - <<'DOCKERFILE'
+          ARG BUILDER_IMAGE
+          FROM ${BUILDER_IMAGE}
+          RUN apk add --no-cache python3
+          DOCKERFILE
           ./cli/decky plugin build .
 
-      - name: Verify installable package
+      - name: Prepare and verify installable package
         run: |
           package="out/DeckyZone.zip"
           test -f "${package}"
           # Decky CLI includes these development files; keep the installable archive clean.
           zip -d "${package}" 'DeckyZone/dist/*.map' 'DeckyZone/py_modules/.keep' || test "$?" -eq 12
+          # Decky CLI 0.0.8 drops executable permissions from defaults/ assets.
+          python3 - <<'PY'
+          from pathlib import Path
+          import stat
+          import zipfile
+
+          package = Path("out/DeckyZone.zip")
+          prepared = package.with_suffix(".prepared.zip")
+          with zipfile.ZipFile(package) as source, zipfile.ZipFile(prepared, "w") as target:
+              for entry in source.infolist():
+                  if entry.filename == "DeckyZone/assets/native-performance/bin/ryzenadj":
+                      entry.create_system = 3
+                      entry.external_attr = (stat.S_IFREG | 0o755) << 16
+                  target.writestr(entry, source.read(entry))
+          prepared.replace(package)
+          PY
           python3 scripts/release-package.py --verify-zip "${package}"
 
       - name: Name pull request package

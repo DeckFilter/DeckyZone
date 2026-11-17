@@ -1,14 +1,12 @@
 import {
-  ButtonItem,
   Navigation,
   Router,
   SteamSpinner,
-  Tabs,
   useParams,
 } from '@decky/ui'
 import { addEventListener, callable, definePlugin, removeEventListener, routerHook } from '@decky/api'
 import { Fragment, type ReactNode, useState } from 'react'
-import { FaDesktop, FaEllipsisH, FaGamepad, FaHeart, FaSlidersH, FaTachometerAlt } from 'react-icons/fa'
+import { FaFan, FaGamepad, FaHeart, FaPalette, FaTachometerAlt, FaWrench } from 'react-icons/fa'
 import ControllerPanel from "./components/ControllerPanel"
 import SystemInformationPage from "./pages/SystemInformationPage"
 import DisplayPanel from "./components/DisplayPanel"
@@ -17,7 +15,10 @@ import ErrorBoundary from "./components/ErrorBoundary"
 import CustomizationPanel from "./components/CustomizationPanel"
 import LayoutPanel from './components/LayoutPanel'
 import PerformancePanel from "./components/PerformancePanel"
+import FanControlPanel from './components/FanControlPanel'
 import QuickAccessTitleView from "./components/QuickAccessTitleView"
+import QuickAccessTabs from './components/QuickAccessTabs'
+import RetryField from './components/RetryField'
 import { SettingsRow, SettingsSection, SettingsSurfaceProvider } from './components/SettingsSurface'
 import TroubleshootingPanel from "./components/TroubleshootingPanel"
 import UpdatesPanel from "./components/UpdatesPanel"
@@ -25,7 +26,9 @@ import ZotacIcon from "./components/ZotacIcon"
 import {
   cleanupZotacUiRuntime,
   syncStoredHideUnsupportedButtonsRuntimeEnabled,
+  syncStoredZotacDeviceArtworkRuntimeEnabled,
   syncStoredZotacGlyphsRuntimeEnabled,
+  syncStoredZotacLaunchAnimationsRuntimeEnabled,
 } from "./glyphs/zotacGlyphRuntime"
 import { DECKYZONE_MAPPING_ROUTE, DECKYZONE_ROUTE, openDeckyZoneSettings } from './routes'
 import ControllerMappingPage from './controllerMapping/ControllerMappingPage'
@@ -39,6 +42,8 @@ import type { ActiveGame, InputPlumberUpdateResult, PluginReapplyResult, PluginR
 import { checkLatestVersion, compareVersions, isValidVersion, resetStartupCheck } from './utils/pluginUpdates'
 import { initializePluginUpdateStatus } from './utils/pluginUpdateStatus'
 import { showDeckyToast } from './utils/toasts'
+import { startNativePerformanceRuntime } from './nativePerformanceRuntime'
+import { startNativePerformanceStatus } from './state/nativePerformanceState'
 
 type BrightnessDialDirection = 'up' | 'down'
 type ActiveGameChangedHandler = (newGame: ActiveGame | null, oldGame: ActiveGame | null) => void
@@ -66,11 +71,11 @@ let notifiedUpdateVersion: string | null = null
 let currentMainTab = 'controller'
 
 const mainTabsStyle = {
+  bottom: 0,
   contain: 'layout style paint',
-  height: '95%',
-  marginTop: '-12px',
   maxWidth: '100%',
   position: 'absolute' as const,
+  top: '44px',
   width: 'calc(100vw - 50px)',
 }
 
@@ -91,6 +96,8 @@ function clampBrightnessPercent(value: number) {
 
 function applySettingsRuntime(settings: PluginSettings) {
   syncStoredZotacGlyphsRuntimeEnabled(settings.zotacGlyphsEnabled)
+  syncStoredZotacLaunchAnimationsRuntimeEnabled(settings.zotacLaunchAnimationsEnabled)
+  syncStoredZotacDeviceArtworkRuntimeEnabled(settings.zotacDeviceArtworkEnabled)
   syncStoredHideUnsupportedButtonsRuntimeEnabled(settings.hideUnsupportedButtonsEnabled)
 }
 
@@ -111,8 +118,6 @@ function applyBrightnessDialDelta(delta: number) {
   }
 
   currentBrightnessPercent = nextBrightness
-  // Prefer SteamClient for the SteamOS path. If this ever proves insufficient,
-  // a future fallback could use /sys/class/backlight or a gamescope-level path.
   window.SteamClient.System.Display.SetBrightness(nextBrightness / 100)
 }
 
@@ -456,15 +461,8 @@ function Content() {
 
   if (bootstrap.state === 'error') {
     return (
-      <SettingsSection title="Controller">
-        <SettingsRow>
-          <div style={{ color: 'red' }}>{bootstrap.message}</div>
-        </SettingsRow>
-        <SettingsRow>
-          <ButtonItem layout="below" onClick={handleRetryBootstrap}>
-            Retry
-          </ButtonItem>
-        </SettingsRow>
+      <SettingsSection title="DeckyZone">
+        <RetryField message="Couldn't load DeckyZone" onRetry={handleRetryBootstrap} />
       </SettingsSection>
     )
   }
@@ -508,6 +506,11 @@ function Content() {
         settings={settings}
         onSettingsChange={applySettingsUpdate}
       />
+    </ErrorBoundary>
+  )
+  const fanPanel = (
+    <ErrorBoundary title="Fan control">
+      <FanControlPanel />
     </ErrorBoundary>
   )
   const layoutPanel = (
@@ -556,6 +559,7 @@ function Content() {
         {customizationPanel}
         {displayPanel}
         {performancePanel}
+        {fanPanel}
         {updatesPanel}
         {troubleshootingPanel}
         {layoutPanel}
@@ -567,7 +571,7 @@ function Content() {
   return (
     <Fragment key={`deckyzone-ui:${uiRevision}`}>
       <div style={mainTabsStyle}>
-        <Tabs
+        <QuickAccessTabs
           activeTab={activeTab}
           autoFocusContents
           onShowTab={(tabId: string) => {
@@ -585,24 +589,6 @@ function Content() {
               ),
             },
             {
-              id: 'customization',
-              title: <TabIcon label="Customization"><FaSlidersH size={20} /></TabIcon>,
-              content: (
-                <div style={tabContentStyle}>
-                  {customizationPanel}
-                </div>
-              ),
-            },
-            {
-              id: 'display',
-              title: <TabIcon label="Display"><FaDesktop size={20} /></TabIcon>,
-              content: (
-                <div style={tabContentStyle}>
-                  {displayPanel}
-                </div>
-              ),
-            },
-            {
               id: 'performance',
               title: <TabIcon label="Performance"><FaTachometerAlt size={20} /></TabIcon>,
               content: (
@@ -612,8 +598,27 @@ function Content() {
               ),
             },
             {
+              id: 'fan-control',
+              title: <TabIcon label="Fan control"><FaFan size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {fanPanel}
+                </div>
+              ),
+            },
+            {
+              id: 'customization',
+              title: <TabIcon label="Appearance"><FaPalette size={20} /></TabIcon>,
+              content: (
+                <div style={tabContentStyle}>
+                  {customizationPanel}
+                  {displayPanel}
+                </div>
+              ),
+            },
+            {
               id: 'more',
-              title: <TabIcon label="More"><FaEllipsisH size={20} /></TabIcon>,
+              title: <TabIcon label="Tools"><FaWrench size={20} /></TabIcon>,
               content: (
                 <div style={tabContentStyle}>
                   {updatesPanel}
@@ -640,13 +645,18 @@ function Content() {
 
 export default definePlugin(() => {
   const cleanupPluginUpdateStatus = initializePluginUpdateStatus()
+  const stopNativePerformanceStatus = startNativePerformanceStatus()
   const mappingRoute = `${DECKYZONE_MAPPING_ROUTE}/:appId/:section?/:sourceId?`
   const MappingRoute = () => {
     const { appId, sourceId } = useParams<{ appId: string; sourceId?: string }>()
     return (
-      <ErrorBoundary title="Controller Settings">
-        <DeckyZoneStateProvider store={deckyZoneState}><ControllerMappingPage key={appId} appId={appId} sourceId={sourceId} /></DeckyZoneStateProvider>
-      </ErrorBoundary>
+      <SettingsSurfaceProvider surface="settings">
+        <ErrorBoundary title="Controller Settings">
+          <DeckyZoneStateProvider store={deckyZoneState}>
+            <ControllerMappingPage key={appId} appId={appId} sourceId={sourceId} onRetryBootstrap={handleRetryBootstrap} />
+          </DeckyZoneStateProvider>
+        </ErrorBoundary>
+      </SettingsSurfaceProvider>
     )
   }
   const SettingsRoute = () => (
@@ -674,18 +684,20 @@ export default definePlugin(() => {
   notifiedUpdateVersion = null
   const currentUpdateNoticeGeneration = updateNoticeGeneration
   const bootstrap = startBootstrap()
+  const stopNativePerformanceRuntime = startNativePerformanceRuntime()
   startUpdateNoticeAfterBootstrap(bootstrap, currentUpdateNoticeGeneration)
   void refreshStateAfterBootstrap(bootstrap)
   const unregisterHomeNavigationListener = addEventListener('zotac_home_short_pressed', () => {
     Navigation.Navigate('/library/home')
     Navigation.CloseSideMenus()
   })
-  const remainingBatteryTimeAutoDisabledListener = addEventListener(
+  const remainingBatteryTimeAutoDisabledListener = addEventListener<[available?: boolean]>(
     REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
-    () => {
+    (available) => {
       deckyZoneState.updateSettings((currentSettings) => ({
         ...currentSettings,
         remainingBatteryTimeFixEnabled: false,
+        remainingBatteryTimeFixAvailable: available ?? currentSettings.remainingBatteryTimeFixAvailable,
       }))
     },
   )
@@ -707,6 +719,8 @@ export default definePlugin(() => {
     icon: <ZotacIcon />,
     onDismount() {
       cleanupPluginUpdateStatus()
+      stopNativePerformanceStatus()
+      stopNativePerformanceRuntime()
       routerHook.removeRoute(DECKYZONE_ROUTE)
       routerHook.removeRoute(mappingRoute)
       updateNoticeGeneration += 1

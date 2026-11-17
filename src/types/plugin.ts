@@ -3,6 +3,36 @@ export type PluginStatus = {
   message: string
 }
 
+export type NativePerformanceState = {
+  installed: boolean
+  enabled: boolean
+  active: boolean
+  available: boolean
+  needsSetup: boolean
+  blockedReason: string | null
+  conflictingPlugins?: string[]
+}
+
+export type NativePerformanceResult = {
+  ok: boolean
+  state: NativePerformanceState | null
+  error?: string
+}
+
+export type CpuBoostState = {
+  available: boolean
+  enabled: boolean | null
+  savedEnabled: boolean | null
+  blockedReason: string
+  conflictingPlugins: string[]
+}
+
+export type CpuBoostResult = {
+  ok: boolean
+  state: CpuBoostState
+  error?: string
+}
+
 export type ControllerMode = 'gamepad' | 'desktop'
 export type TrackpadMode = 'default' | 'disabled' | 'directional_buttons'
 export type UpdateChannel = 'stable' | 'prerelease'
@@ -175,6 +205,8 @@ export type PluginSettings = {
   gyroMountMatrixFix: GyroMountMatrixFixState
   trackpadMode: TrackpadMode
   zotacGlyphsEnabled: boolean
+  zotacLaunchAnimationsEnabled: boolean
+  zotacDeviceArtworkEnabled: boolean
   hideUnsupportedButtonsEnabled: boolean
   remainingBatteryTimeFixEnabled: boolean
   remainingBatteryTimeFixAvailable: boolean
@@ -224,3 +256,25 @@ export type InputPlumberUpdateStatus = {
 export type InputPlumberUpdateResult = PluginReapplyResult & {
   update: InputPlumberUpdateStatus
 }
+
+export type FanPoint = { temperature: number; fanRPMpercent: number }
+export type PowerControlFanProfile = { name: string; curve: FanPoint[] }
+export type FanMode = 'auto' | 'manual' | 'custom'
+export type FanControlState = {
+  mode: FanMode
+  manualSpeed: number
+  curve: FanPoint[]
+  defaultCurve: FanPoint[]
+  revision: number
+  error: string
+  available: boolean
+  active: boolean
+  suspended: boolean
+  blockedReason: string
+  conflictingPlugins: string[]
+  temperature: number | null
+  rpm: number | null
+  dutyPercent: number | null
+  hardwareMode?: number
+}
+export type FanControlResult = { ok: true; state: FanControlState } | { ok: false; error: string }

@@ -7,8 +7,10 @@ type ElementFactory = (...args: unknown[]) => unknown
 type JsxRuntime = { jsx: ElementFactory; jsxs: ElementFactory }
 type PatchedFactory = ElementFactory & { __deckyPatch?: Patch }
 
+const RECONCILE_INTERVAL_MS = 3000
 let enabled = false
 let runtime: { reconcile: () => void; cleanup: () => void } | undefined
+let reconcileTimer: ReturnType<typeof setInterval> | null = null
 const listeners = new Set<() => void>()
 
 function subscribe(listener: () => void) {
@@ -149,9 +151,25 @@ export function syncLaunchAnimationRuntime(nextEnabled: boolean) {
   const changed = enabled !== nextEnabled
   enabled = nextEnabled
   if (enabled) {
+    // Steam may load the launch modules after settings have been read. Keep
+    // retrying independently of the button glyph and device artwork settings.
+    if (reconcileTimer === null) {
+      reconcileTimer = setInterval(() => {
+        try {
+          if (runtime) runtime.reconcile()
+          else installLaunchAnimationPatch()
+        } catch (error) {
+          console.warn("DeckyZone: couldn't restore launch artwork", error)
+        }
+      }, RECONCILE_INTERVAL_MS)
+    }
     if (runtime) runtime.reconcile()
     else installLaunchAnimationPatch()
   } else {
+    if (reconcileTimer !== null) {
+      clearInterval(reconcileTimer)
+      reconcileTimer = null
+    }
     runtime?.cleanup()
     runtime = undefined
   }

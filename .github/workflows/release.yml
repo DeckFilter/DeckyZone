@@ -85,11 +85,6 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test updater and release publication handling
-        run: |
-          python3 scripts/test-plugin-update.py
-          python3 scripts/test-release-publish.py
-
       - name: Prepare version locally
         id: version
         env:

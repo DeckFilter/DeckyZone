@@ -18,6 +18,7 @@ import { callable } from '@decky/api'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { FaCog, FaGamepad, FaTrash } from 'react-icons/fa'
 import SettingsDialogSubHeader from '../components/SettingsDialogSubHeader'
+import RetryField from '../components/RetryField'
 import { awaitGameControllerSaves } from '../components/controller/useGameControllerSettings'
 import { controllerMappingRoute, openControllerMapping } from '../routes'
 import { showDeckyToast } from '../utils/toasts'
@@ -35,7 +36,7 @@ type TrackpadSide = 'left' | 'right'
 type DialMode = 'volume' | 'brightness' | 'custom'
 type HomeAction = MappingProfile['buttons']['home']
 type MappingState = { appId: string; enabled: boolean; profile: MappingProfile; settings?: PluginSettings }
-type MappingPageProps = { appId: string; sourceId?: string }
+type MappingPageProps = { appId: string; sourceId?: string; onRetryBootstrap: () => void }
 const getMapping = callable<[string], MappingState>('get_controller_mapping')
 const setMapping = callable<[string, MappingProfile | null, boolean], MappingState>('set_controller_mapping')
 const removeGameSettings = callable<[string], PluginSettings>('remove_game_settings')
@@ -58,10 +59,11 @@ export default function ControllerMappingPage(props: MappingPageProps) {
   )
 }
 
-function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
+function ControllerMappingContent({ appId, sourceId, onRetryBootstrap }: MappingPageProps) {
   const [state, setState] = useState<MappingState | null>(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const inFlight = useRef(false)
   const mounted = useRef(true)
   const { store, bootstrap } = useDeckyZoneState()
@@ -98,7 +100,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
     return () => {
       current = false
     }
-  }, [appId, mappingRevision])
+  }, [appId, mappingRevision, loadAttempt])
   const save = async (profile: MappingProfile) => {
     if (inFlight.current || !state) throw new Error('A controller setting is still saving.')
     const previous = state
@@ -124,7 +126,14 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
     if (restoreDefault) delete bindings[id]
     await save({ ...state.profile, bindings })
   }
-  if (!state) return <DialogBody>{error ? <DialogBodyText>{error}</DialogBodyText> : <SteamSpinner />}</DialogBody>
+  if (!state) return (
+    <DialogBody>
+      {error ? <RetryField message="Couldn't load controller settings" onRetry={() => {
+        setError('')
+        setLoadAttempt(attempt => attempt + 1)
+      }} /> : <SteamSpinner />}
+    </DialogBody>
+  )
   const { bindings, behaviors, dials, buttons } = state.profile
   const savedGames = bootstrap.state === 'ready'
     ? Object.entries(bootstrap.snapshot.settings.perGameSettings)
@@ -346,7 +355,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
               content: (
                 <DialogBody>
                   {bootstrap.state === 'loading' ? <SteamSpinner /> : bootstrap.state === 'error' ? (
-                    <DialogBodyText>{bootstrap.message}</DialogBodyText>
+                    <RetryField message="Couldn't load game settings" onRetry={onRetryBootstrap} />
                   ) : savedGames.length === 0 ? (
                     <MappingFocusable focusable preferredFocus data-game-settings-empty>
                       <DialogBodyText>No game settings yet.</DialogBodyText>

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import errno
 import ipaddress
+import math
 import os
 import pwd
 import re
@@ -335,9 +336,9 @@ def _read_log_tail(log_path, *, logger):
     return data.decode("utf-8", errors="replace"), True, start > 0, None
 
 
-def _probe_vram(*, supported_device, pending_reader, active_reader):
+def _probe_vram(*, supported_device, pending_reader, active_gb):
     pending = {"valueGb": None, "error": None, "probed": False}
-    active = {"valueGb": None, "error": None, "probed": True}
+    active = {"valueGb": active_gb, "error": None}
 
     if supported_device:
         pending["probed"] = True
@@ -348,12 +349,8 @@ def _probe_vram(*, supported_device, pending_reader, active_reader):
     else:
         pending["error"] = "Skipped because the DMI identity is unsupported."
 
-    try:
-        active["valueGb"] = active_reader()
-        if active["valueGb"] is None:
-            active["error"] = "No active amdgpu VRAM value was found."
-    except Exception as error:
-        active["error"] = _compact_output(error)
+    if active_gb is None:
+        active["error"] = "No active amdgpu VRAM value was found."
 
     return {"pending": pending, "active": active}
 
@@ -439,6 +436,73 @@ def _append_report_section(lines, title, entries):
     for label, value in entries:
         lines.append(f"{label}: {_safe_string(value)}")
     lines.append("")
+
+
+def _control_entries(status, fields):
+    if not isinstance(status, dict) or not status:
+        return [("Status", "Unavailable")]
+    if status.get("error") and not any(key in status for _, key in fields):
+        return [("Unavailable", _compact_output(status["error"]))]
+
+    entries = [(label, status.get(key)) for label, key in fields]
+    conflicts = status.get("conflictingPlugins")
+    if isinstance(conflicts, list) and conflicts:
+        entries.append(("Conflicting plugins", ", ".join(map(str, conflicts))))
+    for label, key in (("Reason", "blockedReason"), ("Error", "error")):
+        if status.get(key):
+            entries.append((label, _compact_output(status[key])))
+    return entries
+
+
+def _format_measurement(value, unit):
+    if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+        return "Unavailable"
+    return f"{value:g} {unit}"
+
+
+def _native_performance_entries(status):
+    entries = _control_entries(status, (
+        ("Enabled", "enabled"),
+        ("Active", "active"),
+        ("Setup required", "needsSetup"),
+    ))
+    if not isinstance(status, dict):
+        return entries
+    request = status.get("lastRequest")
+    if isinstance(request, dict):
+        profile = request.get("profile")
+        if profile in ("low-power", "balanced", "performance", "custom"):
+            entries.append(("Last acknowledged profile", profile))
+        for label, key in (
+            ("Last acknowledged power limit", "watts"),
+            ("Saved Custom limit", "custom_tdp"),
+        ):
+            value = request.get(key)
+            if type(value) is int and value > 0:
+                entries.append((label, f"{value} W"))
+    if status.get("lastRequestError"):
+        entries.append(("Acknowledged state unavailable", _compact_output(status["lastRequestError"])))
+    return entries
+
+
+def _fan_control_entries(status):
+    entries = _control_entries(status, (
+        ("Mode", "mode"),
+        ("Available", "available"),
+        ("Active", "active"),
+    ))
+    if not isinstance(status, dict) or "mode" not in status:
+        return entries
+    modes = {"auto": "System Auto", "manual": "Manual", "custom": "Curve", "curve": "Curve"}
+    entries[0] = ("Mode", modes.get(status["mode"], status["mode"]))
+    if status["mode"] == "manual":
+        entries.append(("Manual target", _format_measurement(status.get("manualSpeed"), "%")))
+    entries.extend((
+        ("APU temperature", _format_measurement(status.get("temperature"), "°C")),
+        ("Fan speed", _format_measurement(status.get("rpm"), "RPM")),
+        ("Fan duty", _format_measurement(status.get("dutyPercent"), "%")),
+    ))
+    return entries
 
 
 _XDG_DESKTOP_DIR_PATTERN = re.compile(
@@ -674,7 +738,9 @@ def build_support_report(
     read_text=None,
     path_exists=None,
     pending_vram_reader,
-    active_vram_reader,
+    native_status=None,
+    boost_status=None,
+    fan_status=None,
     redaction_paths=(),
     now=None,
 ):
@@ -698,7 +764,7 @@ def build_support_report(
     vram = _probe_vram(
         supported_device=bool(supported_device),
         pending_reader=pending_vram_reader,
-        active_reader=active_vram_reader,
+        active_gb=memory.get("activeVramGb"),
     )
     port_exists = bool(exists(PORT_DEVICE_PATH))
 
@@ -770,8 +836,8 @@ def build_support_report(
         ("Profile", input_plumber.get("profileName")),
         ("Controller mode", input_plumber.get("controllerMode")),
         ("Controller mode control available", input_plumber.get("controllerModeAvailable")),
-        ("Target gamepad present", input_plumber.get("targetGamepadPresent")),
-        ("Keyboard present", input_plumber.get("keyboardPresent")),
+        ("Target gamepad path", _safe_string(input_plumber.get("targetGamepadPath"), fallback="Missing")),
+        ("Keyboard path", _safe_string(input_plumber.get("keyboardPath"), fallback="Missing")),
         ("Controller runtime", input_plumber.get("controllerRuntimeState")),
         ("Gyro fix available", gyro_fix.get("available")),
         ("Gyro fix built in", gyro_fix.get("builtIn")),
@@ -780,8 +846,6 @@ def build_support_report(
     ]
     for label, value in (
         ("Profile path", input_plumber.get("profilePath")),
-        ("Target gamepad path", input_plumber.get("targetGamepadPath")),
-        ("Keyboard path", input_plumber.get("keyboardPath")),
         ("Gyro fix blocked reason", gyro_fix.get("blockedReason")),
     ):
         if value:
@@ -800,8 +864,6 @@ def build_support_report(
             ("Managed profile", gamescope.get("managedProfileInstalled")),
             ("Green tint compensation", gamescope.get("greenTintFixEnabled")),
             ("Verification state", gamescope.get("verificationState")),
-            ("Base asset available", gamescope.get("baseAssetAvailable")),
-            ("Green tint asset available", gamescope.get("greenTintAssetAvailable")),
         ),
     )
     vram_entries = [
@@ -818,6 +880,13 @@ def build_support_report(
         if value:
             vram_entries.append((label, value))
     _append_report_section(report_lines, "VRAM", vram_entries)
+    _append_report_section(report_lines, "Native performance", _native_performance_entries(native_status))
+    _append_report_section(report_lines, "CPU boost", _control_entries(boost_status, (
+        ("Available", "available"),
+        ("Enabled", "enabled"),
+        ("Saved preference", "savedEnabled"),
+    )))
+    _append_report_section(report_lines, "Fan control", _fan_control_entries(fan_status))
 
     battery_entries = [
         ("Setting enabled", bool(remaining_battery_enabled)),

@@ -43,6 +43,7 @@ NATIVE_REQUIRED_FILES = frozenset({
     "services/performance_bridge/__init__.py",
     "services/performance_bridge/__main__.py",
     "services/performance_bridge/compatibility.py",
+    "services/performance_bridge/context.py",
     "services/performance_bridge/control.py",
     "services/performance_bridge/controller.py",
     "services/performance_bridge/dbus_service.py",
@@ -50,6 +51,7 @@ NATIVE_REQUIRED_FILES = frozenset({
     "services/performance_bridge/lifecycle.py",
     "services/performance_bridge/probe.py",
     "services/performance_bridge/ryzenadj.py",
+    "services/performance_bridge/runtime_events.py",
     "services/performance_bridge/sysfs.py",
     "services/performance_bridge/requirements.txt",
     "services/performance_bridge/packaging/com.deckyzone.Performance.conf.example",
@@ -287,7 +289,7 @@ def validate_runtime(files: dict[str, RuntimeFile], version: str, native_require
     if not isinstance(plugin, dict) or plugin.get("name") != PLUGIN:
         raise PackageError("Packaged plugin.json name must be DeckyZone")
     validate_dbus_next(files)
-    validate_native(files, native_required)
+    validate_native(files, native_required or "py_modules/native_performance.py" in files)
 
 
 def collect_runtime(version: str) -> dict[str, RuntimeFile]:

@@ -1,9 +1,12 @@
 import { callable } from '@decky/api'
 import type { ReleaseTarget, UpdateChannel } from '../types/plugin'
 
-const getUpdateRelease = callable<[UpdateChannel], ReleaseTarget | null>('get_update_release')
+const getUpdateRelease = callable<[UpdateChannel, boolean], ReleaseTarget | null>('get_update_release')
 const VERSION_CACHE_KEY = 'DeckyZone.versionCache'
 const VERSION_PATTERN = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-pre\.([1-9]\d*))?$/
+const FAILED_CHECK_CACHE_MS = 60 * 1000
+const RATE_LIMIT_MESSAGE = 'GitHub update limit reached. Please try again later.'
+const CHECK_FAILED_MESSAGE = 'Couldn’t check for updates. Try again.'
 
 export type VersionCache = {
   installedVersionNum: string
@@ -12,9 +15,29 @@ export type VersionCache = {
   lastCheckTime: number
 }
 
-type Check = { promise: Promise<VersionCache>; pending: boolean }
+type Check = { promise: Promise<VersionCache>; pending: boolean; retryAfter: number | null }
 const checks = new Map<string, Check>()
+const notifiedErrors = new WeakSet<Error>()
 let cacheGeneration = 0
+
+const normalizeCheckError = (error: unknown): Error => {
+  // Loader 3.3.1 may put the backend message only in pythonTraceback.
+  const details = error && typeof error === 'object' ? error as { message?: unknown; pythonTraceback?: unknown } : null
+  const messages = [typeof error === 'string' ? error : null, details?.message, details?.pythonTraceback]
+  return new Error(messages.some((value) => typeof value === 'string' && value.includes(RATE_LIMIT_MESSAGE))
+    ? RATE_LIMIT_MESSAGE : CHECK_FAILED_MESSAGE)
+}
+
+export const getUpdateCheckErrorMessage = (error: unknown): string => (
+  error instanceof Error && error.message === RATE_LIMIT_MESSAGE ? RATE_LIMIT_MESSAGE : CHECK_FAILED_MESSAGE
+)
+
+export const claimUpdateCheckErrorNotice = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return true
+  if (notifiedErrors.has(error)) return false
+  notifiedErrors.add(error)
+  return true
+}
 
 const parseVersion = (version: string) => {
   const match = VERSION_PATTERN.exec(version)
@@ -91,34 +114,42 @@ export const getLastCheckText = (lastCheckTime: number): string => {
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
-const startCheck = (installedVersionNum: string, channel: UpdateChannel): Promise<VersionCache> => {
+const startCheck = (installedVersionNum: string, channel: UpdateChannel, force = false): Promise<VersionCache> => {
   const key = cacheKey(installedVersionNum, channel)
   const generation = cacheGeneration
-  const promise = getUpdateRelease(channel).then((release) => {
+  const promise = getUpdateRelease(channel, force).then((release) => {
     if (release !== null && !validTarget(release, channel)) throw new Error('Invalid update release')
     const cache: VersionCache = { installedVersionNum, channel, release, lastCheckTime: Date.now() }
     if (generation === cacheGeneration && checks.get(key)?.promise === promise) {
       try { localStorage.setItem(key, JSON.stringify(cache)) } catch { /* Cache access is optional. */ }
     }
     return cache
+  }).catch((error: unknown) => {
+    throw normalizeCheckError(error)
   })
-  const check: Check = { promise, pending: true }
+  const check: Check = { promise, pending: true, retryAfter: null }
   checks.set(key, check)
   void promise.then(
     () => { if (checks.get(key) === check) check.pending = false },
-    () => { if (checks.get(key) === check) checks.delete(key) },
+    () => {
+      if (checks.get(key) === check) {
+        check.pending = false
+        check.retryAfter = Date.now() + FAILED_CHECK_CACHE_MS
+      }
+    },
   )
   return promise
 }
 
-// Initialization always performs a network check, sharing only this plugin session's check.
-export const checkLatestVersion = (installedVersionNum: string, channel: UpdateChannel): Promise<VersionCache> => (
-  checks.get(cacheKey(installedVersionNum, channel))?.promise ?? startCheck(installedVersionNum, channel)
-)
+export const checkLatestVersion = (installedVersionNum: string, channel: UpdateChannel): Promise<VersionCache> => {
+  const check = checks.get(cacheKey(installedVersionNum, channel))
+  return check && (check.retryAfter === null || Date.now() < check.retryAfter)
+    ? check.promise : startCheck(installedVersionNum, channel)
+}
 
 export const recheckLatestVersion = (installedVersionNum: string, channel: UpdateChannel): Promise<VersionCache> => {
   const check = checks.get(cacheKey(installedVersionNum, channel))
-  return check?.pending ? check.promise : startCheck(installedVersionNum, channel)
+  return check?.pending ? check.promise : startCheck(installedVersionNum, channel, true)
 }
 
 export const resetStartupCheck = () => {

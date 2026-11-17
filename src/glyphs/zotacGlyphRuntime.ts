@@ -1,5 +1,6 @@
 import { executeInTab, fetchNoCors, injectCssIntoTab, removeCssFromTab } from "@decky/api"
 import {
+  ZOTAC_DEVICE_ARTWORK_CSS,
   ZOTAC_GLYPH_CSS,
   ZOTAC_UNSUPPORTED_BUTTONS_CSS,
 } from "./generated/zotacGlyphCss"
@@ -270,8 +271,13 @@ function createCssFeatureRuntime({ activeMarker, css, label, syncRuntime }: CssF
 const zotacGlyphsRuntime = createCssFeatureRuntime({
   activeMarker: "--deckyzone-zotac-glyphs-active",
   css: ZOTAC_GLYPH_CSS,
-  label: "Zotac controller artwork",
-  syncRuntime: syncLaunchAnimationRuntime,
+  label: "Zotac button glyphs",
+})
+
+const zotacDeviceArtworkRuntime = createCssFeatureRuntime({
+  activeMarker: "--deckyzone-zotac-device-artwork-active",
+  css: ZOTAC_DEVICE_ARTWORK_CSS,
+  label: "Zotac device artwork",
 })
 
 const unsupportedButtonsRuntime = createCssFeatureRuntime({
@@ -285,6 +291,14 @@ export function syncStoredZotacGlyphsRuntimeEnabled(enabled: boolean) {
   zotacGlyphsRuntime.syncStoredEnabled(enabled)
 }
 
+export function syncStoredZotacDeviceArtworkRuntimeEnabled(enabled: boolean) {
+  zotacDeviceArtworkRuntime.syncStoredEnabled(enabled)
+}
+
+export function syncStoredZotacLaunchAnimationsRuntimeEnabled(enabled: boolean) {
+  syncLaunchAnimationRuntime(enabled)
+}
+
 export function syncStoredHideUnsupportedButtonsRuntimeEnabled(enabled: boolean) {
   unsupportedButtonsRuntime.syncStoredEnabled(enabled)
 }
@@ -293,13 +307,23 @@ export async function applyZotacGlyphsRuntimeEnabled(enabled: boolean) {
   await zotacGlyphsRuntime.applyEnabled(enabled)
 }
 
+export async function applyZotacDeviceArtworkRuntimeEnabled(enabled: boolean) {
+  await zotacDeviceArtworkRuntime.applyEnabled(enabled)
+}
+
+export async function applyZotacLaunchAnimationsRuntimeEnabled(enabled: boolean) {
+  syncLaunchAnimationRuntime(enabled)
+}
+
 export async function applyHideUnsupportedButtonsRuntimeEnabled(enabled: boolean) {
   await unsupportedButtonsRuntime.applyEnabled(enabled)
 }
 
 export async function cleanupZotacUiRuntime() {
+  syncLaunchAnimationRuntime(false)
   await Promise.all([
     zotacGlyphsRuntime.cleanup(),
+    zotacDeviceArtworkRuntime.cleanup(),
     unsupportedButtonsRuntime.cleanup(),
   ])
 }

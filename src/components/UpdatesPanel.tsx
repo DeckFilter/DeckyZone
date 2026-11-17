@@ -5,8 +5,10 @@ import type { PluginSettingsUpdate } from '../state/DeckyZoneState'
 import type { PluginSettings, ReleaseTarget, UpdateChannel } from '../types/plugin'
 import {
   checkLatestVersion,
+  claimUpdateCheckErrorNotice,
   compareVersions,
   getLastCheckText,
+  getUpdateCheckErrorMessage,
   isValidVersion,
   readVersionCache,
   recheckLatestVersion,
@@ -66,6 +68,7 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
   const [release, setRelease] = useState<ReleaseTarget | null>(null)
   const [lastCheckTime, setLastCheckTime] = useState<number | null>(null)
   const [versionError, setVersionError] = useState<string | null>(null)
+  const [versionErrorNotice, setVersionErrorNotice] = useState<string | null>(null)
   const [channelError, setChannelError] = useState<string | null>(null)
   const [isChecking, setIsChecking] = useState(false)
   const [isSavingChannel, setIsSavingChannel] = useState(false)
@@ -95,6 +98,7 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
     setRelease(null)
     setLastCheckTime(null)
     setVersionError(null)
+    setVersionErrorNotice(null)
     setIsChecking(false)
     refs.current.onReleaseChange(null, channel)
   }
@@ -112,14 +116,18 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
     checking.current = token
     setIsChecking(true)
     setVersionError(null)
+    setVersionErrorNotice(null)
     try {
       const result = await (force ? recheckLatestVersion(version, channel) : checkLatestVersion(version, channel))
       applyRelease(result, token)
-    } catch {
+    } catch (error) {
       if (mounted.current && token === requestVersion.current) {
         setRelease(null)
         refs.current.onReleaseChange(null, channel)
-        setVersionError('Couldn’t check for updates. Try again.')
+        const message = getUpdateCheckErrorMessage(error)
+        setVersionError(message)
+        const firstNotice = claimUpdateCheckErrorNotice(error)
+        if (force || firstNotice) setVersionErrorNotice(message)
       }
     } finally {
       if (mounted.current && token === requestVersion.current) {
@@ -129,8 +137,8 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
     }
   }
 
-  useDeckyToastNotice(versionError ? {
-    activeKey: `updates-version:${savedChannel}:${versionError}`, title: 'Updates', body: versionError, severity: 'error',
+  useDeckyToastNotice(versionErrorNotice ? {
+    activeKey: `updates-version:${savedChannel}:${versionErrorNotice}`, title: 'Updates', body: versionErrorNotice, severity: 'error',
   } : null)
   useDeckyToastNotice(channelError ? {
     activeKey: `updates-channel:${channelError}`, title: 'Updates', body: channelError, severity: 'error',
@@ -261,7 +269,7 @@ const UpdatesPanel = ({ settings, onSettingsChange, onReleaseChange, onBusyChang
     if (isChecking) return undefined
     if (needsStatusRefresh) return updateState.error?.replace(/\.$/, '')
     if (updateState.error || updateStatus?.error) return 'Update failed'
-    if (versionError) return 'Couldn’t check for updates'
+    if (versionError) return versionError.replace(/\.$/, '')
     if (updateButtonText) return undefined
     if (!lastCheckTime) return 'Not checked yet'
     if (!release) return 'No releases available for this channel'

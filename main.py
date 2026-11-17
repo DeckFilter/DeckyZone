@@ -15,11 +15,16 @@ import controller_targets
 import controller_mappings
 from controller_mapping_runtime import MappingRuntime
 import firmware_info
+from cpu_boost import CpuBoost
+from fan_control import FanControl
 import gamescope_display_profiles as gamescope_display_profiles_module
 import inputplumber_device_profile
 import inputplumber_update
 import inputplumber_target_sync
+import native_performance
+from native_performance_events import EVENT as NATIVE_PERFORMANCE_STATUS_EVENT, NativePerformanceEvents
 import os_release
+import plugin_lifecycle
 import plugin_update
 import plugin_settings
 import remaining_battery_time
@@ -285,6 +290,9 @@ class DeckyZoneService:
                 on_native_support=(
                     self._disable_remaining_battery_time_fix_for_native_support
                 ),
+                native_support_available=(
+                    remaining_battery_time.vpower_has_native_battery_estimates
+                ),
                 sleep=sleep,
                 logger=logger,
             )
@@ -459,28 +467,10 @@ class DeckyZoneService:
         self._rumble_available = bool(self.probe_rumble_available())
         return self._current_settings()
 
-    def get_debug_info(self):
+    def _get_debug_runtime_snapshot(self):
+        # HID commands and display migration share loop-owned mutable state.
         status = self.get_status()
         inputplumber_available = bool(self.probe_inputplumber_available())
-        inputplumber_version = self._get_binary_version("inputplumber")
-        gamescope_version = self._get_binary_version("gamescope")
-        firmware_versions = firmware_info.read_firmware_versions(
-            self.read_text,
-            supported_device=self.is_supported_device(),
-        )
-        system_ram_gb = None
-        active_vram_gb = None
-
-        try:
-            system_ram_gb = system_memory.read_system_ram_gb()
-        except Exception as error:
-            self.logger.warning(f"Failed to read system RAM: {error}")
-
-        try:
-            active_vram_gb = vram_control.read_active_vram_gb()
-        except Exception as error:
-            self.logger.warning(f"Failed to read active VRAM: {error}")
-
         controller_mode_snapshot = self._get_controller_mode_snapshot()
         profile_name = None
         profile_path = None
@@ -519,24 +509,8 @@ class DeckyZoneService:
         )
 
         return {
-            "deviceIdentity": {
-                "vendorName": self._read_optional_text(DMI_SYS_VENDOR_PATH),
-                "productName": self._read_optional_text(DMI_PRODUCT_NAME_PATH),
-                "boardName": self._read_optional_text(DMI_BOARD_NAME_PATH),
-                "boardVendor": self._read_optional_text(DMI_BOARD_VENDOR_PATH),
-            },
-            "osContext": {
-                "prettyName": self._get_os_pretty_name(),
-                "kernelRelease": self._get_kernel_release(),
-            },
-            "firmware": firmware_versions,
-            "memory": {
-                "systemRamGb": system_ram_gb,
-                "activeVramGb": active_vram_gb,
-            },
             "inputPlumber": {
                 "available": inputplumber_available,
-                "version": inputplumber_version,
                 "profileName": profile_name,
                 "profilePath": profile_path,
                 "controllerMode": controller_mode_snapshot["mode"],
@@ -552,7 +526,6 @@ class DeckyZoneService:
                 "zotacZoneHidLoaded": self._path_exists(ZOTAC_ZONE_HID_MODULE_PATH),
             },
             "gamescope": {
-                "version": gamescope_version,
                 "builtInAvailable": bool(display_profile_settings["gamescopeZotacProfileBuiltIn"]),
                 "managedProfileInstalled": bool(display_profile_settings["gamescopeZotacProfileInstalled"]),
                 "greenTintFixEnabled": bool(display_profile_settings["gamescopeGreenTintFixEnabled"]),
@@ -565,9 +538,45 @@ class DeckyZoneService:
             },
         }
 
-    def get_support_report(self, debug_snapshot=None):
-        if debug_snapshot is None:
-            debug_snapshot = self.get_debug_info()
+    def get_debug_info(self, runtime_snapshot=None):
+        if runtime_snapshot is None:
+            runtime_snapshot = self._get_debug_runtime_snapshot()
+        inputplumber_version = self._get_binary_version("inputplumber")
+        gamescope_version = self._get_binary_version("gamescope")
+        firmware_versions = firmware_info.read_firmware_versions(
+            self.read_text, supported_device=self.is_supported_device(),
+        )
+        system_ram_gb = None
+        active_vram_gb = None
+        try:
+            system_ram_gb = system_memory.read_system_ram_gb()
+        except Exception as error:
+            self.logger.warning(f"Failed to read system RAM: {error}")
+        try:
+            active_vram_gb = vram_control.read_active_vram_gb()
+        except Exception as error:
+            self.logger.warning(f"Failed to read active VRAM: {error}")
+
+        return {
+            **runtime_snapshot,
+            "deviceIdentity": {
+                "vendorName": self._read_optional_text(DMI_SYS_VENDOR_PATH),
+                "productName": self._read_optional_text(DMI_PRODUCT_NAME_PATH),
+                "boardName": self._read_optional_text(DMI_BOARD_NAME_PATH),
+                "boardVendor": self._read_optional_text(DMI_BOARD_VENDOR_PATH),
+            },
+            "osContext": {
+                "prettyName": self._get_os_pretty_name(),
+                "kernelRelease": self._get_kernel_release(),
+            },
+            "firmware": firmware_versions,
+            "memory": {"systemRamGb": system_ram_gb, "activeVramGb": active_vram_gb},
+            "inputPlumber": {**runtime_snapshot["inputPlumber"], "version": inputplumber_version},
+            "gamescope": {**runtime_snapshot["gamescope"], "version": gamescope_version},
+        }
+
+    def get_support_report(self, *, runtime_snapshot=None, native_status=None, boost_status=None, fan_status=None):
+        debug_snapshot = self.get_debug_info(runtime_snapshot)
 
         return support_report.build_support_report(
             plugin_version=decky.DECKY_PLUGIN_VERSION,
@@ -577,6 +586,9 @@ class DeckyZoneService:
             remaining_battery_enabled=(
                 self.settings_store.get_remaining_battery_time_fix_enabled()
             ),
+            native_status=native_status,
+            boost_status=boost_status,
+            fan_status=fan_status,
             logger=self.logger,
             log_path=decky.DECKY_PLUGIN_LOG,
             command_runner=self.command_runner,
@@ -584,7 +596,6 @@ class DeckyZoneService:
             read_text=self.read_text,
             path_exists=self._path_exists,
             pending_vram_reader=vram_control.read_pending_vram_gb,
-            active_vram_reader=vram_control.read_active_vram_gb,
             redaction_paths=(
                 decky.DECKY_USER_HOME,
                 decky.DECKY_HOME,
@@ -604,10 +615,15 @@ class DeckyZoneService:
             raise RuntimeError("No published stable DeckyZone release was found.")
         return target["version"]
 
-    async def get_update_release(self, channel):
+    async def get_update_release(self, channel, force=False):
         plugin_update.validate_channel(channel)
+        if type(force) is not bool:
+            raise ValueError("Refresh must be a boolean.")
         try:
-            return await asyncio.to_thread(plugin_update.get_update_release, channel)
+            return await asyncio.to_thread(plugin_update.get_update_release, channel, force)
+        except plugin_update.ReleaseCheckError as error:
+            self.logger.warning(f"Could not check for DeckyZone updates: {error}")
+            raise RuntimeError(str(error)) from error
         except Exception as error:
             self.logger.error(f"Failed to fetch DeckyZone update: {error}")
             raise RuntimeError("Failed to check for updates. Try again.") from error
@@ -630,6 +646,9 @@ class DeckyZoneService:
         plugin_update.validate_channel(channel)
         try:
             return await asyncio.to_thread(plugin_update.get_release_notes, channel)
+        except plugin_update.ReleaseCheckError as error:
+            self.logger.warning(f"Could not fetch DeckyZone release notes: {error}")
+            raise RuntimeError(str(error)) from error
         except Exception as error:
             self.logger.error(f"Failed to fetch DeckyZone release notes: {error}")
             raise RuntimeError("Failed to fetch DeckyZone release notes.") from error
@@ -896,7 +915,10 @@ class DeckyZoneService:
     def _current_settings(self):
         display_profile_settings = self._get_display_profile_settings()
         controller_mode_snapshot = self._get_controller_mode_snapshot()
-        remaining_battery_time_fix_available = self._is_steamos()
+        remaining_battery_time_fix_available = (
+            self._is_steamos()
+            and not remaining_battery_time.vpower_has_native_battery_estimates()
+        )
         return {
             "legacyLayoutEnabled": self.settings_store.get_legacy_layout_enabled(),
             "controllerMode": controller_mode_snapshot["mode"],
@@ -906,6 +928,12 @@ class DeckyZoneService:
             "gyroMountMatrixFix": self._get_gyro_mount_matrix_fix_state(),
             "trackpadMode": self.settings_store.get_trackpad_mode(),
             "zotacGlyphsEnabled": self.settings_store.get_zotac_glyphs_enabled(),
+            "zotacLaunchAnimationsEnabled": (
+                self.settings_store.get_zotac_launch_animations_enabled()
+            ),
+            "zotacDeviceArtworkEnabled": (
+                self.settings_store.get_zotac_device_artwork_enabled()
+            ),
             "hideUnsupportedButtonsEnabled": (
                 self.settings_store.get_hide_unsupported_buttons_enabled()
             ),
@@ -3893,6 +3921,14 @@ class DeckyZoneService:
         self.settings_store.set_zotac_glyphs_enabled(enabled)
         return self._current_settings()
 
+    async def set_zotac_launch_animations_enabled(self, enabled):
+        self.settings_store.set_zotac_launch_animations_enabled(enabled)
+        return self._current_settings()
+
+    async def set_zotac_device_artwork_enabled(self, enabled):
+        self.settings_store.set_zotac_device_artwork_enabled(enabled)
+        return self._current_settings()
+
     async def set_hide_unsupported_buttons_enabled(self, enabled):
         self.settings_store.set_hide_unsupported_buttons_enabled(enabled)
         return self._current_settings()
@@ -3901,15 +3937,29 @@ class DeckyZoneService:
         self.settings_store.set_remaining_battery_time_fix_enabled(False)
         self.logger.info(
             "Disabled remaining battery time fix because vpower now provides "
-            "a valid estimate."
+            "native battery estimates."
         )
         try:
-            await decky.emit(REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT)
+            await decky.emit(
+                REMAINING_BATTERY_TIME_AUTO_DISABLED_EVENT,
+                self._is_steamos()
+                and not remaining_battery_time.vpower_has_native_battery_estimates(),
+            )
         except Exception as error:
             self.logger.warning(
                 "Failed to notify frontend about remaining battery time "
                 f"auto-disable: {error}"
             )
+
+    async def reconcile_remaining_battery_time_fix(self):
+        if not remaining_battery_time.vpower_has_native_battery_estimates():
+            return False
+
+        async with self._remaining_battery_time_transition_lock:
+            await self.stop_remaining_battery_time_bridge()
+            if self.settings_store.get_remaining_battery_time_fix_enabled():
+                await self._disable_remaining_battery_time_fix_for_native_support()
+        return True
 
     async def start_remaining_battery_time_bridge(self, retry_on_error=False):
         if not self._is_steamos():
@@ -3919,8 +3969,8 @@ class DeckyZoneService:
             retry_on_error=retry_on_error,
         )
 
-    async def stop_remaining_battery_time_bridge(self):
-        changed = await self.remaining_battery_time_controller.stop()
+    async def stop_remaining_battery_time_bridge(self, timeout=None):
+        changed = await self.remaining_battery_time_controller.stop(timeout=timeout)
         return self._cleanup_step_result(changed=changed)
 
     async def set_remaining_battery_time_fix_enabled(self, enabled):
@@ -4016,10 +4066,6 @@ class DeckyZoneService:
             self.logger.warning(f"Failed to remove Gamescope display profiles: {error}")
         return self._current_settings()
 
-    # TODO: Keep using the current FF_GAIN path for now. Zotac may also support
-    # a native HID/sysfs method via save_config, vibration_intensity, and
-    # motor_test; a future change could evaluate that path or add a
-    # compatibility/testing switch between methods if needed.
     def _rumble_device_identity(self, device_path):
         if not device_path:
             return None
@@ -4575,7 +4621,7 @@ class DeckyZoneService:
         await self._run_cleanup_step(
             steps,
             "stopRemainingBatteryTimeBridge",
-            self.stop_remaining_battery_time_bridge,
+            lambda: self.stop_remaining_battery_time_bridge(timeout=1.0),
         )
         await self._run_cleanup_step(
             steps,
@@ -4627,6 +4673,11 @@ class Plugin:
         self.loop = None
         self.startup_task = None
         self.service = service or DeckyZoneService()
+        self.fan_control = FanControl(decky.DECKY_PLUGIN_SETTINGS_DIR, decky.DECKY_HOME)
+        self.cpu_boost = CpuBoost(decky.DECKY_PLUGIN_SETTINGS_DIR, decky.DECKY_HOME, decky.DECKY_USER)
+        self.native_performance_events = NativePerformanceEvents(
+            decky.DECKY_HOME, lambda: decky.emit(NATIVE_PERFORMANCE_STATUS_EVENT), decky.logger
+        )
         self._controller_operation_lock = asyncio.Lock()
         self._controller_initialized = asyncio.Event()
         self._controller_initializing = False
@@ -4843,6 +4894,11 @@ class Plugin:
 
     async def _reset_plugin_cleanup(self):
         steps = []
+        boost_step = await self._run_cleanup_step(steps, "stopCpuBoost", lambda: self.cpu_boost.shutdown(reset=True))
+        fan_step = await self._run_cleanup_step(steps, "stopFanControl", lambda: self.fan_control.shutdown(reset=True))
+        native_step = await self._run_cleanup_step(
+            steps, "removeNativePerformance", lambda: asyncio.to_thread(native_performance.cleanup),
+        )
         startup_step = await self._run_cleanup_step(
             steps,
             "cancelStartupTask",
@@ -4869,9 +4925,12 @@ class Plugin:
                 "steps": [],
             }
 
-        steps = [startup_step, *result.get("steps", [])]
+        steps = [boost_step, fan_step, native_step, startup_step, *result.get("steps", [])]
         result["steps"] = steps
-        result["ok"] = bool(startup_step["ok"] and result.get("ok", True))
+        result["ok"] = bool(
+            boost_step["ok"] and fan_step["ok"] and native_step["ok"]
+            and startup_step["ok"] and result.get("ok", True)
+        )
         return result
 
     def _log_cleanup_result(self, action_name, result):
@@ -4891,14 +4950,82 @@ class Plugin:
     async def get_settings(self):
         return self.service.get_settings()
 
+    async def get_fan_control_status(self):
+        return await asyncio.to_thread(self.fan_control.status)
+
+    async def _fan_control_result(self, operation):
+        try:
+            return {"ok": True, "state": await operation()}
+        except Exception as error:
+            # Decky's exception transport otherwise hides actionable validation
+            # messages behind a generic "Python Exception".
+            return {"ok": False, "error": str(error)}
+
+    async def set_fan_control_mode(self, mode, revision=None):
+        return await self._fan_control_result(lambda: self.fan_control.set_mode(mode, revision))
+
+    async def set_manual_fan_speed(self, speed, revision):
+        return await self._fan_control_result(lambda: self.fan_control.set_manual_speed(speed, revision))
+
+    async def save_fan_curve(self, curve, revision):
+        return await self._fan_control_result(lambda: self.fan_control.save_curve(curve, revision))
+
+    async def get_powercontrol_fan_profiles(self):
+        return await self.fan_control.imports()
+
+    async def get_native_performance_status(self):
+        return await asyncio.to_thread(native_performance.get_status)
+
+    async def get_cpu_boost_status(self):
+        return await self.cpu_boost.status()
+
+    async def set_cpu_boost_enabled(self, enabled):
+        try:
+            return {"ok": True, "state": await self.cpu_boost.set_enabled(enabled)}
+        except Exception as error:
+            return {"ok": False, "error": str(error), "state": await self.cpu_boost.status()}
+
+    async def set_native_performance_enabled(self, enabled):
+        if self._closing:
+            raise RuntimeError("DeckyZone is stopping.")
+        await self._controller_initialized.wait()
+        async with self._controller_operation_lock:
+            if self._closing:
+                raise RuntimeError("DeckyZone is stopping.")
+            update = await self.service.get_plugin_update_status()
+            if update.get("phase") == "restarting":
+                raise RuntimeError("Wait for the plugin update to finish.")
+            task = asyncio.create_task(asyncio.to_thread(native_performance.set_enabled, enabled))
+            try:
+                return await asyncio.shield(task)
+            except asyncio.CancelledError:
+                try:
+                    await asyncio.shield(task)
+                except Exception:
+                    pass
+                raise
+            finally:
+                self.native_performance_events.changed()
+
     async def get_debug_info(self):
         return self.service.get_debug_info()
 
     async def get_support_report(self):
-        debug_snapshot = self.service.get_debug_info()
+        runtime_snapshot = self.service._get_debug_runtime_snapshot()
+        statuses = await asyncio.gather(
+            asyncio.to_thread(native_performance.get_report_status),
+            self.cpu_boost.status(),
+            asyncio.to_thread(self.fan_control.status),
+            return_exceptions=True,
+        )
+        diagnostics = {
+            name: {"error": str(value)} if isinstance(value, Exception) else value
+            for name, value in zip(("native_status", "boost_status", "fan_status"), statuses)
+        }
         return await asyncio.to_thread(
             self.service.get_support_report,
-            debug_snapshot,
+            runtime_snapshot=runtime_snapshot,
+            **diagnostics,
         )
 
     async def save_support_report(self, report_text):
@@ -4941,6 +5068,12 @@ class Plugin:
 
     async def set_zotac_glyphs_enabled(self, enabled):
         return await self.service.set_zotac_glyphs_enabled(enabled)
+
+    async def set_zotac_launch_animations_enabled(self, enabled):
+        return await self.service.set_zotac_launch_animations_enabled(enabled)
+
+    async def set_zotac_device_artwork_enabled(self, enabled):
+        return await self.service.set_zotac_device_artwork_enabled(enabled)
 
     async def set_hide_unsupported_buttons_enabled(self, enabled):
         return await self.service.set_hide_unsupported_buttons_enabled(enabled)
@@ -5033,8 +5166,8 @@ class Plugin:
     async def get_latest_version_num(self):
         return await self.service.get_latest_version_num()
 
-    async def get_update_release(self, channel):
-        return await self.service.get_update_release(channel)
+    async def get_update_release(self, channel, force=False):
+        return await self.service.get_update_release(channel, force)
 
     async def set_update_channel(self, channel):
         return await self.service.set_update_channel(channel)
@@ -5042,8 +5175,23 @@ class Plugin:
     async def get_release_notes(self, channel="stable"):
         return await self.service.get_release_notes(channel)
 
+    async def _install_plugin_update(self, operation, *args):
+        async def install():
+            try:
+                # The worker and its ExecStopPost use files in the plugin tree.
+                # Stop them before the updater replaces that tree.
+                await self.fan_control.shutdown()
+                return await operation(*args)
+            except BaseException:
+                if not self._closing:
+                    self.fan_control.closing = False
+                    await self.fan_control.startup()
+                raise
+
+        return await self._controller_operation(install)
+
     async def ota_update(self, channel, target):
-        return await self._controller_operation(self.service.ota_update, channel, target)
+        return await self._install_plugin_update(self.service.ota_update, channel, target)
 
     async def get_plugin_update_status(self):
         return await self.service.get_plugin_update_status()
@@ -5052,9 +5200,10 @@ class Plugin:
         return await self._controller_operation(self.service.prepare_plugin_update, channel, target)
 
     async def activate_plugin_update(self):
-        return await self._controller_operation(self.service.activate_plugin_update)
+        return await self._install_plugin_update(self.service.activate_plugin_update)
 
     async def _main(self):
+        await self.native_performance_events.start()
         self._controller_initializing = True
         try:
             if self._closing:
@@ -5095,6 +5244,17 @@ class Plugin:
                     self._controller_startup_deferred = True
         if self._closing:
             return
+        try:
+            if await asyncio.to_thread(native_performance.restore_enabled):
+                decky.logger.info("Updated enabled native performance bridge from bundled files")
+        except Exception as error:
+            decky.logger.warning(f"Could not restore native performance bridge: {error}")
+        self.native_performance_events.changed()
+        if self._closing:
+            return
+        await self.fan_control.startup()
+        await self.cpu_boost.startup()
+        await self.service.reconcile_remaining_battery_time_fix()
         settings = self.service.get_settings()
         if not self._controller_startup_deferred:
             await self.service.start_controller_mode_monitor()
@@ -5126,6 +5286,7 @@ class Plugin:
     async def _begin_controller_cleanup(self):
         # Reject queued game switches before waiting for an in-flight update.
         self._closing = True
+        await self.native_performance_events.close()
         update_task = self._inputplumber_update_task
         if update_task is not None and not update_task.done():
             if self._inputplumber_update_preparing:
@@ -5140,9 +5301,13 @@ class Plugin:
 
     async def _unload(self):
         decky.logger.info("DeckyZone stopping")
+        stopped = plugin_lifecycle.stop_method_listeners()
+        decky.logger.info(f"Stopped {stopped} Decky method listener(s) before cleanup")
         await self._begin_controller_cleanup()
         async with self._controller_operation_lock:
             steps = []
+            boost_step = await self._run_cleanup_step(steps, "stopCpuBoost", self.cpu_boost.shutdown)
+            fan_step = await self._run_cleanup_step(steps, "stopFanControl", self.fan_control.shutdown)
             startup_step = await self._run_cleanup_step(
                 steps,
                 "cancelStartupTask",
@@ -5165,8 +5330,8 @@ class Plugin:
                     "steps": [],
                 }
 
-            result["steps"] = [startup_step, *result.get("steps", [])]
-            result["ok"] = bool(startup_step["ok"] and result.get("ok", True))
+            result["steps"] = [boost_step, fan_step, startup_step, *result.get("steps", [])]
+            result["ok"] = bool(boost_step["ok"] and fan_step["ok"] and startup_step["ok"] and result.get("ok", True))
             self._log_cleanup_result("unload", result)
 
     async def _uninstall(self):
@@ -5192,6 +5357,7 @@ class Plugin:
         )
         plugin_settings.migrate_startup_apply_setting()
         plugin_settings.migrate_hide_unsupported_buttons_setting()
+        plugin_settings.migrate_zotac_artwork_settings()
         decky.migrate_runtime(
             os.path.join(decky.DECKY_HOME, "deckyzone"),
             os.path.join(decky.DECKY_USER_HOME, ".local", "share", "deckyzone"),
