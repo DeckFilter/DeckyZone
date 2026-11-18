@@ -2,6 +2,9 @@
 import argparse
 import asyncio
 import contextlib
+import ctypes
+import errno
+import os
 import signal
 import time
 
@@ -13,6 +16,16 @@ DEFAULT_RELEASE_DELAY_MS = 400
 DEFAULT_LONG_PRESS_MS = 650
 DEFAULT_DRAG_THRESHOLD = 12
 DEFAULT_RIGHT_CLICK_MS = 70
+WHEEL_REL_CODES = frozenset(
+    code
+    for code in (
+        getattr(ecodes, "REL_WHEEL", None),
+        getattr(ecodes, "REL_HWHEEL", None),
+        getattr(ecodes, "REL_WHEEL_HI_RES", None),
+        getattr(ecodes, "REL_HWHEEL_HI_RES", None),
+    )
+    if code is not None
+)
 
 
 def find_device_path(name):
@@ -76,6 +89,8 @@ class LeftButtonLatch:
         self.suppress_until_release = False
         self.pending_long_press = None
         self.pending_motion = 0
+        self.pending_dx = 0
+        self.pending_dy = 0
         self.pending_release = None
         self.pending_started_at = None
 
@@ -98,51 +113,70 @@ class LeftButtonLatch:
         self.pending_long_press.cancel()
         self.pending_long_press = None
 
+    def reset_pending_motion(self):
+        self.pending_motion = 0
+        self.pending_dx = 0
+        self.pending_dy = 0
+
     def emit_left_down(self):
         self.cancel_pending_long_press()
         self.press_pending = False
         self.suppress_until_release = False
-        if self.left_down:
-            return
-        self.left_down = True
-        self.ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 1)
-        self.ui.syn()
-        self.log("emit BTN_LEFT=1")
+        dx, dy = self.pending_dx, self.pending_dy
+        self.reset_pending_motion()
+        if not self.left_down:
+            self.left_down = True
+            self.ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 1)
+            self.ui.syn()
+            self.log("emit BTN_LEFT=1")
+        if dx or dy:
+            if dx:
+                self.ui.write(ecodes.EV_REL, ecodes.REL_X, dx)
+            if dy:
+                self.ui.write(ecodes.EV_REL, ecodes.REL_Y, dy)
+            self.ui.syn()
 
     async def emit_right_click(self):
         self.ui.write(ecodes.EV_KEY, ecodes.BTN_RIGHT, 1)
         self.ui.syn()
         self.log("emit BTN_RIGHT=1")
-        await asyncio.sleep(self.right_click_seconds)
-        self.ui.write(ecodes.EV_KEY, ecodes.BTN_RIGHT, 0)
-        self.ui.syn()
-        self.log("emit BTN_RIGHT=0")
+        try:
+            await asyncio.sleep(self.right_click_seconds)
+        finally:
+            # Always release, even when cancelled during shutdown, so the
+            # right button can never be left logically held down.
+            self.ui.write(ecodes.EV_KEY, ecodes.BTN_RIGHT, 0)
+            self.ui.syn()
+            self.log("emit BTN_RIGHT=0")
 
     async def long_press(self):
+        current_task = asyncio.current_task()
         try:
             await asyncio.sleep(self.long_press_seconds)
-            if not self.press_pending:
+            if self.pending_long_press is not current_task or not self.press_pending:
                 return
             self.press_pending = False
-            self.pending_long_press = None
+            self.reset_pending_motion()
             self.suppress_until_release = True
             self.log("long press -> right click")
             await self.emit_right_click()
-        except asyncio.CancelledError:
-            raise
+        finally:
+            if self.pending_long_press is current_task:
+                self.pending_long_press = None
 
     async def delayed_release(self):
-        try:
-            await asyncio.sleep(self.delay_seconds)
-            self.left_down = False
-            self.pending_release = None
-            elapsed_ms = (time.monotonic() - self.pending_started_at) * 1000
-            self.pending_started_at = None
-            self.ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 0)
-            self.ui.syn()
-            self.log(f"emit delayed BTN_LEFT=0 after {elapsed_ms:.1f}ms")
-        except asyncio.CancelledError:
-            raise
+        await asyncio.sleep(self.delay_seconds)
+        # The release may have been superseded (re-press during the delay)
+        # after the sleep finished but before this task resumed.
+        if self.pending_release is not asyncio.current_task():
+            return
+        self.left_down = False
+        self.pending_release = None
+        elapsed_ms = (time.monotonic() - self.pending_started_at) * 1000
+        self.pending_started_at = None
+        self.ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 0)
+        self.ui.syn()
+        self.log(f"emit delayed BTN_LEFT=0 after {elapsed_ms:.1f}ms")
 
     def handle_left(self, value):
         if value:
@@ -154,7 +188,8 @@ class LeftButtonLatch:
                 return
             self.press_pending = True
             self.suppress_until_release = False
-            self.pending_motion = 0
+            self.reset_pending_motion()
+            self.cancel_pending_long_press()
             self.pending_long_press = asyncio.create_task(self.long_press())
             self.log("pending BTN_LEFT down")
             return
@@ -162,6 +197,7 @@ class LeftButtonLatch:
         if self.press_pending:
             self.cancel_pending_long_press()
             self.press_pending = False
+            self.reset_pending_motion()
             self.ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 1)
             self.ui.syn()
             self.ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 0)
@@ -182,19 +218,57 @@ class LeftButtonLatch:
         self.pending_release = asyncio.create_task(self.delayed_release())
         self.log("delay BTN_LEFT=0")
 
-    def handle_motion(self, value):
+    def handle_motion(self, code, value):
         if not self.press_pending:
-            return
-        self.pending_motion += abs(value)
+            return False
+        if code == ecodes.REL_X:
+            self.pending_dx += value
+        elif code == ecodes.REL_Y:
+            self.pending_dy += value
+        self.pending_motion = abs(self.pending_dx) + abs(self.pending_dy)
         if self.pending_motion >= self.drag_threshold:
             self.log(f"motion threshold {self.pending_motion} -> left drag")
             self.emit_left_down()
+        return True
 
-    async def flush(self):
+    def handle_syn_dropped(self, left_physically_down):
+        if left_physically_down:
+            if self.pending_release is not None:
+                self.cancel_pending_release()
+                self.left_down = True
+            elif (
+                not self.left_down
+                and not self.press_pending
+                and not self.suppress_until_release
+            ):
+                self.handle_left(1)
+            return
         self.cancel_pending_long_press()
         self.press_pending = False
+        self.reset_pending_motion()
         self.suppress_until_release = False
         self.cancel_pending_release()
+        if self.left_down:
+            self.left_down = False
+            self.ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 0)
+            self.ui.syn()
+            self.log("syn_dropped -> release BTN_LEFT=0")
+
+    async def flush(self):
+        tasks = [
+            task
+            for task in (self.pending_long_press, self.pending_release)
+            if task is not None
+        ]
+        self.cancel_pending_long_press()
+        self.press_pending = False
+        self.reset_pending_motion()
+        self.suppress_until_release = False
+        self.cancel_pending_release()
+        # Let cancelled tasks run their cleanup (e.g. BTN_RIGHT release)
+        # before the uinput device is closed.
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         if self.left_down:
             self.left_down = False
             self.ui.write(ecodes.EV_KEY, ecodes.BTN_LEFT, 0)
@@ -203,6 +277,21 @@ class LeftButtonLatch:
 
 
 async def run(args):
+    parent = os.getppid()
+    stop = asyncio.Event()
+
+    def request_stop():
+        stop.set()
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        with contextlib.suppress(NotImplementedError):
+            loop.add_signal_handler(sig, request_stop)
+    with contextlib.suppress(Exception):
+        ctypes.CDLL(None).prctl(1, signal.SIGTERM)
+    if os.getppid() != parent:
+        return
+
     path = args.device or find_device_path(args.name)
     if not path:
         raise SystemExit(f"Unable to find input device named {args.name!r}")
@@ -219,15 +308,6 @@ async def run(args):
         args.drag_threshold,
         verbose=args.verbose,
     )
-    stop = asyncio.Event()
-
-    def request_stop():
-        stop.set()
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        with contextlib.suppress(NotImplementedError):
-            loop.add_signal_handler(sig, request_stop)
 
     print(f"source={source.path} {source.name}")
     output_path = getattr(getattr(ui, "device", None), "path", None) or "/dev/uinput"
@@ -244,27 +324,61 @@ async def run(args):
         f"drag_threshold={args.drag_threshold} "
         f"right_click_ms={args.right_click_ms}"
     )
-    source.grab()
+    for attempt in range(20):
+        try:
+            source.grab()
+            break
+        except OSError as error:
+            if error.errno != errno.EBUSY or attempt == 19:
+                ui.close()
+                source.close()
+                raise
+            await asyncio.sleep(0.05)
+    print("ready", flush=True)
 
     async def read_events():
+        need_syn = False
         async for event in source.async_read_loop():
             if event.type == ecodes.EV_SYN:
+                if event.code == ecodes.SYN_DROPPED:
+                    if need_syn:
+                        ui.syn()
+                        need_syn = False
+                    try:
+                        left_physically_down = ecodes.BTN_LEFT in source.active_keys()
+                    except OSError:
+                        left_physically_down = False
+                    latch.handle_syn_dropped(left_physically_down)
+                elif event.code == ecodes.SYN_REPORT and need_syn:
+                    ui.syn()
+                    need_syn = False
                 continue
 
             if event.type == ecodes.EV_KEY and event.code == ecodes.BTN_LEFT:
+                if need_syn:
+                    ui.syn()
+                    need_syn = False
                 latch.handle_left(event.value)
                 continue
 
             if event.type == ecodes.EV_REL:
+                if args.suppress_wheel and event.code in WHEEL_REL_CODES:
+                    continue
                 value = signed_rel(event.value)
-                latch.handle_motion(value)
-                if value:
-                    ui.write(event.type, event.code, value)
-                    ui.syn()
+                if not value:
+                    continue
+                if event.code in (ecodes.REL_X, ecodes.REL_Y):
+                    if latch.press_pending and need_syn:
+                        ui.syn()
+                        need_syn = False
+                    if latch.handle_motion(event.code, value):
+                        continue
+                ui.write(event.type, event.code, value)
+                need_syn = True
                 continue
 
             ui.write(event.type, event.code, event.value)
-            ui.syn()
+            need_syn = True
 
     reader = asyncio.create_task(read_events())
     stopper = asyncio.create_task(stop.wait())
@@ -285,7 +399,7 @@ async def run(args):
             source.ungrab()
         ui.close()
         source.close()
-        print("stopped")
+        print("stopped", flush=True)
 
 
 def parse_args():
@@ -297,6 +411,7 @@ def parse_args():
     parser.add_argument("--long-press-ms", type=int, default=DEFAULT_LONG_PRESS_MS)
     parser.add_argument("--drag-threshold", type=int, default=DEFAULT_DRAG_THRESHOLD)
     parser.add_argument("--right-click-ms", type=int, default=DEFAULT_RIGHT_CLICK_MS)
+    parser.add_argument("--suppress-wheel", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args()
 
