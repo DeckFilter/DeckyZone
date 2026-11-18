@@ -4,7 +4,7 @@ export type PluginStatus = {
 }
 
 export type ControllerMode = 'gamepad' | 'desktop'
-export type TrackpadMode = 'default' | 'disabled' | 'directional_buttons'
+export type TrackpadMode = 'default' | 'disabled' | 'directional_buttons' | 'mouse_drag_fix'
 export type UpdateChannel = 'stable' | 'prerelease'
 
 export type ReleaseTarget = {
@@ -129,11 +129,13 @@ export type SystemReport = {
   logIncluded: boolean
 }
 
+export type LeftTrackpadBehavior = Exclude<TrackpadMode, 'mouse_drag_fix'>
+
 export type ControllerMappingProfile = {
   buttons: { home: 'screenshot' | 'steam_home' }
   dials: Record<'left' | 'right', 'volume' | 'brightness' | 'custom'>
   bindings: Record<string, string | null>
-  behaviors: Record<'left' | 'right', TrackpadMode>
+  behaviors: { left: LeftTrackpadBehavior; right: TrackpadMode }
 }
 
 export type PerGameSettings = {

@@ -146,7 +146,10 @@ def app_id(value):
 
 
 def defaults(mode="default"):
-    behaviors = {side: mode for side in SIDES}
+    if mode == "mouse_drag_fix":
+        behaviors = {"left": "default", "right": "mouse_drag_fix"}
+    else:
+        behaviors = {side: mode for side in SIDES}
     bindings = {}
     if mode == "directional_buttons":
         targets = ["gamepad:dpad-" + d for d in DIRECTIONS] + [
@@ -190,10 +193,9 @@ def validate(profile):
     if (
         not isinstance(behaviors, dict)
         or set(behaviors) != set(SIDES)
-        or any(
-            v not in ("default", "disabled", "directional_buttons")
-            for v in behaviors.values()
-        )
+        or behaviors["left"] not in ("default", "disabled", "directional_buttons")
+        or behaviors["right"]
+        not in ("default", "disabled", "directional_buttons", "mouse_drag_fix")
     ):
         raise ValueError("Invalid trackpad behavior.")
     if not isinstance(bindings, dict) or any(

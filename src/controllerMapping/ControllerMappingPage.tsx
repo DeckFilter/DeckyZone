@@ -252,6 +252,7 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
     const behaviorOptions: { data: TrackpadMode; label: string }[] = [
       { data: 'disabled', label: 'None' },
       { data: 'default', label: side === 'left' ? 'Scroll Wheel (Default)' : 'As Mouse (Default)' },
+      ...(side === 'right' ? [{ data: 'mouse_drag_fix' as const, label: 'Mouse Drag Fix' }] : []),
       { data: 'directional_buttons', label: 'Button Pad' },
     ]
     return section(
@@ -266,7 +267,10 @@ function ControllerMappingContent({ appId, sourceId }: MappingPageProps) {
               rgOptions={behaviorOptions}
               selectedOption={behaviors[side]}
               onChange={({ data }: { data: TrackpadMode }) => {
-                void save({ ...state.profile, behaviors: { ...behaviors, [side]: data } }).catch(() => {})
+                const nextBehaviors: MappingProfile['behaviors'] = side === 'left'
+                  ? { ...behaviors, left: data === 'mouse_drag_fix' ? 'default' : data }
+                  : { ...behaviors, right: data }
+                void save({ ...state.profile, behaviors: nextBehaviors }).catch(() => {})
               }}
             />
           </div>
