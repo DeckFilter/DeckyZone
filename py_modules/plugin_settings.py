@@ -260,7 +260,14 @@ def get_trackpad_mode():
 
 def set_trackpad_mode(mode):
     normalized_mode = trackpad_modes.normalize_trackpad_mode(mode)
+    settings = _read_settings()
+    global_profile = controller_mappings.normalize(settings.get("controllerMapping"))
     _write_setting(TRACKPAD_MODE_KEY, normalized_mode)
+    if global_profile is not None:
+        _write_setting(
+            "controllerMapping",
+            _apply_trackpad_mode_to_mapping_profile(global_profile, normalized_mode),
+        )
     return get_trackpad_mode()
 
 
@@ -651,11 +658,16 @@ def set_per_game_trackpad_mode(app_id, mode):
         return get_per_game_settings()
 
     current_entry = dict(entry)
-    current_entry[PER_GAME_TRACKPAD_MODE_KEY] = trackpad_modes.normalize_trackpad_mode(
-        mode
-    )
+    normalized_mode = trackpad_modes.normalize_trackpad_mode(mode)
+    current_entry[PER_GAME_TRACKPAD_MODE_KEY] = normalized_mode
     if current_entry.get("controllerMapping") is None:
         current_entry.pop("controllerMapping", None)
+    else:
+        current_entry["controllerMapping"] = _without_game_home_button(
+            _apply_trackpad_mode_to_mapping_profile(
+                current_entry["controllerMapping"], normalized_mode
+            )
+        )
     games[app_id] = current_entry
 
     _write_setting(PER_GAME_SETTINGS_KEY, games)
@@ -792,6 +804,24 @@ def get_effective_controller_mapping(app_id=None):
     )
 
 
+def _apply_trackpad_mode_to_mapping_profile(profile, mode):
+    normalized_mode = trackpad_modes.normalize_trackpad_mode(mode)
+    trackpads = controller_mappings.defaults(normalized_mode)
+    preserved_bindings = {
+        source: command
+        for source, command in profile["bindings"].items()
+        if source not in controller_mappings.SOURCES[4:] or command is not None
+    }
+    return {
+        **profile,
+        "behaviors": trackpads["behaviors"],
+        "bindings": {
+            **trackpads["bindings"],
+            **preserved_bindings,
+        },
+    }
+
+
 def _resolve_legacy_trackpad_mapping(profile, entry):
     if (
         profile is None
@@ -799,7 +829,8 @@ def _resolve_legacy_trackpad_mapping(profile, entry):
         or "controllerMapping" in entry
     ):
         return profile
-    trackpads = controller_mappings.defaults(entry[PER_GAME_TRACKPAD_MODE_KEY])
+    mode = trackpad_modes.normalize_trackpad_mode(entry.get(PER_GAME_TRACKPAD_MODE_KEY))
+    trackpads = controller_mappings.defaults(mode)
     return {
         **profile,
         "behaviors": trackpads["behaviors"],

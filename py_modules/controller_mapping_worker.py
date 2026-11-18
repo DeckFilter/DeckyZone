@@ -2,6 +2,7 @@
 
 import asyncio
 import ctypes
+import errno
 import json
 import os
 import signal
@@ -118,6 +119,11 @@ class Runtime:
             applied[0] = button
             if mode == "directional_buttons":
                 applied[7] = MARKERS[source]
+            elif mode == "mouse_drag_fix" and source in (
+                "right-trackpad-left",
+                "right-trackpad-right",
+            ):
+                applied[13] = 0x01
             mappings.append(
                 {"original": original.hex(), "applied": bytes(applied).hex()}
             )
@@ -140,9 +146,19 @@ class Runtime:
         )
         if reply.message_type == MessageType.ERROR:
             raise RuntimeError("Could not subscribe to controller inputs.")
-        if any(mode != "default" for mode in profile["behaviors"].values()):
+        if (
+            profile["behaviors"]["right"] != "mouse_drag_fix"
+            and any(mode != "default" for mode in profile["behaviors"].values())
+        ):
             self.mouse = InputDevice(event_path("ZOTAC Gaming Zone Mouse"))
-            self.mouse.grab()
+            for attempt in range(20):
+                try:
+                    self.mouse.grab()
+                    break
+                except OSError as error:
+                    if error.errno != errno.EBUSY or attempt == 19:
+                        raise
+                    await asyncio.sleep(0.05)
         for item in mappings:
             self.command.write(bytes.fromhex(item["applied"]))
         targets = (await self.call(PROPS, "Get", "ss", [IFACE, "TargetCapabilities"]))[

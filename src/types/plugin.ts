@@ -129,11 +129,13 @@ export type SystemReport = {
   logIncluded: boolean
 }
 
+export type LeftTrackpadBehavior = Exclude<TrackpadMode, 'mouse_drag_fix'>
+
 export type ControllerMappingProfile = {
   buttons: { home: 'screenshot' | 'steam_home' }
   dials: Record<'left' | 'right', 'volume' | 'brightness' | 'custom'>
   bindings: Record<string, string | null>
-  behaviors: Record<'left' | 'right', TrackpadMode>
+  behaviors: { left: LeftTrackpadBehavior; right: TrackpadMode }
 }
 
 export type PerGameSettings = {
